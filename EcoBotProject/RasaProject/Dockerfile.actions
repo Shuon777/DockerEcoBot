@@ -1,0 +1,19 @@
+FROM rasa/rasa:3.6.4-full
+
+WORKDIR /app
+
+# Копируем только то, что нужно для сервера действий
+COPY actions/ /app/actions/
+COPY logic/ /app/logic/
+COPY data/ /app/data/
+COPY actions-requirements.txt .
+
+# Устанавливаем зависимости от имени root, У КОТОРОГО ЕСТЬ ПРАВА.
+USER root
+RUN pip install -r actions-requirements.txt
+
+# Возвращаемся к стандартному пользователю для запуска.
+USER 1001
+
+# Команда запуска остается прежней.
+CMD ["run", "actions"]

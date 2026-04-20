@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.git/
+.env
+*.log
+logs/
+.pytest_cache/
+results/
+*.xlsx
+local_models/

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Baikal Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="/admin/static/css/style.css">
+</head>
+<body>
+
+<aside class="sidebar">
+    <div class="sidebar-header">
+        <a href="/admin" class="sidebar-logo">🌿 ЭкоБайкал</a>
+    </div>
+    <nav class="sidebar-nav">
+        <a href="/admin" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+            <i class="bi bi-house"></i> Обзор
+        </a>
+        <a href="/admin/logs" class="nav-item {% if active_page == 'logs' %}active{% endif %}">
+            <i class="bi bi-shield-exclamation"></i> Журнал ошибок
+        </a>
+        <a href="/admin/chat" class="nav-item {% if active_page == 'chat' %}active{% endif %}">
+            <i class="bi bi-chat-dots"></i> Тестовый чат
+        </a>
+        <a href="/admin/testing" class="nav-item {% if active_page == 'testing' %}active{% endif %}">
+            <i class="bi bi-clipboard2-check"></i> Система тестирования
+        </a>
+        <a href="/admin/settings" class="nav-item {% if active_page == 'settings' %}active{% endif %}">
+            <i class="bi bi-gear"></i> Настройки системы
+        </a>
+        <div style="padding: 24px 16px 8px; font-size: 11px; font-weight: 800; color: #9ca3af; text-transform: uppercase;">Данные</div>
+        <a href="/admin/biological" class="nav-item {% if active_page == 'biological' %}active{% endif %}">
+            <i class="bi bi-tree"></i> Флора и Фауна
+        </a>
+    </nav>
+</aside>
+
+<main class="main-content">
+    <header>
+        <h1>{% block title %}{% endblock %}</h1>
+        
+        <div class="bot-status">
+            <span id="status-dot" class="dot {% if bot_online %}online{% else %}offline{% endif %}"></span>
+            <span id="status-text" style="font-weight: bold;">Бот {{ 'онлайн' if bot_online else 'оффлайн' }}</span>
+        </div>
+    </header>
+
+    {% block content %}{% endblock %}
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+async function refreshBotStatus() {
+    try {
+        const response = await fetch('/admin/bot-status');
+        const data = await response.json();
+        const isOnline = data.online === true || data.online === "true";
+
+        // 1. ОБНОВЛЕНИЕ В ШАПКЕ (везде)
+        const dot = document.getElementById('status-dot');
+        const text = document.getElementById('status-text');
+        if (dot) dot.className = isOnline ? 'dot online' : 'dot offline';
+        if (text) {
+            text.textContent = isOnline ? 'Бот онлайн' : 'Бот оффлайн';
+            text.style.color = isOnline ? '' : '#ef4444';
+        }
+
+        // 2. ОБНОВЛЕНИЕ НА ДАШБОРДЕ (только на главной)
+        const dashText = document.getElementById('dash-status-text');
+        const dashDesc = document.getElementById('dash-status-desc');
+        
+        if (dashText) {
+            dashText.textContent = isOnline ? 'Активен' : 'Не в сети';
+            dashText.style.color = isOnline ? '#10b981' : '#ef4444';
+        }
+        if (dashDesc) {
+            dashDesc.textContent = isOnline 
+                ? 'Последний сигнал получен менее 15 мин. назад' 
+                : 'Бот давно не выходил на связь';
+        }
+
+    } catch (e) {
+        console.error("Ошибка Heartbeat:", e);
+    }
+}
+
+// Проверка раз в 15 секунд
+setInterval(refreshBotStatus, 15000);
+// И сразу при загрузке
+refreshBotStatus();
+</script>
+</body>
+</html>

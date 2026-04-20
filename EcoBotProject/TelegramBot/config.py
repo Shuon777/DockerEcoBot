@@ -1,0 +1,50 @@
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_env_var(var_name: str, default_value: str = None) -> str:
+    """Получает переменную окружения или вызывает ошибку, если она не установлена."""
+    value = os.getenv(var_name, default_value)
+    if value is None:
+        error_msg = f"Критическая ошибка: Переменная окружения '{var_name}' не установлена!"
+        logger.critical(error_msg)
+        raise ValueError(error_msg)
+    return value
+
+# --- Telegram Bot ---
+BOT_TOKEN = get_env_var("BOT_TOKEN")
+USER_SETTINGS_PATH=get_env_var("USER_SETTINGS_PATH")
+USER_LOCK_SETTINGS_PATH=get_env_var("USER_LOCK_SETTINGS_PATH")
+
+# --- Rasa ---
+RASA_WEBHOOK_URL = get_env_var("RASA_WEBHOOK_URL")
+
+# --- GigaChat Fallback API ---
+GIGACHAT_FALLBACK_URL = get_env_var("GIGACHAT_FALLBACK_URL")
+
+# --- Backend EcoBot API (testecobot.ru) ---
+ECOBOT_API_BASE_URL = get_env_var("ECOBOT_API_BASE_URL")
+
+API_URLS = {
+    "get_description": f"{ECOBOT_API_BASE_URL}/species/description/",
+    "search_images": f"{ECOBOT_API_BASE_URL}/search_images_by_features",
+    "get_coords": f"{ECOBOT_API_BASE_URL}/get_coords",
+    "coords_to_map": f"{ECOBOT_API_BASE_URL}/coords_to_map",
+    "objects_in_polygon": f"{ECOBOT_API_BASE_URL}/objects_in_polygon_simply",
+    "ask_ecobot": f"{ECOBOT_API_BASE_URL}/search",
+    "find_species_with_description": f"{ECOBOT_API_BASE_URL}/find_species_with_description",
+    "find_geo_special_description": f"{ECOBOT_API_BASE_URL}/object/description/",
+    "show_map_infrastructure": f"{ECOBOT_API_BASE_URL}/objects_in_area_by_type",
+    "stand_endpoint": get_env_var("STAND_ENDPOINT", "http://84.237.20.90:8084/scripts/sights_ii.jsp"),
+    "log_error": f"{ECOBOT_API_BASE_URL}/log_error"
+}
+
+STAND_SECRET_KEY = get_env_var("STAND_SECRET_KEY")
+STAND_SESSION_TIMEOUT = 300
+
+# --- Таймауты ---
+DEFAULT_TIMEOUT = 45
+TIMEOUT_FOR_OBJECTS_IN_POLYGON = 65
+GIGACHAT_TIMEOUT = 50
+CONTEXT_TTL_SECONDS = 900 

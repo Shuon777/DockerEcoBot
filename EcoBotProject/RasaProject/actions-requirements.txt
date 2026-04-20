@@ -1,0 +1,7 @@
+rasa-sdk>=3.6.2
+python-dotenv>=1.0.0
+requests>=2.32.0
+pymorphy2>=0.9.1
+pymorphy2-dicts-ru>=2.4.0
+thefuzz>=0.22.1
+rapidfuzz>=3.13.0

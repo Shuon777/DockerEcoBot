@@ -1,0 +1,40 @@
+import logging
+from logging.handlers import TimedRotatingFileHandler
+import sys
+import os
+
+LOG_FILE_PATH = os.getenv("LOG_FILE_PATH")
+UNHANDLED_QUERIES_LOG_PATH = os.getenv("UNHANDLED_QUERIES_LOG_PATH")
+
+
+def setup_logging():
+    """Настраивает логирование в файл с ротацией и в консоль."""
+    root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    root_logger.addHandler(stream_handler)
+    file_handler = TimedRotatingFileHandler(
+        LOG_FILE_PATH, 
+        when='midnight', 
+        interval=1, 
+        backupCount=7,
+        encoding='utf-8'
+    )
+    file_handler.setFormatter(formatter)
+    root_logger.addHandler(file_handler)
+    unhandled_logger = logging.getLogger("unhandled")
+    unhandled_logger.setLevel(logging.INFO)
+    unhandled_logger.propagate = False
+    unhandled_formatter = logging.Formatter('%(asctime)s - %(message)s')
+    
+    unhandled_file_handler = logging.FileHandler(UNHANDLED_QUERIES_LOG_PATH, encoding='utf-8')
+    unhandled_file_handler.setFormatter(unhandled_formatter)
+    unhandled_logger.addHandler(unhandled_file_handler)
+    logging.info(f"Нераспознанные запросы будут сохраняться в: {UNHANDLED_QUERIES_LOG_PATH}")

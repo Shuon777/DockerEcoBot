@@ -1,0 +1,41 @@
+# Секреты и конфиги с паролями
+.env
+**/.env
+**/.env.regression
+# Исключение: шаблоны без секретов
+!.env.example
+
+# Данные БД и дампы
+data/postgres_data/
+data/eco_dump.dump
+data/admin_db/
+**/*.db
+
+# Большие бинарные файлы моделей (2.2GB+)
+salut_bot/embedding_models/
+
+# Большие датасеты (109MB+)
+salut_bot/json_files/
+
+# FAISS-индексы (генерируются скриптами)
+salut_bot/knowledge_base_scripts/Vector/faiss_index/
+
+# Изображения видов (183MB)
+salut_bot/images/
+
+# Обученные модели Rasa (118MB)
+EcoBotProject/RasaProject/models/
+
+# Runtime-артефакты
+logs/
+maps/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Claude Code
+.claude/

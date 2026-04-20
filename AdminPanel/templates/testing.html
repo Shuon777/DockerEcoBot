@@ -1,0 +1,650 @@
+{% extends "base.html" %}
+{% block title %}Система тестирования{% endblock %}
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <p class="text-secondary m-0">Автоматизированная проверка качества ответов Core API</p>
+    <button class="btn btn-primary fw-bold px-4" data-bs-toggle="modal" data-bs-target="#startTestModal">
+        <i class="bi bi-play-fill"></i> Запустить новый тест
+    </button>
+</div>
+
+<!-- Список моих тестов -->
+<div class="card shadow-sm border-0" style="border-radius: 16px;">
+    <div class="table-responsive">
+        <table class="table align-middle m-0">
+            <thead class="bg-light">
+                <tr>
+                    <th class="px-4">ID Сессии / Дата</th>
+                    <th>Режим</th>
+                    <th>Прогресс</th>
+                    <th>Результат (Успешность)</th>
+                    <th class="text-end px-4">Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for test in tests %}
+                <tr id="test-row-{{ test.session_id }}">
+                    <td class="px-4">
+                        <span class="fw-bold small text-muted">#{{ test.session_id[:8] }}...</span><br>
+                        <span class="small">{{ test.created_at.strftime('%d.%m %H:%M') }}</span>
+                    </td>
+                    <td>
+                        <span class="badge {{ 'bg-info' if test.mode=='llm' else 'bg-secondary' }}">{{ test.mode }}</span>
+                    </td>
+                    <td style="width: 250px;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div class="progress w-100" style="height: 8px;">
+                                <div id="progress-bar-{{ test.session_id }}" 
+                                     class="progress-bar progress-bar-striped progress-bar-animated bg-success" 
+                                     role="progressbar" style="width: {{ test.progress }}%"></div>
+                            </div>
+                            <span id="progress-text-{{ test.session_id }}" class="small fw-bold">{{ test.progress }}%</span>
+                        </div>
+                        <small id="status-{{ test.session_id }}" class="text-uppercase fw-bold text-muted" style="font-size: 10px;">{{ test.status }}</small>
+                    </td>
+                    <td>
+                        {% if test.stats %}
+                        <div class="fw-bold text-{{ 'success' if test.stats.success_rate > 80 else 'warning' }}">
+                            {{ test.stats.passed }} / {{ test.stats.total_tests }} ({{ test.stats.success_rate }}%)
+                        </div>
+                        {% else %}
+                        <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end px-4">
+                        <button class="btn btn-sm btn-outline-primary fw-bold" 
+                                onclick="viewResults('{{ test.session_id }}')" 
+                                id="btn-view-{{ test.session_id }}" {# ОБЯЗАТЕЛЬНО ЭТОТ ID #}
+                                {% if test.status != 'completed' %}disabled{% endif %}>
+                            Детали
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="startTestModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <form class="modal-content" action="/admin/testing/start" method="post" style="border-radius: 24px; border: none; shadow: 0 20px 50px rgba(0,0,0,0.2);">
+            <div class="modal-header border-0 px-4 pt-4">
+                <h4 class="fw-bold text-primary m-0">🚀 Конфигурация тестирования</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            
+            <div class="modal-body px-4">
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <label class="badge-label">РЕЖИМ ПРОВЕРКИ</label>
+                        <select name="mode" class="form-select form-select-lg fw-bold" style="border-radius: 12px; border: 2px solid #e2e8f0;">
+                            <option value="no llm" selected>⚡ No LLM (Классический)</option>
+                            <option value="llm">🧠 LLM Mode (GigaChat)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="badge-label">БЫСТРЫЙ ВЫБОР</label>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-secondary w-100 fw-bold" onclick="toggleSelectAll(true)">Выбрать все</button>
+                            <button type="button" class="btn btn-outline-secondary w-100 fw-bold" onclick="toggleSelectAll(false)">Сбросить</button>
+                        </div>
+                    </div>
+                </div>
+
+                <label class="badge-label">ОБЪЕКТЫ ТЕСТИРОВАНИЯ (<span id="selected-count">0</span>)</label>
+                
+                <!-- Поиск и Фильтр внутри модалки -->
+                <div class="row g-2 mb-3">
+                    <div class="col-md-8">
+                        <div class="input-group">
+                            <span class="input-group-text bg-white border-end-0"><i class="bi bi-search"></i></span>
+                            <input type="text" id="modalSearch" class="form-control border-start-0" placeholder="Поиск (напр: Аир)..." onkeyup="filterModalObjects()">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <select id="modalTypeFilter" class="form-select" onchange="filterModalObjects()">
+                            <option value="all">Все типы</option>
+                            <option value="flora">🌿 Флора</option>
+                            <option value="fauna">🐾 Фауна</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Список объектов с прокруткой -->
+                <div class="object-selection-list border rounded-3 p-2 bg-light" id="modalObjectList" style="max-height: 400px; overflow-y: auto;">
+                    {% for obj in objects %}
+                        {# Определяем тип один раз для использования в атрибутах и в иконках #}
+                        {% set is_flora = 'флор' in (obj.type|lower) or 'растен' in (obj.type|lower) %}
+                        {% set current_type = 'flora' if is_flora else 'fauna' %}
+                        
+                        <div class="obj-item-card p-2 mb-2 bg-white rounded-3 shadow-sm border" 
+                            data-name="{{ obj.common_name_ru | lower }} {{ obj.scientific_name | lower if obj.scientific_name else '' }}" 
+                            data-type="{{ current_type }}">
+                            <div class="form-check d-flex align-items-center m-0">
+                                <input class="form-check-input obj-checkbox me-3" type="checkbox" name="objects" value="{{ obj.common_name_ru }}" id="obj{{ obj.id }}" style="width: 22px; height: 22px;" onchange="updateCounter()">
+                                <label class="form-check-label d-flex justify-content-between align-items-center w-100" for="obj{{ obj.id }}" style="cursor: pointer;">
+                                    <div>
+                                        <span class="fw-bold d-block" style="font-size: 1.1rem; color: var(--text-primary); line-height: 1.2;">{{ obj.common_name_ru }}</span>
+                                        <span class="text-muted small fst-italic">{{ obj.scientific_name or 'Без лат. названия' }}</span>
+                                    </div>
+                                    <span class="badge {{ 'bg-success text-success' if is_flora else 'bg-primary text-primary' }} bg-opacity-10 border px-2 py-1" style="min-width: 80px; text-align: center;">
+                                        {{ '🌿 Флора' if is_flora else '🐾 Фауна' }}
+                                    </span>
+                                </label>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="modal-footer border-0 px-4 pb-4">
+                <button type="submit" class="btn btn-primary w-100 py-3 fw-bold shadow" style="border-radius: 14px; font-size: 1.1rem;">
+                    🚀 Запустить тестирование
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+<div class="modal fade" id="resultsModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header bg-white border-bottom shadow-sm">
+                <h5 class="modal-title fw-bold text-primary">
+                    <i class="bi bi-clipboard-data me-2"></i> Подробный отчет тестирования
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-light" id="resultsContent">
+                <!-- Сюда JavaScript вставит таблицу -->
+            </div>
+            <div class="modal-footer bg-white border-top">
+                <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+/* Старые стили оставляем как есть */
+.obj-item-card { transition: 0.2s; border: 1px solid #edf2f7 !important; }
+.obj-item-card:hover { border-color: var(--accent) !important; background: #f0f7ff !important; }
+.form-check-input:checked + .form-check-label .fw-bold { color: var(--accent); }
+.badge-label { font-size: 0.75rem; font-weight: 800; color: #64748b; margin-bottom: 8px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* === ВСТАВЛЯЕМ НОВЫЕ СТИЛИ СЮДА === */
+.accordion-button {
+    font-size: 1.25rem !important; 
+    color: #1e293b !important;
+}
+.test-card {
+    border: 1px solid #cbd5e1;
+    border-radius: 12px;
+    margin-bottom: 1.5rem;
+    background: #ffffff;
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.test-card.error-card {
+    border-color: #f8d7da;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.08);
+}
+.test-card.error-card .card-header {
+    background-color: #fff5f5;
+    border-bottom: 1px solid #f8d7da;
+}
+.bot-answer-box {
+    background-color: #f8fafc;
+    border-left: 4px solid #3b82f6;
+    padding: 1.25rem;
+    font-size: 1.1rem; 
+    color: #0f172a;
+    border-radius: 0 8px 8px 0;
+    line-height: 1.6;
+}
+.badge-check {
+    font-size: 0.95rem; 
+    padding: 0.6em 1em;
+    font-weight: 600;
+    border-radius: 8px;
+}
+.filter-btn {
+    border-radius: 20px;
+    font-weight: 700;
+    padding: 8px 20px;
+    font-size: 1rem;
+}
+.json-box {
+    display: none;
+    font-size: 0.9rem;
+    font-family: 'JetBrains Mono', monospace;
+    background: #1e293b;
+    color: #f8fafc;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+.json-box.open { display: block; }
+</style>
+
+<script>
+function toggleSelectAll(state) {
+    const items = document.querySelectorAll('.obj-item-card');
+    
+    items.forEach(item => {
+        // Проверяем, не скрыт ли элемент фильтром в данный момент
+        if (item.style.display !== 'none') {
+            const cb = item.querySelector('.obj-checkbox');
+            if (cb) cb.checked = state;
+        }
+    });
+    updateCounter();
+}
+
+// Фоновое обновление статусов
+async function updateStatuses() {
+    // Ищем все строки, начинающиеся на test-row-
+    const rows = document.querySelectorAll('[id^="test-row-"]');
+    
+    if (rows.length === 0) {
+        console.log("JS: Тестов в таблице не найдено.");
+        return;
+    }
+
+    for (let row of rows) {
+        const sid = row.id.replace('test-row-', '');
+        const statusEl = document.getElementById(`status-${sid}`);
+        
+        if (!statusEl) {
+            console.error(`JS: Не найден элемент статуса для ${sid}`);
+            continue;
+        }
+
+        const currentStatus = statusEl.innerText.trim().toLowerCase();
+        console.log(`JS: Проверяю тест ${sid}, текущий статус: ${currentStatus}`);
+
+        // Опрашиваем только если статус не финальный
+        if (currentStatus === 'completed' || currentStatus === 'failed') {
+            const btn = document.getElementById(`btn-view-${sid}`);
+            if (btn && currentStatus === 'completed') btn.removeAttribute('disabled');
+            continue; 
+        }
+
+        try {
+            console.log(`JS: Отправляю запрос /admin/testing/check/${sid}`);
+            const res = await fetch(`/admin/testing/check/${sid}`);
+            const data = await res.json();
+            
+            // Обновляем бар
+            const bar = document.getElementById(`progress-bar-${sid}`);
+            const txt = document.getElementById(`progress-text-${sid}`);
+            if (bar) bar.style.width = (data.progress || 0) + '%';
+            if (txt) txt.innerText = (data.progress || 0) + '%';
+
+            // Обновляем текст статуса
+            statusEl.innerText = data.status;
+
+            // Если завершено - активируем кнопку
+            if (data.status === 'completed') {
+                const btn = document.getElementById(`btn-view-${sid}`);
+                if (btn) btn.removeAttribute('disabled');
+                console.log(`JS: Тест ${sid} завершен!`);
+            }
+        } catch (e) {
+            console.error(`JS: Ошибка при опросе ${sid}:`, e);
+        }
+    }
+}
+
+// Запускаем сразу при загрузке
+updateStatuses();
+// А потом каждые 5 секунд
+setInterval(updateStatuses, 5000);
+
+let currentTestResultsData = null;
+
+// Очистка ответа бота от служебного JSON (остается как есть)
+function parseAnswer(raw) {
+    if (!raw) return '—';
+    try {
+        const obj = JSON.parse(raw.replace(/'/g, '"').replace(/None/g, 'null'));
+        if (obj.content) return obj.content;
+    } catch(e) {}
+    
+    const m = raw.match(/['"]content['"]\s*:\s*['"](.*?)['"](?:,|\})/);
+    return m ? m[1] : (raw.length > 200 ? raw.slice(0, 200) + '…' : raw);
+}
+
+// Проверка статуса теста по НОВЫМ полям
+function checkTestStatus(c, cat) {
+    const checks = [c['Наличие ответа'], c['Локализация контента (RU)']];
+    
+    if (cat === 'Текст') {
+        checks.push(c['Техническая целостность текста'], c['Защита персональных данных (ПДн)']);
+        if (c['Лингвистическая грамотность'] && c['Лингвистическая грамотность'].startsWith('❌')) checks.push('❌');
+        if (c['Соблюдение этических норм'] && c['Соблюдение этических норм'].includes('Токсично')) checks.push('❌');
+    } else if (cat === 'Изображения') {
+        const media = c['Доступность медиа-ресурса'] || '';
+        checks.push(media.includes('Нет изображений') || media.includes('Пропуск') ? '❌' : '✅');
+    } else if (cat === 'Карты') {
+        const geo = c['Работоспособность Гео-ссылок'] || '';
+        checks.push(geo.startsWith('✅') ? '✅' : '❌');
+    }
+    
+    const failed = checks.filter(v => v && String(v).startsWith('❌')).length;
+    return failed > 0 ? 'fail' : 'ok';
+}
+
+// Рендер бейджей по НОВЫМ полям
+function renderBootstrapBadges(c, cat) {
+    let h = '';
+    const renderBadge = (label, val) => {
+        const v = String(val || '');
+        if (!val || v === 'null') return '';
+        
+        const skip = v.includes('Пропуск') || v.includes('Выбран режим без LLM') || v.includes('Нет карт');
+        if (skip) return `<span class="badge bg-light text-secondary border badge-check me-2 mb-2">${label} (N/A)</span>`;
+        
+        const ok = v.startsWith('✅');
+        const fail = v.startsWith('❌') || v.includes('Битая') || v.includes('Нет изображений');
+        
+        if (ok) return `<span class="badge bg-success badge-check me-2 mb-2"><i class="bi bi-check-lg"></i> ${label}</span>`;
+        if (fail) return `<span class="badge bg-danger badge-check me-2 mb-2"><i class="bi bi-x-lg"></i> ${label}</span>`;
+        return `<span class="badge bg-secondary badge-check me-2 mb-2">${label}</span>`;
+    };
+
+    // Общие поля
+    h += renderBadge('Ответ', c['Наличие ответа']);
+    h += renderBadge('Язык RU', c['Локализация контента (RU)']);
+
+    if (cat === 'Текст') {
+        h += renderBadge('Разметка', c['Техническая целостность текста']);
+        h += renderBadge('Приватность', c['Защита персональных данных (ПДн)']);
+        
+        const spell = c['Лингвистическая грамотность'] || '';
+        if (spell.startsWith('✅')) {
+            h += `<span class="badge bg-success badge-check me-2 mb-2"><i class="bi bi-check-lg"></i> Грамотность</span>`;
+        } else if (spell.startsWith('❌')) {
+            const match = spell.match(/❌\s*\((\d+)\s*ош\.\)/);
+            const count = match ? match[1] : '!';
+            h += `<span class="badge bg-danger badge-check me-2 mb-2"><i class="bi bi-x-lg"></i> Ошибки текста (${count})</span>`;
+        }
+
+        const tox = c['Соблюдение этических норм'] || '';
+        if (tox.includes('Токсично')) h += `<span class="badge bg-danger badge-check me-2 mb-2"><i class="bi bi-x-lg"></i> Этическое нарушение</span>`;
+        else if (tox && !tox.includes('Выбран режим без LLM')) h += `<span class="badge bg-success badge-check me-2 mb-2"><i class="bi bi-check-lg"></i> Этика ок</span>`;
+        
+    } else if (cat === 'Изображения') {
+        const mediaStr = c['Доступность медиа-ресурса'] || '';
+        const hasPhoto = mediaStr.startsWith('✅') || (!mediaStr.includes('Нет изображений') && !mediaStr.includes('Пропуск'));
+        
+        h += `<span class="badge ${hasPhoto ? 'bg-success' : 'bg-danger'} badge-check me-2 mb-2">
+                <i class="bi bi-image"></i> ${hasPhoto ? 'Медиа доступно' : 'Изображение не найдено'}
+              </span>`;
+        h += renderBadge('NSFW', c['Визуальная цензура (NSFW)']);
+        
+    } else if (cat === 'Карты') {
+        const geo = c['Работоспособность Гео-ссылок'] || '';
+        h += `<span class="badge ${geo.startsWith('✅') ? 'bg-success' : 'bg-danger'} badge-check me-2 mb-2">
+                <i class="bi bi-geo-alt"></i> ${geo.startsWith('✅') ? 'Геолокация ок' : 'Ссылка нерабочая'}
+              </span>`;
+    }
+    return h;
+}
+
+// Загрузка результатов с сервера
+async function viewResults(sid) {
+    const modal = new bootstrap.Modal(document.getElementById('resultsModal'));
+    const content = document.getElementById('resultsContent');
+    
+    content.innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" style="width: 3rem; height: 3rem;" role="status"></div>
+            <h4 class="mt-4 fw-bold text-dark">Анализ результатов...</h4>
+        </div>`;
+    modal.show();
+
+    try {
+        const response = await fetch(`/admin/testing/results/${sid}`);
+        if (!response.ok) throw new Error("Данные еще не готовы или отсутствуют");
+        currentTestResultsData = await response.json();
+        renderResultsView('all');
+    } catch (error) {
+        content.innerHTML = `
+            <div class="alert alert-danger m-4 border-0 shadow-sm" style="border-radius: 16px;">
+                <h4 class="fw-bold"><i class="bi bi-exclamation-triangle"></i> Ошибка загрузки</h4>
+                <p class="mb-0 fs-5">${error.message}</p>
+            </div>`;
+    }
+}
+
+// Открытие JSON окна
+function toggleJson(btn, jsonId) {
+    const jsonBox = document.getElementById(jsonId);
+    if (jsonBox.classList.contains('open')) {
+        jsonBox.classList.remove('open');
+        btn.innerHTML = '<i class="bi bi-braces"></i> Показать технические данные (JSON)';
+    } else {
+        jsonBox.classList.add('open');
+        btn.innerHTML = '<i class="bi bi-braces"></i> Скрыть технические данные';
+    }
+}
+
+// Рендер окна с результатами
+function renderResultsView(filterType) {
+    const data = currentTestResultsData;
+    const content = document.getElementById('resultsContent');
+    
+    // Берем готовую группировку из JSON (объект -> категория -> массив тестов)
+    const groupedByObj = data.results || {};
+    
+    // Предрасчет статусов
+    for (const [objName, catsMap] of Object.entries(groupedByObj)) {
+        for (const [cat, catTests] of Object.entries(catsMap)) {
+            catTests.forEach(c => {
+                c._status = checkTestStatus(c, cat);
+            });
+        }
+    }
+
+    let html = `
+        <div class="card border-0 shadow-sm mb-4" style="border-radius: 16px; background: #fff;">
+            <div class="card-body d-flex justify-content-around align-items-center text-center py-4">
+                <div><p class="text-secondary fw-bold mb-1">ВСЕГО ТЕСТОВ</p><h1 class="fw-bold m-0 text-dark">${data.stats.total_tests}</h1></div>
+                <div class="vr"></div>
+                <div><p class="text-secondary fw-bold mb-1">УСПЕШНО</p><h1 class="fw-bold m-0 text-success">${data.stats.passed}</h1></div>
+                <div class="vr"></div>
+                <div><p class="text-secondary fw-bold mb-1">С ОШИБКОЙ</p><h1 class="fw-bold m-0 text-danger">${data.stats.failed}</h1></div>
+                <div class="vr"></div>
+                <div><p class="text-secondary fw-bold mb-1">УСПЕШНОСТЬ</p><h1 class="fw-bold m-0 text-primary">${data.stats.success_rate}%</h1></div>
+            </div>
+        </div>
+        
+        <div class="d-flex align-items-center gap-3 mb-4 bg-white p-4 shadow-sm" style="border-radius: 16px;">
+            <span class="text-dark fs-5 fw-bold me-2">ФИЛЬТР:</span>
+            <button class="btn btn-outline-secondary filter-btn ${filterType === 'all' ? 'active bg-secondary text-white' : ''}" onclick="renderResultsView('all')">Показать всё</button>
+            <button class="btn btn-outline-danger filter-btn ${filterType === 'fail' ? 'active bg-danger text-white border-danger' : ''}" onclick="renderResultsView('fail')">Только с ошибками</button>
+            <button class="btn btn-outline-success filter-btn ${filterType === 'ok' ? 'active bg-success text-white border-success' : ''}" onclick="renderResultsView('ok')">Идеальные ответы</button>
+        </div>
+        
+        <div class="accordion" id="objectsAccordion">
+    `;
+
+    let objIndex = 0;
+    let objectsShown = 0;
+    
+    for (const [objName, catsMap] of Object.entries(groupedByObj)) {
+        let objFailCount = 0;
+        let objOkCount = 0;
+        
+        for (const catTests of Object.values(catsMap)) {
+            for (const t of catTests) {
+                if (t._status === 'fail') objFailCount++;
+                else objOkCount++;
+            }
+        }
+        
+        const objGlobalStatus = objFailCount > 0 ? 'fail' : 'ok';
+        
+        // Фильтрация
+        if (filterType === 'fail' && objGlobalStatus !== 'fail') continue;
+        if (filterType === 'ok' && objGlobalStatus !== 'ok') continue;
+        
+        objectsShown++;
+        objIndex++;
+        const accordionId = `collapseObj${objIndex}`;
+        
+        // Делаем первую букву объекта заглавной для красоты
+        const displayObjName = objName.charAt(0).toUpperCase() + objName.slice(1);
+        
+        html += `
+            <div class="accordion-item border-0 shadow-sm mb-4" style="border-radius: 16px; overflow: hidden;">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed bg-white fw-bold py-4" type="button" data-bs-toggle="collapse" data-bs-target="#${accordionId}">
+                        <span class="me-auto text-uppercase" style="letter-spacing: 0.5px;">${displayObjName}</span>
+                        <div class="d-flex gap-2 me-4">
+                            ${objOkCount > 0 ? `<span class="badge bg-success fs-6 rounded-pill px-3 py-2"><i class="bi bi-check2"></i> ${objOkCount} пройдено</span>` : ''}
+                            ${objFailCount > 0 ? `<span class="badge bg-danger fs-6 rounded-pill px-3 py-2"><i class="bi bi-exclamation-octagon"></i> ${objFailCount} ошибок</span>` : ''}
+                        </div>
+                    </button>
+                </h2>
+                <div id="${accordionId}" class="accordion-collapse collapse" style="background: #f8fafc;">
+                    <div class="accordion-body p-4">
+        `;
+
+        let testIdx = 0;
+        const catIcons = { 'Текст': 'bi-justify-left', 'Изображения': 'bi-image', 'Карты': 'bi-map' };
+
+        for (const [cat, catTests] of Object.entries(catsMap)) {
+            html += `
+                <h4 class="fw-bold text-dark mb-3 mt-4 border-bottom pb-2">
+                    <i class="bi ${catIcons[cat] || 'bi-gear'} text-primary me-2"></i> Проверка: ${cat}
+                </h4>
+            `;
+            
+            catTests.forEach(c => {
+                testIdx++;
+                const isFail = c._status === 'fail';
+                const answer = parseAnswer(c['Ответ бота']);
+                const jsonId = `json_raw_${objIndex}_${testIdx}`;
+                
+                html += `
+                    <div class="test-card ${isFail ? 'error-card' : ''}">
+                        <div class="card-header d-flex justify-content-between align-items-center p-3">
+                            <div class="fw-bold fs-5 text-dark">${c['Сгенерированный вопрос']}</div>
+                            <span class="badge ${isFail ? 'bg-danger' : 'bg-success'} fs-6 px-3 py-2 shadow-sm">
+                                ${isFail ? '❌ Тест провален' : '✅ Тест пройден'}
+                            </span>
+                        </div>
+                        
+                        <div class="card-body p-4">
+                            <div class="mb-4">
+                                <div class="text-uppercase text-secondary fw-bold mb-2" style="font-size: 0.85rem; letter-spacing: 1px;">Ответ нейросети</div>
+                                <div class="bot-answer-box shadow-sm">${answer}</div>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <div class="text-uppercase text-secondary fw-bold mb-2" style="font-size: 0.85rem; letter-spacing: 1px;">Результаты проверок</div>
+                                <div class="d-flex flex-wrap align-items-center">
+                                    ${renderBootstrapBadges(c, cat)}
+                                </div>
+                            </div>
+                            
+                            ${c['Эмоциональный профиль'] ? `
+                            <div class="alert alert-light border border-secondary border-opacity-25 mb-4 text-dark fs-6 shadow-sm">
+                                <i class="bi bi-emoji-smile text-primary me-2"></i><strong>Эмоциональный профиль:</strong> ${c['Эмоциональный профиль']}
+                            </div>` : ''}
+                            
+                            <div>
+                                <button class="btn btn-outline-secondary fw-bold" style="border-radius: 8px;" onclick="toggleJson(this, '${jsonId}')">
+                                    <i class="bi bi-braces"></i> Показать технические данные (JSON)
+                                </button>
+                                <pre class="json-box shadow-sm" id="${jsonId}">${JSON.stringify(c, null, 2)}</pre>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        html += `
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    if (objectsShown === 0) {
+        html += `
+            <div class="text-center py-5 text-secondary">
+                <i class="bi bi-inbox fs-1 d-block mb-3"></i>
+                <h3 class="fw-bold">Нет результатов</h3>
+                <p class="fs-5">Нет объектов, соответствующих выбранному фильтру.</p>
+            </div>
+        `;
+    }
+
+    html += `</div>`;
+    content.innerHTML = html;
+}
+// Фильтрация объектов в модалке (Поиск + Тип)
+function filterModalObjects() {
+    // 1. Получаем значения фильтров
+    const searchText = document.getElementById('modalSearch').value.toLowerCase().trim();
+    const typeFilter = document.getElementById('modalTypeFilter').value; // 'all', 'flora' или 'fauna'
+    
+    // 2. Берем все карточки объектов
+    const items = document.querySelectorAll('.obj-item-card');
+
+    items.forEach(item => {
+        const name = item.getAttribute('data-name') || "";
+        const type = item.getAttribute('data-type') || "";
+        
+        // Условие поиска: если строка пустая — подходит всё, иначе ищем вхождение
+        const matchesSearch = searchText === "" || name.includes(searchText);
+        
+        // Условие типа: если выбрано 'all' — подходит всё, иначе строгое сравнение
+        const matchesType = (typeFilter === 'all' || type === typeFilter);
+
+        // 3. Решаем: показать или скрыть
+        if (matchesSearch && matchesType) {
+            item.style.setProperty('display', 'block', 'important');
+        } else {
+            item.style.setProperty('display', 'none', 'important');
+        }
+    });
+}
+
+// Выбрать все / Сбросить (работает только с теми, кто ВИДЕН на экране)
+function toggleSelectAll(state) {
+    const items = document.querySelectorAll('.obj-item-card');
+    
+    items.forEach(item => {
+        // Проверяем, не скрыт ли элемент фильтром в данный момент
+        if (item.style.display !== 'none') {
+            const cb = item.querySelector('.obj-checkbox');
+            if (cb) cb.checked = state;
+        }
+    });
+    updateCounter();
+}
+
+// Обновление счетчика выбранных
+function updateCounter() {
+    const checkedCount = document.querySelectorAll('.obj-checkbox:checked').length;
+    const counterEl = document.getElementById('selected-count');
+    if (counterEl) {
+        counterEl.innerText = checkedCount;
+    }
+}
+
+// Чтобы при открытии модалки всё было корректно проинициализировано
+document.getElementById('startTestModal').addEventListener('shown.bs.modal', function () {
+    filterModalObjects();
+    updateCounter();
+});
+</script>
+
+{% endblock %}

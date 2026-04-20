@@ -1,0 +1,331 @@
+Запрос: "Где посмотреть фотографии экспозиции об истории исследований Байкала?"
+Результат:
+{
+  "_reasoning": "Запрос информации о выставке/экспозиции. Несмотря на слова 'где' и 'фотографии', это абстрактный запрос к базе знаний. Тип Service (Экспозиции и выставки).",
+  "search_query": "экспозиция об истории исследований Байкала фотографии",
+  "action": "describe",
+  "primary_entity": { "name": "история исследований Байкала", "type": "Service", "category": "Экспозиции и выставки", "subcategory":[] },
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Где посмотреть полный список сотрудников Байкальского музея СО РАН?"
+Результат:
+{
+  "_reasoning": "Справочный вопрос о персонале организации. Относим это к общим вопросам (Service), привязанным к музею (Infrastructure).",
+  "search_query": "полный список сотрудников Байкальского музея",
+  "action": "describe",
+  "primary_entity": { "name": "сотрудники", "type": "Service", "category": "Общая информация и FAQ", "subcategory":[] },
+  "secondary_entity": { "name": "Байкальский музей СО РАН", "type": "Infrastructure", "category": "Достопримечательности", "subcategory": ["Музеи"] },
+  "attributes": {}
+}
+
+Запрос: "Что представляет собой экспозиция истории развития жизни в процессе абиотических изменений в Байкальском музее СО РАН?"
+Результат:
+{
+  "_reasoning": "Сложный запрос о конкретной экспозиции. Основной объект — выставка/экспозиция, значит это Service (Экспозиции и выставки). Локация — Байкальский музей (Infrastructure).",
+  "search_query": "экспозиция истории развития жизни в процессе абиотических изменений",
+  "action": "describe",
+  "primary_entity": { "name": "экспозиция истории развития жизни в процессе абиотических изменений", "type": "Service", "category": "Экспозиции и выставки", "subcategory":[] },
+  "secondary_entity": { "name": "Байкальский музей СО РАН", "type": "Infrastructure", "category": "Достопримечательности", "subcategory": ["Музеи"] },
+  "attributes": {}
+}
+
+Запрос: "Сколько стоит билет на экскурсию с погружением?"
+Результат:
+{
+  "_reasoning": "Вопрос о цене услуги. Тип Service (Услуги и цены).",
+  "search_query": "стоимость билета на экскурсию с погружением",
+  "action": "describe",
+  "primary_entity": { "name": "экскурсия с погружением", "type": "Service", "category": "Услуги и цены", "subcategory":[] },
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Можно ли с собакой в музей?"
+Результат:
+{
+  "_reasoning": "Вопрос о правилах. Тип Service (Правила посещения). Объект 'музей' - инфраструктура, но сам вопрос относится к правилам.",
+  "search_query": "посещение с собакой",
+  "action": "describe",
+  "primary_entity": { "name": "посещение с собакой", "type": "Service", "category": "Правила посещения", "subcategory":[] },
+  "secondary_entity": { "name": "музей", "type": "Infrastructure", "category": "Достопримечательности", "subcategory": ["Музеи"] },
+  "attributes": {}
+}
+
+Запрос: "А расскажи про нее"
+Результат:
+{
+  "_reasoning": "Пользователь запрашивает описание ('расскажи'). Объект не назван ('нее'), используется контекст.",
+  "action": "describe",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Где обитает эдельвейс около култука"
+Результат:
+{
+  "_reasoning": "Запрос местоположения ('где обитает'). Объект 'эдельвейс' (Flora), локация 'Култук' (GeoPlace).",
+  "action": "find_nearby",
+  "primary_entity": { "name": "эдельвейс", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": { "name": "Култук", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Покажи коноплю возле Листвянки"
+Результат:
+{
+  "_reasoning": "Запрос картографического показа ('Покажи'). Объект 'конопля' (Flora), локация 'Листвянка' (GeoPlace).",
+  "action": "find_nearby",
+  "primary_entity": { "name": "конопля", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": { "name": "Листвянка", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Найди иву возле Бодайбо"
+Результат:
+{
+  "_reasoning": "Запрос поиска ('найди'). Объект 'ива' (Flora), локация 'Бодайбо' (GeoPlace).",
+  "action": "find_nearby",
+  "primary_entity": { "name": "ива", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": { "name": "Бодайбо", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Покажи где около Култука обитает даурский ёж"
+Результат:
+{
+  "_reasoning": "Запрос поиска ('где... обитает'). Объект 'даурский ёж' (Fauna), локация 'Култук' (GeoPlace).",
+  "action": "find_nearby",
+  "primary_entity": { "name": "даурский ёж", "type": "Biological", "category": "Fauna", "subcategory": [] },
+  "secondary_entity": { "name": "Култук", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Расскажи про байкальскую нерпу"
+Результат:
+{
+  "_reasoning": "Запрос описания ('расскажи'). Объект 'байкальская нерпа' (Fauna).",
+  "action": "describe",
+  "primary_entity": { "name": "байкальская нерпа", "type": "Biological", "category": "Fauna", "subcategory": [] },
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Покажи пихту сибирскую зимой"
+Результат:
+{
+  "_reasoning": "Запрос изображения ('покажи'). Объект 'пихта сибирская' (Flora). Атрибут 'зимой'.",
+  "action": "show_image",
+  "primary_entity": { "name": "пихта сибирская", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": null,
+  "attributes": { "season": "Зима" }
+}
+
+Запрос: "Какая флора растет на малом море"
+Результат:
+{
+  "_reasoning": "Запрос списка объектов ('какая флора'). Сущность 'флора' (Biological/Flora), локация 'Малое море' (GeoPlace).",
+  "action": "list_items",
+  "primary_entity": { "name": "флора", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": { "name": "Малое море", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Расскажи о музеях в Бодайбо"
+Результат:
+{
+  "_reasoning": "Запрос списка объектов ('о музеях'). Объект 'музеи' (Infrastructure/Достопримечательности/Музеи), локация 'Бодайбо'.",
+  "action": "list_items",
+  "primary_entity": { "name": "музеи", "type": "Infrastructure", "category": "Достопримечательности", "subcategory": ["Музеи"] },
+  "secondary_entity": { "name": "Бодайбо", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Покажи кедр на берегу"
+Результат:
+{
+  "_reasoning": "Запрос картинки ('Покажи'). Объект 'кедр' (Biological/Flora), признак 'на берегу' -> 'Побережье'.",
+  "action": "show_image",
+  "primary_entity": { "name": "кедр", "type": "Biological", "category": "Flora" },
+  "secondary_entity": null,
+  "attributes": { "habitat": "Побережье" }
+}
+
+Запрос: "Покажи шишку лиственницы сибирской"
+Результат:
+{
+  "_reasoning": "Запрос картинки ('Покажи'). Объект 'лиственница сибирская' (Biological/Flora), признак 'шишку' -> 'шишка' (переводим в именительный падеж).",
+  "action": "show_image",
+  "primary_entity": { "name": "лиственница сибирская", "type": "Biological", "category": "Flora" },
+  "secondary_entity": null,
+  "attributes": { "fruits_present": "Шишка" }
+}
+
+Запрос: "Покажи цветущий черепоплодник"
+Результат:
+{
+  "_reasoning": "Запрос картинки ('Покажи'). Объект 'черепоплодник' (Biological/Flora), признак 'цветущий'.",
+  "action": "show_image",
+  "primary_entity": { "name": "черепоплодник", "type": "Biological", "category": "Flora" },
+  "secondary_entity": null,
+  "attributes": { "flowering": "Да" }
+}
+
+Запрос: "А осенью?"
+Результат:
+{
+  "_reasoning": "Уточнение. Нет глагола действия, нет объекта. Только атрибут 'Осень'. Action unknown.",
+  "action": "unknown",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": { "season": "Осень" }
+}
+
+Запрос: "Покажи лиственницу сибирскую осенью на болоте"
+Результат:
+{
+  "_reasoning": "Запрос фото ('покажи'). Объект 'лиственница сибирская' (Flora). Атрибуты: сезон 'Осень', место 'Болото'.",
+  "action": "show_image",
+  "primary_entity": { "name": "лиственница сибирская", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": null,
+  "attributes": { "season": "Осень", "habitat": "Болото" }
+}
+
+Запрос: "А где она растет?"
+Результат:
+{
+  "_reasoning": "Запрос карты ('где растет'). Объект не назван ('она'), используется контекст.",
+  "action": "show_map",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "что интересного есть рядом с поселком Баргузин?"
+Результат:
+{
+  "_reasoning": "Абстрактный запрос ('что интересного'). Объект 'достопримечательности' (Infrastructure), локация 'Баргузин'.",
+  "action": "list_items",
+  "primary_entity": { "name": "достопримечательности", "type": "Infrastructure", "category": "Достопримечательности", "subcategory": [] },
+  "secondary_entity": { "name": "Баргузин", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "А копеечник зундукский?"
+Результат:
+{
+  "_reasoning": "Назван только новый объект ('копеечник зундукский'). Действие не указано, берется из контекста.",
+  "action": "unknown",
+  "primary_entity": { "name": "копеечник зундукский", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Почему солнечную обсерваторию построили в Листвянке?"
+Результат:
+{
+  "_reasoning": "Вопрос о причине ('почему'), трактуем как описание. Объект 'солнечная обсерватория' (Infrastructure/Наука), локация 'Листвянка'.",
+  "action": "describe",
+  "primary_entity": { "name": "солнечная обсерватория", "type": "Infrastructure", "category": "Достопримечательности", "subcategory": ["Наука"] },
+  "secondary_entity": { "name": "Листвянка", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Покажи на карте флору около Листвянки"
+Результат:
+{
+  "_reasoning": "Запрос 'покажи на карте', но объект - собирательное 'флора'. Это запрос списка объектов (list_items).",
+  "action": "list_items",
+  "primary_entity": { "name": "флора", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": { "name": "Листвянка", "type": "GeoPlace", "category": "", "subcategory": [] },
+  "attributes": {}
+}
+
+Запрос: "Где растет эдельвейс?"
+Результат:
+{
+  "_reasoning": "Запрос ареала ('где растет'). Объект 'эдельвейс' (Flora).",
+  "action": "show_map",
+  "primary_entity": { "name": "эдельвейс", "type": "Biological", "category": "Flora", "subcategory": [] },
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Что ты умеешь?"
+Результат:
+{
+  "_reasoning": "Вопрос о возможностях бота.",
+  "search_query": "возможности бота",
+  "action": "get_help",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Как тобой пользоваться?"
+Результат:
+{
+  "_reasoning": "Запрос инструкции по использованию.",
+  "search_query": "инструкция по использованию",
+  "action": "get_help",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Ты кто такой?"
+Результат:
+{
+  "_reasoning": "Вопрос о личности бота.",
+  "search_query": "кто ты",
+  "action": "get_help",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Нужна помощь"
+Результат:
+{
+  "_reasoning": "Явный запрос помощи.",
+  "search_query": "помощь",
+  "action": "get_help",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Привет!"
+Результат:
+{
+  "_reasoning": "Приветствие.",
+  "search_query": "привет",
+  "action": "small_talk",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Огромное спасибо"
+Результат:
+{
+  "_reasoning": "Благодарность.",
+  "search_query": "спасибо",
+  "action": "small_talk",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
+
+Запрос: "Как у тебя дела?"
+Результат:
+{
+  "_reasoning": "Смол-толк.",
+  "search_query": "как дела",
+  "action": "small_talk",
+  "primary_entity": null,
+  "secondary_entity": null,
+  "attributes": {}
+}
