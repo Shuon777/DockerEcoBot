@@ -47,28 +47,35 @@ h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
 .card { background: #fff; border-radius: 16px; border: 1px solid var(--border-color); box-shadow: 0 4px 12px rgba(0,0,0,0.03); overflow: hidden; }
 .table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 
-.table th { 
-    background: #f1f5f9; padding: 16px 24px; text-align: left; 
-    font-size: 0.75rem; text-transform: uppercase; color: #64748b; font-weight: 700;
+.table th {
+    background: #f1f5f9; padding: 14px 20px; text-align: left;
+    font-size: 0.73rem; text-transform: uppercase; color: #64748b; font-weight: 700;
     border-bottom: 1px solid var(--border-color);
-    white-space: nowrap;
+    white-space: nowrap; overflow: hidden;
 }
 
-.table td { 
-    padding: 18px 24px; border-bottom: 1px solid #f1f5f9; 
-    font-size: 0.95rem; vertical-align: middle; line-height: 1.5;
+.table td {
+    padding: 14px 20px; border-bottom: 1px solid #f1f5f9;
+    font-size: 0.92rem; vertical-align: middle; line-height: 1.5;
+    overflow: hidden;
 }
 
-/* Настройка колонок */
+/* table-auto: для таблиц с переменным контентом (geo-список и т.п.) */
+.table-auto { table-layout: auto !important; }
+.table-auto th, .table-auto td { overflow: visible; }
+
+/* Настройка колонок (для логов и т.д.) */
 .col-time { width: 160px; font-weight: 500; }
 .col-query { width: 280px; font-weight: 700; color: var(--text-primary); }
 .col-error { width: auto; color: var(--text-secondary); }
-.col-action { width: 140px; text-align: right; padding-right: 30px !important; } /* Добавили отступ справа */
+.col-action { width: 120px; text-align: center; white-space: nowrap; }
 
-/* Кнопка Детали */
-.btn-details { 
-    padding: 8px 16px; border-radius: 8px; border: 2px solid var(--accent); /* Акцентная рамка */
-    background: #fff; color: var(--accent); cursor: pointer; font-weight: 700; font-size: 0.85rem; transition: 0.2s;
+/* Кнопка действия */
+.btn-details {
+    display: inline-block; padding: 6px 14px; border-radius: 8px;
+    border: 2px solid var(--accent); background: #fff; color: var(--accent);
+    cursor: pointer; font-weight: 700; font-size: 0.82rem;
+    white-space: nowrap; text-decoration: none; transition: 0.15s;
 }
 .btn-details:hover { background: var(--accent); color: #fff; }
 

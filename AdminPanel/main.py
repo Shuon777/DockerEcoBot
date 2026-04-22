@@ -774,6 +774,8 @@ async def geographical_list(
     request: Request,
     search: str = None,
     filter_subtype: List[str] = Query(default=[]),
+    filter_resources: str = None,   # none | has_text | has_image | has_geo
+    sort_by: str = "default",        # default | no_resources | rich
     db: AsyncSession = Depends(get_db),
 ):
     """Список достопримечательностей (eco_assistant.object, тип «Географический объект»)."""
@@ -782,24 +784,74 @@ async def geographical_list(
 
     bot_online = await is_bot_online_redis()
 
-    # 1. Основной запрос: объект + агрегированный список синонимов
-    syn_agg = func.array_agg(ObjectNameSynonym.synonym).label("synonyms")
-    query = (
-        select(
-            Object.id,
-            Object.db_id,
-            Object.object_properties,
-            syn_agg,
+    # 1. Подсчёт ресурсов по модальностям для каждого объекта (один запрос)
+    counts_raw = await db.execute(sql_text("""
+        SELECT ro.object_id,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS text_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS image_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo_count
+        FROM eco_assistant.resource_object ro
+        JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
+        JOIN eco_assistant.modality m ON m.id = rv.modality_id
+        JOIN eco_assistant.object o ON o.id = ro.object_id
+        WHERE o.object_type_id = :otid
+        GROUP BY ro.object_id
+    """), {"otid": GEO_OBJECT_TYPE_ID})
+    resource_counts: dict[int, dict] = {
+        row.object_id: {"text": int(row.text_count), "image": int(row.image_count), "geo": int(row.geo_count)}
+        for row in counts_raw
+    }
+
+    # 2. Статистика по всем объектам (для статбара)
+    stats_raw = await db.execute(sql_text("""
+        WITH rs AS (
+            SELECT o.id,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS txt,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS img,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo
+            FROM eco_assistant.object o
+            LEFT JOIN eco_assistant.resource_object ro ON ro.object_id = o.id
+            LEFT JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
+            LEFT JOIN eco_assistant.modality m ON m.id = rv.modality_id
+            WHERE o.object_type_id = :otid
+            GROUP BY o.id
         )
+        SELECT COUNT(*)                             AS total,
+               COUNT(*) FILTER (WHERE txt  > 0)    AS has_text,
+               COUNT(*) FILTER (WHERE img  > 0)    AS has_image,
+               COUNT(*) FILTER (WHERE geo  > 0)    AS has_geo,
+               COUNT(*) FILTER (WHERE txt = 0 AND img = 0 AND geo = 0) AS no_resources
+        FROM rs
+    """), {"otid": GEO_OBJECT_TYPE_ID})
+    sr = stats_raw.first()
+    stats = {
+        "total":        int(sr.total),
+        "has_text":     int(sr.has_text),
+        "has_image":    int(sr.has_image),
+        "has_geo":      int(sr.has_geo),
+        "no_resources": int(sr.no_resources),
+    }
+
+    # 3. Correlated subquery для сортировки по количеству ресурсов (выполняется в SQL до LIMIT)
+    total_res_sq = (
+        select(func.count(func.distinct(resource_object_table.c.resource_id)))
+        .where(resource_object_table.c.object_id == Object.id)
+        .correlate(Object)
+        .scalar_subquery()
+    ).label("total_resources")
+
+    # 4. Основной запрос: объект + синонимы + счётчик ресурсов для сортировки
+    query = (
+        select(Object.id, Object.db_id, Object.object_properties,
+               func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
+               total_res_sq)
         .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
         .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
         .where(Object.object_type_id == GEO_OBJECT_TYPE_ID)
         .group_by(Object.id)
-        .order_by(Object.id.desc())
-        .limit(1000)
     )
 
-    # 2. Фильтр по подтипам: AND-логика, каждый подтип — отдельное условие
+    # 5. Фильтр по подтипам
     active_subtypes = [s for s in filter_subtype if s and s != "all"]
     for st in active_subtypes:
         query = query.where(
@@ -810,7 +862,17 @@ async def geographical_list(
             )
         )
 
-    # 3. Поиск по синонимам — подзапрос
+    # 6. Фильтр по наличию ресурсов
+    if filter_resources == "none":
+        query = query.where(
+            Object.id.notin_(select(resource_object_table.c.object_id).distinct())
+        )
+    elif filter_resources in ("has_text", "has_image", "has_geo"):
+        key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
+        ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
+        query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+
+    # 7. Поиск по синонимам
     if search:
         matching_ids = (
             select(object_name_synonym_link.c.object_id)
@@ -819,12 +881,22 @@ async def geographical_list(
         )
         query = query.where(Object.id.in_(matching_ids))
 
+    # 8. Сортировка в SQL (до LIMIT — работает глобально по всем 5521 объектам)
+    if sort_by == "no_resources":
+        query = query.order_by(sql_text("total_resources ASC"), Object.id.desc())
+    elif sort_by == "rich":
+        query = query.order_by(sql_text("total_resources DESC"), Object.id.desc())
+    else:
+        query = query.order_by(Object.id.desc())
+
+    query = query.limit(1000)
     rows = (await db.execute(query)).all()
 
     entities = []
     for row in rows:
         synonyms = [s for s in (row.synonyms or []) if s]
         props = row.object_properties or {}
+        c = resource_counts.get(row.id, {"text": 0, "image": 0, "geo": 0})
         entities.append({
             "id": row.id,
             "db_id": row.db_id,
@@ -832,9 +904,13 @@ async def geographical_list(
             "synonyms": synonyms,
             "object_properties": props,
             "subtypes": props.get("subtypes", []) if isinstance(props, dict) else [],
+            "text_count": c["text"],
+            "image_count": c["image"],
+            "geo_count": c["geo"],
+            "total_resources": int(row.total_resources or 0),
         })
 
-    # 4. Варианты подтипов для фильтра (справочник + счётчики реального использования)
+    # 8. Варианты подтипов для фильтра
     subtypes_stats = await get_property_counts(db, GEO_OBJECT_TYPE_ID, "subtypes")
     subtypes_stats.sort(key=lambda x: (-x[1], x[0].lower()))
 
@@ -845,7 +921,10 @@ async def geographical_list(
         "entities": entities,
         "search": search or "",
         "active_subtypes": active_subtypes,
+        "filter_resources": filter_resources or "",
+        "sort_by": sort_by,
         "subtypes_stats": subtypes_stats,
+        "stats": stats,
     })
 
 
