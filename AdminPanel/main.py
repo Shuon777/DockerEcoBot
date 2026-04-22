@@ -1,4 +1,5 @@
 import os
+import secrets
 import httpx
 import uvicorn
 import requests
@@ -13,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, delete, or_, create_engine
+from sqlalchemy import func, delete, or_, create_engine, insert, text as sql_text
 from sqlalchemy.orm import sessionmaker
 from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
@@ -21,8 +22,19 @@ from datetime import datetime, timedelta, timezone
 from database import get_db
 from models.models import ErrorLog, BiologicalEntity, TextContent, ImageContent, EntityRelation, EntityIdentifier, EntityIdentifierLink, GeographicalEntity, EntityGeo, MapContent
 from models.admin_models import AdminBase, TestSession
+from models.eco_assistant_models import (
+    Object, ObjectType, ObjectNameSynonym, object_name_synonym_link,
+    Modality, TextValue, ImageValue, GeodataValue,
+    Resource, ResourceValue, resource_object_table,
+    Author, Source, ReliabilityLevel, Bibliographic, Creation,
+    ResourceStatic, SupportMetadata,
+    ObjectProperty, ResourceFeature,
+)
 from heartbeat import BotHeartbeat
 from dotenv import load_dotenv
+
+# Константа: id типа «Географический объект» в eco_assistant.object_type
+GEO_OBJECT_TYPE_ID = 2
 
 app = FastAPI()
 load_dotenv()
@@ -561,6 +573,197 @@ async def get_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db
     return {"html": m._repr_html_()}
 
 # ==========================================
+# HELPERS: работа со схемой eco_assistant
+# ==========================================
+
+async def get_property_values(db: AsyncSession, object_type_id: int, property_name: str) -> list[str]:
+    """Вернуть массив допустимых значений свойства из справочника object_property."""
+    q = select(ObjectProperty.property_values).where(
+        ObjectProperty.object_type_id == object_type_id,
+        ObjectProperty.property_name == property_name,
+    )
+    row = (await db.execute(q)).first()
+    return list(row[0]) if row and row[0] else []
+
+
+async def get_property_counts(db: AsyncSession, object_type_id: int, property_name: str) -> list[tuple[str, int]]:
+    """
+    Для справочника (object_type_id, property_name) вернуть список (value, count),
+    где count — реальное количество объектов, у которых это значение встречается в
+    object.object_properties->property_name (JSONB массив).
+    Значения, не встречающиеся ни разу, включаются с count=0.
+    """
+    allowed = await get_property_values(db, object_type_id, property_name)
+    if not allowed:
+        return []
+
+    q = sql_text(
+        """
+        SELECT v AS value, COUNT(*) AS cnt
+        FROM eco_assistant.object o,
+             jsonb_array_elements_text(COALESCE(o.object_properties->:pname, '[]'::jsonb)) AS v
+        WHERE o.object_type_id = :otid
+        GROUP BY v
+        """
+    )
+    res = await db.execute(q, {"otid": object_type_id, "pname": property_name})
+    counts = {row.value: row.cnt for row in res}
+    return [(val, counts.get(val, 0)) for val in allowed]
+
+
+async def get_modality_id(db: AsyncSession, modality_type: str) -> int:
+    """Вернуть id модальности по её типу (Текст, Изображение, Геоданные)."""
+    q = select(Modality.id).where(Modality.modality_type == modality_type)
+    row = (await db.execute(q)).scalar()
+    if row is None:
+        raise HTTPException(status_code=500, detail=f"Модальность '{modality_type}' не зарегистрирована в eco_assistant.modality")
+    return row
+
+
+async def get_or_create(db: AsyncSession, model, **kwargs):
+    """Найти существующую запись по kwargs или создать новую. Применяется для простых справочников (Author, Source, ReliabilityLevel)."""
+    q = select(model).filter_by(**kwargs)
+    inst = (await db.execute(q)).scalar_one_or_none()
+    if inst:
+        return inst
+    inst = model(**kwargs)
+    db.add(inst)
+    await db.flush()
+    return inst
+
+
+def _parse_subtypes(raw: str | None) -> list[str]:
+    """Разобрать строку подтипов (разделитель — запятая) в список без пустых значений."""
+    if not raw:
+        return []
+    return [s.strip() for s in raw.split(",") if s.strip()]
+
+
+def _build_object_properties(subtypes: list[str], region: str | None,
+                             exact_location: str | None, baikal_relation: str | None) -> dict:
+    """Собрать словарь object.object_properties, отбрасывая пустые поля."""
+    props: dict = {}
+    if subtypes:
+        props["subtypes"] = subtypes
+    if region:
+        props["region"] = region
+    if exact_location:
+        props["exact_location"] = exact_location
+    if baikal_relation:
+        props["baikal_relation"] = baikal_relation
+    return props
+
+
+async def _create_resource_scaffold(db: AsyncSession, *, title: str, author_name: str,
+                                     source_name: str, reliability_name: str,
+                                     date_value, creation_tool: str = "Admin Panel",
+                                     creation_type: str = "ручной ввод",
+                                     features: dict | None = None) -> Resource:
+    """
+    Создать полноценный каркас ресурса: справочники автора/источника/достоверности,
+    запись о создании, библиографию, статические и сопровождающие метаданные, сам Resource.
+    Возвращает Resource (уже с id после flush).
+    """
+    author = await get_or_create(db, Author, name=(author_name or "Admin Panel"))
+    source = await get_or_create(db, Source, name=(source_name or "Admin Panel"))
+    reliability = await get_or_create(db, ReliabilityLevel, name=(reliability_name or "средняя"))
+
+    creation = Creation(
+        creation_type=creation_type,
+        creation_tool=creation_tool,
+        creation_params={},
+    )
+    bib = Bibliographic(
+        author_id=author.id,
+        date=date_value,
+        source_id=source.id,
+        reliability_level_id=reliability.id,
+    )
+    sm = SupportMetadata(parameters={})
+    db.add_all([creation, bib, sm])
+    await db.flush()
+
+    rs = ResourceStatic(bibliographic_id=bib.id, creation_id=creation.id)
+    db.add(rs)
+    await db.flush()
+
+    res = Resource(
+        title=title,
+        features=(features or {"in_stoplist": 1}),
+        resource_static_id=rs.id,
+        support_metadata_id=sm.id,
+    )
+    db.add(res)
+    await db.flush()
+    return res
+
+
+async def _attach_text_to_object(db: AsyncSession, object_id: int, resource: Resource,
+                                  structured_data: dict, relation_type: str = "описание объекта"):
+    """Создать TextValue + ResourceValue + resource_object-линк для существующего Resource и Object."""
+    tv = TextValue(structured_data=structured_data)
+    db.add(tv)
+    await db.flush()
+    db.add(ResourceValue(
+        resource_id=resource.id,
+        modality_id=await get_modality_id(db, "Текст"),
+        value_id=tv.id,
+    ))
+    await db.execute(insert(resource_object_table).values(
+        resource_id=resource.id,
+        object_id=object_id,
+        relation_type=relation_type,
+    ))
+
+
+async def _attach_image_to_object(db: AsyncSession, object_id: int, resource: Resource,
+                                   url: str, file_path: str | None, fmt: str | None,
+                                   relation_type: str = "изображение объекта"):
+    iv = ImageValue(url=url or None, file_path=file_path or None, format=fmt or None)
+    db.add(iv)
+    await db.flush()
+    db.add(ResourceValue(
+        resource_id=resource.id,
+        modality_id=await get_modality_id(db, "Изображение"),
+        value_id=iv.id,
+    ))
+    await db.execute(insert(resource_object_table).values(
+        resource_id=resource.id,
+        object_id=object_id,
+        relation_type=relation_type,
+    ))
+
+
+async def _attach_geodata_to_object(db: AsyncSession, object_id: int, resource: Resource,
+                                     geojson: dict | str, relation_type: str = "геометрия объекта"):
+    """Создать GeodataValue из GeoJSON + ResourceValue + resource_object-линк."""
+    geojson_str = geojson if isinstance(geojson, str) else json.dumps(geojson)
+    geom_q = select(func.ST_SetSRID(func.ST_GeomFromGeoJSON(geojson_str), 4326))
+    geometry_wkb = await db.scalar(geom_q)
+    parsed = geojson if isinstance(geojson, dict) else json.loads(geojson_str)
+    gv = GeodataValue(geometry=geometry_wkb, geometry_type=parsed.get("type"))
+    db.add(gv)
+    await db.flush()
+    db.add(ResourceValue(
+        resource_id=resource.id,
+        modality_id=await get_modality_id(db, "Геоданные"),
+        value_id=gv.id,
+    ))
+    await db.execute(insert(resource_object_table).values(
+        resource_id=resource.id,
+        object_id=object_id,
+        relation_type=relation_type,
+    ))
+
+
+def _primary_synonym(synonyms: list[str]) -> str:
+    """Выбрать «основное» имя объекта — самый длинный синоним (обычно самый подробный)."""
+    if not synonyms:
+        return "Без названия"
+    return max(synonyms, key=len)
+
+
+# ==========================================
 # CMS: ДОСТОПРИМЕЧАТЕЛЬНОСТИ (Географические объекты)
 # ==========================================
 
@@ -568,38 +771,69 @@ async def get_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db
 async def geographical_list(
     request: Request,
     search: str = None,
-    filter_type: str = None,
-    db: AsyncSession = Depends(get_db)
+    filter_subtype: str = None,
+    db: AsyncSession = Depends(get_db),
 ):
+    """Список достопримечательностей (eco_assistant.object, тип «Географический объект»)."""
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-    
+
     bot_online = await is_bot_online_redis()
-    
-    # Базовый запрос
-    query = select(GeographicalEntity)
 
-    # 1. Применяем текстовый поиск (по русскому названию)
+    # 1. Основной запрос: объект + агрегированный список синонимов
+    syn_agg = func.array_agg(ObjectNameSynonym.synonym).label("synonyms")
+    query = (
+        select(
+            Object.id,
+            Object.db_id,
+            Object.object_properties,
+            syn_agg,
+        )
+        .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
+        .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
+        .where(Object.object_type_id == GEO_OBJECT_TYPE_ID)
+        .group_by(Object.id)
+        .order_by(Object.id.desc())
+        .limit(1000)
+    )
+
+    # 2. Фильтр по подтипу: subtypes — JSONB-массив
+    if filter_subtype and filter_subtype != "all":
+        query = query.where(
+            func.jsonb_path_exists(
+                Object.object_properties,
+                sql_text("'$.subtypes[*] ? (@ == $val)'"),
+                func.jsonb_build_object("val", filter_subtype),
+            )
+        )
+
+    # 3. Поиск по синонимам — подзапрос
     if search:
-        query = query.where(GeographicalEntity.name_ru.ilike(f"%{search}%"))
+        matching_ids = (
+            select(object_name_synonym_link.c.object_id)
+            .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id)
+            .where(ObjectNameSynonym.synonym.ilike(f"%{search}%"))
+        )
+        query = query.where(Object.id.in_(matching_ids))
 
-    # 2. Применяем фильтр по категории
-    if filter_type and filter_type != "all":
-        if filter_type == "natural":
-            query = query.where(GeographicalEntity.type.ilike("%природ%"))
-        elif filter_type == "cultural":
-            query = query.where(GeographicalEntity.type.ilike("%культур%"))
-        elif filter_type == "historical":
-            query = query.where(GeographicalEntity.type.ilike("%истори%"))
+    rows = (await db.execute(query)).all()
 
-    # Сортировка от новых к старым
-    query = query.order_by(GeographicalEntity.id.desc())
-    
-    # Ограничиваем количество записей для предотвращения таймаута
-    query = query.limit(1000)
-    
-    result = await db.execute(query)
-    entities = result.scalars().all()
+    entities = []
+    for row in rows:
+        synonyms = [s for s in (row.synonyms or []) if s]
+        props = row.object_properties or {}
+        entities.append({
+            "id": row.id,
+            "db_id": row.db_id,
+            "name_ru": _primary_synonym(synonyms),
+            "synonyms": synonyms,
+            "object_properties": props,
+            "subtypes": props.get("subtypes", []) if isinstance(props, dict) else [],
+        })
+
+    # 4. Варианты подтипов для фильтра (справочник + счётчики реального использования)
+    subtypes_stats = await get_property_counts(db, GEO_OBJECT_TYPE_ID, "subtypes")
+    subtypes_stats.sort(key=lambda x: (-x[1], x[0].lower()))
 
     return templates.TemplateResponse("geographical_list.html", {
         "request": request,
@@ -607,120 +841,223 @@ async def geographical_list(
         "bot_online": bot_online,
         "entities": entities,
         "search": search or "",
-        "filter_type": filter_type or "all"
+        "filter_subtype": filter_subtype or "all",
+        "subtypes_stats": subtypes_stats,
     })
 
+
 @app.get("/geographical/new", response_class=HTMLResponse)
-async def geographical_new(request: Request):
-    """Страница с формой создания нового объекта"""
+async def geographical_new(request: Request, db: AsyncSession = Depends(get_db)):
+    """Страница с формой создания новой достопримечательности."""
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
+
     bot_online = await is_bot_online_redis()
+
+    # Опции для полей формы — из справочника object_property и существующих записей
+    subtypes_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "subtypes")
+    region_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "region")
+    exact_location_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "exact_location")
+    baikal_relation_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "baikal_relation")
+
+    authors = (await db.execute(select(Author.name).order_by(Author.name))).scalars().all()
+    sources = (await db.execute(select(Source.name).order_by(Source.name))).scalars().all()
+    reliability_options = (await db.execute(select(ReliabilityLevel.name).order_by(ReliabilityLevel.name))).scalars().all()
+
     return templates.TemplateResponse("geographical_form.html", {
         "request": request,
         "active_page": "geographical",
         "bot_online": bot_online,
-        "entity": None
+        "entity": None,
+        "subtypes_options": sorted(subtypes_options, key=str.lower),
+        "region_options": sorted(region_options, key=str.lower),
+        "exact_location_options": exact_location_options[:200],
+        "baikal_relation_options": baikal_relation_options,
+        "authors": authors,
+        "sources": sources,
+        "reliability_options": reliability_options,
     })
+
 
 @app.post("/geographical/save")
 async def geographical_save(
     request: Request,
     name_ru: str = Form(...),
-    type: str = Form(...),
+    subtypes: str = Form(""),
+    region: str = Form(""),
+    exact_location: str = Form(""),
+    baikal_relation: str = Form(""),
     description: str = Form(""),
-    db: AsyncSession = Depends(get_db)
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
 ):
-    """Сохранение базового описания достопримечательности в базу"""
+    """Создать новую достопримечательность в eco_assistant.object + связанный ресурс-описание."""
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
-    # 1. Создаем сам объект (Географический объект)
-    new_entity = GeographicalEntity(
-        name_ru=name_ru,
-        type=type,
-        description=description,
-        feature_data={}
-    )
-    db.add(new_entity)
-    await db.commit()
-    
-    # После создания возвращаем пользователя к карточке
-    return RedirectResponse(url=f"/geographical/{new_entity.id}", status_code=303)
 
-@app.get("/geographical/{entity_id}", response_class=HTMLResponse)
-async def geographical_edit(request: Request, entity_id: int, db: AsyncSession = Depends(get_db)):
-    """Карточка достопримечательности: просмотр и управление связанными ресурсами"""
+    # 1. Object + object_properties
+    obj = Object(
+        db_id=f"GEO_OBJ_{secrets.token_hex(6)}",
+        object_type_id=GEO_OBJECT_TYPE_ID,
+        object_properties=_build_object_properties(
+            _parse_subtypes(subtypes),
+            region.strip() or None,
+            exact_location.strip() or None,
+            baikal_relation.strip() or None,
+        ),
+    )
+    db.add(obj)
+    await db.flush()
+
+    # 2. Синоним-имя + link
+    syn = ObjectNameSynonym(synonym=name_ru, language="ru")
+    db.add(syn)
+    await db.flush()
+    await db.execute(insert(object_name_synonym_link).values(object_id=obj.id, synonym_id=syn.id))
+
+    # 3. Если задано описание — собираем Resource с текстовой модальностью
+    if description.strip():
+        parsed_date = None
+        if date.strip():
+            try:
+                parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = None
+        res = await _create_resource_scaffold(
+            db,
+            title=name_ru,
+            author_name=author.strip(),
+            source_name=source.strip(),
+            reliability_name=reliability.strip(),
+            date_value=parsed_date,
+        )
+        await _attach_text_to_object(
+            db, object_id=obj.id, resource=res,
+            structured_data={"description": description},
+        )
+
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{obj.id}", status_code=303)
+
+
+@app.get("/geographical/{object_id}", response_class=HTMLResponse)
+async def geographical_edit(request: Request, object_id: int, db: AsyncSession = Depends(get_db)):
+    """Карточка достопримечательности: синонимы, свойства и связанные ресурсы."""
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
+
     bot_online = await is_bot_online_redis()
-    
-    result = await db.execute(select(GeographicalEntity).where(GeographicalEntity.id == entity_id))
-    entity = result.scalars().first()
-    
-    if not entity:
+
+    # 1. Объект и синонимы
+    obj = (await db.execute(select(Object).where(Object.id == object_id))).scalar()
+    if not obj or obj.object_type_id != GEO_OBJECT_TYPE_ID:
         raise HTTPException(status_code=404, detail="Достопримечательность не найдена")
 
-    # Ищем текстовые модальности
-    text_query = (
-        select(TextContent)
-        .join(EntityRelation, (EntityRelation.source_id == TextContent.id) & (EntityRelation.source_type == 'text_content'))
-        .where((EntityRelation.target_id == entity_id) & (EntityRelation.target_type == 'geographical_entity'))
-    )
-    texts = (await db.execute(text_query)).scalars().all()
+    synonyms = (await db.execute(
+        select(ObjectNameSynonym.synonym)
+        .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
+        .where(object_name_synonym_link.c.object_id == object_id)
+    )).scalars().all()
 
-    # Ищем изображения
-    image_query = (
-        select(ImageContent, EntityIdentifier.file_path)
-        .join(EntityRelation, (EntityRelation.source_id == ImageContent.id) & (EntityRelation.source_type == 'image_content'))
-        .outerjoin(EntityIdentifierLink, (EntityIdentifierLink.entity_id == ImageContent.id) & (EntityIdentifierLink.entity_type == 'image_content'))
-        .outerjoin(EntityIdentifier, EntityIdentifier.id == EntityIdentifierLink.identifier_id)
-        .where((EntityRelation.target_id == entity_id) & (EntityRelation.target_type == 'geographical_entity'))
-    )
-    images_result = await db.execute(image_query)
-    
-    # Формируем удобный список словарей для шаблона: [{"data": ImageContent, "url": "https..."}]
-    images =[{"data": img, "url": url} for img, url in images_result.all()]
+    entity = {
+        "id": obj.id,
+        "db_id": obj.db_id,
+        "name_ru": _primary_synonym(list(synonyms)),
+        "synonyms": list(synonyms),
+        "object_properties": obj.object_properties or {},
+        "subtypes": (obj.object_properties or {}).get("subtypes", []),
+        "feature_data": obj.object_properties or {},
+    }
 
-    # Ищем географические привязки
-    geo_links_query = (
-        select(EntityGeo)
-        .where((EntityGeo.entity_id == entity_id) & (EntityGeo.entity_type == 'geographical_entity'))
-    )
-    links = (await db.execute(geo_links_query)).scalars().all()
-    
-    locations = []
-
-    for link in links:
-        geo_id = link.geographical_entity_id
-        geo_res = await db.execute(select(GeographicalEntity).where(GeographicalEntity.id == geo_id))
-        geo_obj = geo_res.scalars().first()
-        if not geo_obj:
-            continue
-
-        location_item = {
-            "name_ru": geo_obj.name_ru,
-            "type": geo_obj.type or "Локация",
-            "is_map": False,
-            "geo_id": geo_id,
-            "feature_data": geo_obj.feature_data
-        }
-
-        # Проверяем карту
-        map_link_query = select(EntityGeo).where(
-            EntityGeo.entity_type == 'map_content',
-            EntityGeo.geographical_entity_id == geo_id
+    # 2. Текстовые ресурсы
+    texts_q = (
+        select(
+            Resource.id.label("resource_id"),
+            Resource.title,
+            Resource.features,
+            TextValue.structured_data,
         )
-        map_link = (await db.execute(map_link_query)).scalars().first()
-        if map_link:
-            map_res = await db.execute(select(MapContent).where(MapContent.id == map_link.entity_id))
-            map_obj = map_res.scalars().first()
-            if map_obj:
-                location_item["is_map"] = True
-                location_item["map_id"] = map_obj.id
-        locations.append(location_item)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(TextValue, TextValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Текст")
+        .order_by(Resource.id.desc())
+    )
+    texts = []
+    for row in (await db.execute(texts_q)).all():
+        sd = row.structured_data or {}
+        content = sd.get("description") if isinstance(sd, dict) else None
+        texts.append({
+            "id": row.resource_id,
+            "title": row.title or "Без заголовка",
+            "content": content,
+            "structured_data": sd if isinstance(sd, dict) and not (len(sd) == 1 and "description" in sd) else None,
+            "feature_data": row.features or {},
+        })
+
+    # 3. Изображения
+    images_q = (
+        select(
+            Resource.id.label("resource_id"),
+            Resource.title,
+            Resource.features,
+            ImageValue.url,
+            ImageValue.file_path,
+        )
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(ImageValue, ImageValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Изображение")
+        .order_by(Resource.id.desc())
+    )
+    images = []
+    for row in (await db.execute(images_q)).all():
+        url = row.url or row.file_path or ""
+        images.append({
+            "data": {
+                "id": row.resource_id,
+                "title": row.title or "Без названия",
+                "feature_data": row.features or {},
+            },
+            "url": url,
+        })
+
+    # 4. Геоданные
+    geos_q = (
+        select(
+            Resource.id.label("resource_id"),
+            Resource.title,
+            Resource.features,
+            GeodataValue.id.label("geodata_id"),
+            GeodataValue.geometry_type,
+        )
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(GeodataValue, GeodataValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Геоданные")
+        .order_by(Resource.id.desc())
+    )
+    locations = []
+    for row in (await db.execute(geos_q)).all():
+        locations.append({
+            "resource_id": row.resource_id,
+            "geodata_id": row.geodata_id,
+            "name_ru": row.title or "Геометрия",
+            "type": row.geometry_type or "Геометрия",
+            "is_map": True,
+            "geo_id": row.geodata_id,
+            "map_id": row.geodata_id,
+            "feature_data": row.features or {},
+        })
 
     return templates.TemplateResponse("geographical_edit.html", {
         "request": request,
@@ -729,174 +1066,225 @@ async def geographical_edit(request: Request, entity_id: int, db: AsyncSession =
         "entity": entity,
         "texts": texts,
         "images": images,
-        "locations": locations
+        "locations": locations,
     })
 
-@app.post("/geographical/{entity_id}/add_text")
+
+@app.post("/geographical/{object_id}/add_text")
 async def geographical_add_text(
     request: Request,
-    entity_id: int,
+    object_id: int,
     title: str = Form(...),
     content: str = Form(...),
-    db: AsyncSession = Depends(get_db)
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Добавление текстовой модальности к достопримечательности
-    """
+    """Добавление текстового ресурса к достопримечательности."""
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
-    # 1. Создаем TextContent
-    new_text = TextContent(
-        title=title,
-        content=content,
-        feature_data={}
-    )
-    db.add(new_text)
-    await db.flush()
-    
-    # 2. Создаем связующее звено
-    relation = EntityRelation(
-        source_id=new_text.id,
-        source_type="text_content",
-        target_id=entity_id,
-        target_type="geographical_entity",
-        relation_type="описание объекта"
-    )
-    db.add(relation)
-    await db.commit()
-    
-    return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
 
-@app.post("/geographical/{entity_id}/add_image")
+    await _ensure_object_exists(db, object_id)
+
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+
+    res = await _create_resource_scaffold(
+        db,
+        title=title,
+        author_name=author.strip(),
+        source_name=source.strip(),
+        reliability_name=reliability.strip(),
+        date_value=parsed_date,
+    )
+    await _attach_text_to_object(
+        db, object_id=object_id, resource=res,
+        structured_data={"description": content},
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{object_id}", status_code=303)
+
+
+@app.post("/geographical/{object_id}/add_image")
 async def geographical_add_image(
     request: Request,
-    entity_id: int,
+    object_id: int,
     title: str = Form(...),
     image_url: str = Form(...),
-    db: AsyncSession = Depends(get_db)
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Добавление изображения к достопримечательности
-    """
+    """Добавление изображения к достопримечательности."""
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
-    # 1. Сначала достаем информацию об объекте, чтобы узнать его названия
-    result = await db.execute(select(GeographicalEntity).where(GeographicalEntity.id == entity_id))
-    entity = result.scalars().first()
-    
-    if not entity:
+
+    await _ensure_object_exists(db, object_id)
+
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+
+    fmt = image_url.rsplit(".", 1)[-1].lower() if "." in image_url.rsplit("/", 1)[-1] else None
+    res = await _create_resource_scaffold(
+        db,
+        title=title,
+        author_name=author.strip(),
+        source_name=source.strip(),
+        reliability_name=reliability.strip(),
+        date_value=parsed_date,
+    )
+    await _attach_image_to_object(
+        db, object_id=object_id, resource=res,
+        url=image_url, file_path=None, fmt=fmt,
+    )
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{object_id}", status_code=303)
+
+
+@app.post("/geographical/{object_id}/add_geo")
+async def geographical_add_geo(
+    request: Request,
+    object_id: int,
+    title: str = Form(...),
+    geojson: str = Form(...),
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    """Добавление геоданных (GeoJSON) к достопримечательности."""
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+
+    await _ensure_object_exists(db, object_id)
+
+    try:
+        parsed_geojson = json.loads(geojson)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный GeoJSON: {exc}")
+
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+
+    res = await _create_resource_scaffold(
+        db,
+        title=title,
+        author_name=author.strip(),
+        source_name=source.strip(),
+        reliability_name=reliability.strip(),
+        date_value=parsed_date,
+    )
+    await _attach_geodata_to_object(db, object_id=object_id, resource=res, geojson=parsed_geojson)
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{object_id}", status_code=303)
+
+
+async def _delete_resource_with_values(db: AsyncSession, resource_id: int):
+    """Удалить Resource и все связанные value-записи (text_value / image_value / geodata_value)."""
+    rvs = (await db.execute(
+        select(ResourceValue.modality_id, ResourceValue.value_id)
+        .where(ResourceValue.resource_id == resource_id)
+    )).all()
+    for modality_id, value_id in rvs:
+        if value_id is None:
+            continue
+        mod = (await db.execute(select(Modality).where(Modality.id == modality_id))).scalar()
+        if not mod:
+            continue
+        value_table = {
+            "text_value": TextValue,
+            "image_value": ImageValue,
+            "geodata_value": GeodataValue,
+        }.get(mod.value_table_name)
+        if value_table is None:
+            continue
+        await db.execute(delete(value_table).where(value_table.id == value_id))
+    # Resource удалит resource_value и resource_object каскадом
+    await db.execute(delete(Resource).where(Resource.id == resource_id))
+
+
+async def _ensure_object_exists(db: AsyncSession, object_id: int):
+    obj = (await db.execute(
+        select(Object.id).where(Object.id == object_id, Object.object_type_id == GEO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
         raise HTTPException(status_code=404, detail="Достопримечательность не найдена")
 
-    # 2. Создаем ImageContent
-    new_image = ImageContent(
-        title=title,
-        description="Добавлено через админ-панель",
-        feature_data={"source": "Admin Panel"}
-    )
-    db.add(new_image)
-    await db.flush()
-    
-    # 3. Привязываем картинку к географическому объекту (relation)
-    relation = EntityRelation(
-        source_id=new_image.id,
-        source_type="image_content",
-        target_id=entity_id,
-        target_type="geographical_entity",
-        relation_type="изображение объекта"
-    )
-    db.add(relation)
 
-    # 4. Создаем запись в entity_identifier
-    new_identifier = EntityIdentifier(
-        file_path=image_url,
-        name_ru=entity.name_ru
-    )
-    db.add(new_identifier)
-    await db.flush()
-
-    # 5. Связываем картинку с её новым идентификатором
-    identifier_link = EntityIdentifierLink(
-        entity_id=new_image.id,
-        entity_type="image_content",
-        identifier_id=new_identifier.id
-    )
-    db.add(identifier_link)
-
-    await db.commit()
-    
-    return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
-
-@app.post("/geographical/resource/delete/text/{text_id}")
+@app.post("/geographical/resource/delete/text/{resource_id}")
 async def delete_geographical_text_resource(
     request: Request,
-    text_id: int,
+    resource_id: int,
     entity_id: int = Form(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-
-    # 1. Удаляем связь из entity_relation
-    await db.execute(delete(EntityRelation).where(
-        (EntityRelation.source_id == text_id) & (EntityRelation.source_type == 'text_content')
-    ))
-
-    # 2. Удаляем саму текстовую модальность из text_content
-    await db.execute(delete(TextContent).where(TextContent.id == text_id))
-
+    await _delete_resource_with_values(db, resource_id)
     await db.commit()
     return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
 
-@app.post("/geographical/resource/delete/image/{image_id}")
+
+@app.post("/geographical/resource/delete/image/{resource_id}")
 async def delete_geographical_image_resource(
     request: Request,
-    image_id: int,
+    resource_id: int,
     entity_id: int = Form(...),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-
-    # 1. Удаляем связи из entity_relation
-    await db.execute(delete(EntityRelation).where(
-        (EntityRelation.source_id == image_id) & (EntityRelation.source_type == 'image_content')
-    ))
-
-    # 2. Находим и удаляем идентификаторы (ссылки)
-    link_result = await db.execute(select(EntityIdentifierLink).where(
-        (EntityIdentifierLink.entity_id == image_id) & (EntityIdentifierLink.entity_type == 'image_content')
-    ))
-    links = link_result.scalars().all()
-    
-    for link in links:
-        await db.execute(delete(EntityIdentifier).where(EntityIdentifier.id == link.identifier_id))
-    
-    # 3. Удаляем сами линки
-    await db.execute(delete(EntityIdentifierLink).where(
-        (EntityIdentifierLink.entity_id == image_id) & (EntityIdentifierLink.entity_type == 'image_content')
-    ))
-
-    # 4. Удаляем саму запись ImageContent
-    await db.execute(delete(ImageContent).where(ImageContent.id == image_id))
-
+    await _delete_resource_with_values(db, resource_id)
     await db.commit()
     return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
+
+
+@app.post("/geographical/resource/delete/geo/{resource_id}")
+async def delete_geographical_geo_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
+
 
 @app.post("/geographical/get-map-html")
 async def get_geographical_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
-    map_id = data.get("map_id")
-    result = await db.execute(select(MapContent).where(MapContent.id == map_id))
-    map_obj = result.scalars().first()
-    if not map_obj:
-        return {"html": "<p>Карта не найдена</p>"}
-    
-    # Преобразуем PostGIS геометрию в GeoJSON
-    geojson_data = await db.scalar(select(func.ST_AsGeoJSON(map_obj.geometry)))
+    """Отрисовать геометрию из eco_assistant.geodata_value в виде HTML-карты (folium)."""
+    geodata_id = data.get("geodata_id") or data.get("map_id")
+    if not geodata_id:
+        return {"html": "<p>Идентификатор геоданных не указан</p>"}
+
+    gv = (await db.execute(select(GeodataValue).where(GeodataValue.id == int(geodata_id)))).scalar()
+    if not gv:
+        return {"html": "<p>Геометрия не найдена</p>"}
+
+    geojson_data = await db.scalar(select(func.ST_AsGeoJSON(gv.geometry)))
     if not geojson_data:
         return {"html": "<p>Геометрия отсутствует</p>"}
-    
+
     geometry_geojson = json.loads(geojson_data)
     m = folium.Map(location=[53.2, 107.3], zoom_start=9, tiles="OpenStreetMap")
     folium.GeoJson(geometry_geojson).add_to(m)

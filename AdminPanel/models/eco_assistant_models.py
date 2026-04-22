@@ -13,7 +13,7 @@ import geoalchemy2
 from sqlalchemy import Column, Integer, String, Text, JSON, ForeignKey, Date, DateTime, Table, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship, declarative_base
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 
 # Определяем свой Base для моделей схемы eco_assistant.
 # Может быть заменён на Base из database.py при необходимости.
@@ -459,6 +459,58 @@ class ResourceResourceLink(Base):
     # Связи
     resource = relationship('Resource', foreign_keys=[resource_id], back_populates='related_resources')
     related_resource = relationship('Resource', foreign_keys=[related_resource_id])
+
+
+# ============================================================================
+# 16. СПРАВОЧНИК ДОПУСТИМЫХ СВОЙСТВ ОБЪЕКТОВ
+# ============================================================================
+
+class ObjectProperty(Base):
+    """
+    Справочник допустимых свойств для каждого типа объекта.
+
+    Для каждой пары (тип объекта, имя свойства) хранится массив разрешённых
+    значений. Используется в UI админки как источник правды для выпадающих
+    списков (подтипы, регионы, отношение к Байкалу и т.д.).
+    """
+    __tablename__ = 'object_property'
+    __table_args__ = (
+        UniqueConstraint('object_type_id', 'property_name', name='object_property_object_type_id_property_name_key'),
+        {'schema': 'eco_assistant'}
+    )
+
+    id = Column(Integer, primary_key=True, doc='Уникальный идентификатор записи справочника')
+    object_type_id = Column(Integer, ForeignKey('eco_assistant.object_type.id', ondelete='CASCADE'), nullable=False, doc='Ссылка на тип объекта')
+    property_name = Column(Text, nullable=False, doc='Имя свойства (например, subtypes, region, baikal_relation)')
+    property_values = Column(ARRAY(Text), nullable=False, default=list, doc='Массив допустимых значений свойства')
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), doc='Дата и время создания записи')
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), doc='Дата и время последнего обновления записи')
+
+
+# ============================================================================
+# 17. СПРАВОЧНИК ДОПУСТИМЫХ ПРИЗНАКОВ РЕСУРСОВ
+# ============================================================================
+
+class ResourceFeature(Base):
+    """
+    Справочник допустимых признаков ресурсов для каждой модальности.
+
+    Для каждой пары (модальность, имя признака) хранится массив разрешённых
+    значений. Используется в UI админки для валидации признаков, записываемых
+    в resource.features (JSONB).
+    """
+    __tablename__ = 'resource_feature'
+    __table_args__ = (
+        UniqueConstraint('modality_id', 'feature_name', name='resource_feature_modality_id_feature_name_key'),
+        {'schema': 'eco_assistant'}
+    )
+
+    id = Column(Integer, primary_key=True, doc='Уникальный идентификатор записи справочника')
+    modality_id = Column(Integer, ForeignKey('eco_assistant.modality.id', ondelete='CASCADE'), nullable=False, doc='Ссылка на модальность')
+    feature_name = Column(Text, nullable=False, doc='Имя признака (например, season, habitat, in_stoplist)')
+    feature_values = Column(ARRAY(Text), nullable=False, default=list, doc='Массив допустимых значений признака')
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), doc='Дата и время создания записи')
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), doc='Дата и время последнего обновления записи')
 
 
 # ============================================================================

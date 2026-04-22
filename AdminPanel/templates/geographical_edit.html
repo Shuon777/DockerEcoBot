@@ -98,45 +98,62 @@
     <div class="col-lg-4">
         <div class="card shadow-sm p-4 border-0" style="border-radius: 16px;">
             <div class="d-flex justify-content-between align-items-start mb-3">
-                <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">
-                    {% set e_type = entity.type|lower if entity.type else '' %}
-                    {% if 'природ' in e_type %}
-                        🏞️ Природный
-                    {% elif 'культур' in e_type %}
-                        🏛️ Культурный
-                    {% elif 'истори' in e_type %}
-                        🏰 Исторический
+                <div>
+                    {% if entity.subtypes %}
+                        {% for s in entity.subtypes %}
+                        <span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25 me-1 mb-1 px-2 py-1">{{ s }}</span>
+                        {% endfor %}
                     {% else %}
-                        🔷 {{ entity.type or 'Не указан' }}
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-3 py-2">Подтип не указан</span>
                     {% endif %}
-                </span>
+                </div>
                 <span class="text-muted fw-bold small">ID: {{ entity.id }}</span>
             </div>
-            
+
             <h3 class="fw-bold mb-1">{{ entity.name_ru }}</h3>
-            <p class="text-secondary mb-4">{{ entity.description or 'Описание не указано' }}</p>
-            
-            <div class="mb-3">
-                <p class="text-muted small fw-bold mb-1">ТИП ОБЪЕКТА</p>
-                <p class="fw-semibold">{{ entity.type or 'Не указан' }}</p>
+            {% if entity.db_id %}<p class="text-muted small mb-3"><code>{{ entity.db_id }}</code></p>{% endif %}
+
+            {% set props = entity.object_properties or {} %}
+            {% if props.region %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">РЕГИОН</p>
+                <p class="mb-0">{{ props.region }}</p>
             </div>
-            
-            <div class="mb-3">
-                <p class="text-muted small fw-bold mb-1">ПРИЗНАКИ</p>
-                <p style="font-size: 0.95rem; line-height: 1.6;">
-                    {% if entity.feature_data %}
-                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#entityFeaturesModal">
-                            <i class="bi bi-tags"></i> Просмотреть признаки
-                        </button>
-                    {% else %}
-                        Признаки не заданы
+            {% endif %}
+            {% if props.exact_location %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">ТОЧНАЯ ЛОКАЦИЯ</p>
+                <p class="mb-0" style="font-size: 0.9rem;">{{ props.exact_location }}</p>
+            </div>
+            {% endif %}
+            {% if props.baikal_relation %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">ОТНОШЕНИЕ К БАЙКАЛУ</p>
+                <p class="mb-0">{{ props.baikal_relation }}</p>
+            </div>
+            {% endif %}
+
+            {% if entity.synonyms and entity.synonyms|length > 1 %}
+            <div class="mb-3 mt-2">
+                <p class="text-muted small fw-bold mb-1">ДРУГИЕ ИМЕНА</p>
+                {% for s in entity.synonyms %}
+                    {% if s != entity.name_ru %}
+                    <span class="badge bg-light text-secondary border me-1 mb-1">{{ s }}</span>
                     {% endif %}
-                </p>
+                {% endfor %}
             </div>
-            
-            <button class="btn btn-outline-secondary w-100 fw-bold mt-2" style="border-radius: 10px;">
-                <i class="bi bi-pencil-square"></i> Редактировать инфо
-            </button>
+            {% endif %}
+
+            <div class="mb-3 mt-3">
+                <p class="text-muted small fw-bold mb-1">ВСЕ СВОЙСТВА</p>
+                {% if entity.object_properties %}
+                    <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#entityFeaturesModal">
+                        <i class="bi bi-tags"></i> Просмотреть JSON
+                    </button>
+                {% else %}
+                    <p class="text-muted small mb-0">Свойства не заданы</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 
@@ -162,19 +179,19 @@
                     </li>
                 </ul>
             </div>
-            
+
             <div class="card-body p-4 tab-content">
-                
+
                 <!-- ========== Вкладка Текстов ========== -->
                 <div class="tab-pane fade show active" id="texts">
                     <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addTextModal" style="border-radius: 10px;">
                         <i class="bi bi-plus-lg"></i> Добавить текстовый ресурс
                     </button>
-                    
+
                     <div class="mb-3">
                         <input type="text" id="textSearch" class="form-control" placeholder="🔍 Поиск по текстам и признакам...">
                     </div>
-                    
+
                     <div class="d-flex flex-column gap-3" id="textsContainer">
                         {% for t in texts %}
                         <div class="p-3 border rounded-3 bg-light shadow-sm" data-features='{{ t.feature_data | tojson | safe }}'>
@@ -182,14 +199,14 @@
                                 <div>
                                     <h6 class="fw-bold mb-1 text-dark">{{ t.title or 'Без заголовка' }}</h6>
                                     <div class="d-flex gap-2 mb-2">
-                                        {% if t.content %}<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-justify-left"></i> Обычный текст</span>{% endif %}
+                                        {% if t.content %}<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-justify-left"></i> Текст</span>{% endif %}
                                         {% if t.structured_data %}<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-braces"></i> JSON</span>{% endif %}
                                     </div>
                                 </div>
                                 <div class="d-flex gap-2">
                                     <button class="btn btn-sm btn-outline-primary border-0" data-bs-toggle="modal" data-bs-target="#viewTextModal{{ t.id }}"><i class="bi bi-eye"></i></button>
                                     <button class="btn btn-sm btn-outline-info border-0" data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}"><i class="bi bi-tags"></i></button>
-                                    <form action="/admin/geographical/resource/delete/text/{{ t.id }}" method="post" onsubmit="return confirm('Удалить эту текстовую модальность?')">
+                                    <form action="/admin/geographical/resource/delete/text/{{ t.id }}" method="post" onsubmit="return confirm('Удалить этот текстовый ресурс?')">
                                         <input type="hidden" name="entity_id" value="{{ entity.id }}">
                                         <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
                                     </form>
@@ -234,11 +251,11 @@
                     <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addImageModal" style="border-radius: 10px;">
                         <i class="bi bi-cloud-arrow-up"></i> Прикрепить изображение
                     </button>
-                    
+
                     <div class="mb-3">
                         <input type="text" id="imageSearch" class="form-control" placeholder="🔍 Поиск по изображениям и признакам...">
                     </div>
-                    
+
                     <div class="row g-3" id="imagesContainer">
                         {% for img_obj in images %}
                         <div class="col-md-4" data-features='{{ img_obj.data.feature_data | tojson | safe }}'>
@@ -249,7 +266,6 @@
                                 </form>
                                 <img src="{{ img_obj.url }}" class="card-img-top" style="height: 160px; object-fit: cover; border-radius: 10px 10px 0 0;" onerror="this.src='https://placehold.co/600x400?text=Ошибка+загрузки'">
                                 <div class="card-body p-2">
-                                    <!-- Название изображения (для поиска) -->
                                     <p class="small text-truncate mb-0 mt-1" title="{{ img_obj.data.title }}">{{ img_obj.data.title }}</p>
                                     <button class="btn btn-sm btn-outline-info w-100 mt-2" data-bs-toggle="modal" data-bs-target="#imageFeatureModal{{ img_obj.data.id }}">
                                         <i class="bi bi-tags"></i> Признаки
@@ -258,7 +274,6 @@
                             </div>
                         </div>
 
-                        <!-- Модалка признаков изображения -->
                         {{ feature_modal('imageFeatureModal' ~ img_obj.data.id, 'Признаки: ' ~ img_obj.data.title, img_obj.data.feature_data) }}
                         {% endfor %}
                     </div>
@@ -266,14 +281,14 @@
 
                 <!-- ========== Вкладка Географии ========== -->
                 <div class="tab-pane fade" id="geo">
-                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" style="border-radius: 10px;" onclick="alert('Форма привязки геолокации в разработке!')">
-                        <i class="bi bi-geo-alt"></i> Привязать новую локацию
+                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addGeoModal" style="border-radius: 10px;">
+                        <i class="bi bi-geo-alt"></i> Привязать геолокацию (GeoJSON)
                     </button>
-                    
+
                     <div class="mb-3">
                         <input type="text" id="geoSearch" class="form-control" placeholder="🔍 Поиск по локациям и признакам...">
                     </div>
-                    
+
                     <div class="row g-3" id="geoContainer">
                         {% for loc in locations %}
                         <div class="col-md-6" data-features='{{ loc.feature_data | tojson | safe }}'>
@@ -282,23 +297,24 @@
                                     <i class="bi bi-geo-alt-fill text-danger fs-4"></i>
                                     <div>
                                         <h6 class="fw-bold mb-0 text-dark">{{ loc.name_ru }}</h6>
-                                        <span class="badge bg-light text-secondary border">{{ loc.type or 'Локация' }}</span>
+                                        <span class="badge bg-light text-secondary border">{{ loc.type or 'Геометрия' }}</span>
                                     </div>
                                 </div>
                                 <div>
-                                    {% if loc.is_map %}
-                                    <button class="btn btn-outline-primary btn-sm me-1" data-map-id="{{ loc.map_id }}" data-location-name="{{ loc.name_ru }}" onclick="showMapFromButton(this)">
+                                    <button class="btn btn-outline-primary btn-sm me-1" data-geodata-id="{{ loc.geodata_id }}" data-location-name="{{ loc.name_ru }}" onclick="showMapFromButton(this)">
                                         <i class="bi bi-map"></i>
                                     </button>
-                                    {% endif %}
-                                    <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}">
+                                    <button class="btn btn-outline-info btn-sm me-1" data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}">
                                         <i class="bi bi-tags"></i>
                                     </button>
+                                    <form action="/admin/geographical/resource/delete/geo/{{ loc.resource_id }}" method="post" onsubmit="return confirm('Удалить эту геолокацию?')" class="d-inline">
+                                        <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i></button>
+                                    </form>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Модалка признаков гео -->
                         {{ feature_modal('geoFeatureModal' ~ loop.index, 'Признаки: ' ~ loc.name_ru, loc.feature_data) }}
                         {% else %}
                         <div class="col-12 text-center p-5 text-muted">
@@ -313,17 +329,207 @@
     </div>
 </div>
 
-<!-- Модалка признаков объекта -->
-{% if entity.feature_data %}
+<!-- ========== МОДАЛКА: добавить текст ========== -->
+<div class="modal fade" id="addTextModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новый текстовый ресурс</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/geographical/{{ entity.id }}/add_text" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ЗАГОЛОВОК *</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">СОДЕРЖАНИЕ *</label>
+                        <textarea class="form-control" name="content" rows="6" required></textarea>
+                    </div>
+                    <div class="accordion" id="addTextMetaAccordion">
+                        <div class="accordion-item border-0">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addTextMetaCollapse">
+                                    Метаданные ресурса (автор, источник, дата, достоверность)
+                                </button>
+                            </h2>
+                            <div id="addTextMetaCollapse" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">АВТОР</label>
+                                            <input type="text" class="form-control" name="author" placeholder="Admin Panel">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ИСТОЧНИК</label>
+                                            <input type="text" class="form-control" name="source" placeholder="Admin Panel">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДАТА</label>
+                                            <input type="date" class="form-control" name="date">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДОСТОВЕРНОСТЬ</label>
+                                            <input type="text" class="form-control" name="reliability" placeholder="средняя">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: добавить изображение ========== -->
+<div class="modal fade" id="addImageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новое изображение</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/geographical/{{ entity.id }}/add_image" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">URL ИЗОБРАЖЕНИЯ *</label>
+                        <input type="url" class="form-control" name="image_url" required placeholder="https://...">
+                    </div>
+                    <div class="accordion" id="addImageMetaAccordion">
+                        <div class="accordion-item border-0">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addImageMetaCollapse">
+                                    Метаданные ресурса
+                                </button>
+                            </h2>
+                            <div id="addImageMetaCollapse" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">АВТОР</label>
+                                            <input type="text" class="form-control" name="author">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ИСТОЧНИК</label>
+                                            <input type="text" class="form-control" name="source">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДАТА</label>
+                                            <input type="date" class="form-control" name="date">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДОСТОВЕРНОСТЬ</label>
+                                            <input type="text" class="form-control" name="reliability">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: добавить геоданные ========== -->
+<div class="modal fade" id="addGeoModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новая геолокация (GeoJSON)</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/geographical/{{ entity.id }}/add_geo" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ ГЕОМЕТРИИ *</label>
+                        <input type="text" class="form-control" name="title" required placeholder="Напр: Граница озера">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">GEOJSON-ГЕОМЕТРИЯ *</label>
+                        <textarea class="form-control font-monospace" name="geojson" rows="8" required
+                                  placeholder='{"type": "Point", "coordinates": [107.3, 53.2]}'></textarea>
+                        <div class="form-text text-muted mt-1">
+                            Геометрия в формате GeoJSON. Поддерживаются: Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon. Координаты в WGS84 (lng, lat).
+                        </div>
+                    </div>
+                    <div class="accordion" id="addGeoMetaAccordion">
+                        <div class="accordion-item border-0">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addGeoMetaCollapse">
+                                    Метаданные ресурса
+                                </button>
+                            </h2>
+                            <div id="addGeoMetaCollapse" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">АВТОР</label>
+                                            <input type="text" class="form-control" name="author">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ИСТОЧНИК</label>
+                                            <input type="text" class="form-control" name="source">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДАТА</label>
+                                            <input type="date" class="form-control" name="date">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДОСТОВЕРНОСТЬ</label>
+                                            <input type="text" class="form-control" name="reliability">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модалка свойств объекта -->
+{% if entity.object_properties %}
 <div class="modal fade" id="entityFeaturesModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Признаки: {{ entity.name_ru }}</h5>
+                <h5 class="modal-title">Свойства: {{ entity.name_ru }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                {{ render_feature_value(entity.feature_data) }}
+                {{ render_feature_value(entity.object_properties) }}
+                <hr>
+                <h6 class="fw-bold text-info mb-2">JSON</h6>
+                <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow: auto;">{{ entity.object_properties | tojson(indent=2) }}</pre>
             </div>
         </div>
     </div>
@@ -345,28 +551,27 @@
     </div>
 </div>
 
-<!-- Скрипт для карты и фильтрации -->
 <script>
 // Функция загрузки карты
-async function showMap(mapId, locationName) {
+async function showMap(geodataId, locationName) {
     const modalTitle = document.getElementById('mapModalTitle');
     const modalBody = document.getElementById('mapModalBody');
-    
+
     modalTitle.innerText = "Карта: " + locationName;
     modalBody.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Загрузка карты...</p></div>';
-    
+
     const mapModal = new bootstrap.Modal(document.getElementById('mapModal'));
     mapModal.show();
-    
+
     try {
         const response = await fetch('/admin/geographical/get-map-html', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ map_id: mapId })
+            body: JSON.stringify({ geodata_id: geodataId })
         });
-        
+
         if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-        
+
         const data = await response.json();
         modalBody.innerHTML = data.html;
     } catch (error) {
@@ -374,82 +579,53 @@ async function showMap(mapId, locationName) {
     }
 }
 
-// Фильтрация с детальным логированием
+function showMapFromButton(button) {
+    const geodataId = button.getAttribute('data-geodata-id');
+    const locationName = button.getAttribute('data-location-name');
+    showMap(geodataId, locationName);
+}
+
 function filterResources(tab) {
-    // Определяем ID поля ввода
     let inputId;
     if (tab === 'images') inputId = 'imageSearch';
     else if (tab === 'texts') inputId = 'textSearch';
     else if (tab === 'geo') inputId = 'geoSearch';
     else inputId = tab + 'Search';
-    
+
     const searchInput = document.getElementById(inputId);
-    if (!searchInput) {
-        console.warn('Поле поиска не найдено для вкладки', tab);
-        return;
-    }
+    if (!searchInput) return;
     const filter = searchInput.value.toLowerCase();
-    console.log(`🔍 [${tab}] Фильтр: "${filter}"`);
-    
+
     const container = document.getElementById(tab + 'Container');
-    if (!container) {
-        console.warn('Контейнер не найден для вкладки', tab);
-        return;
-    }
-    
+    if (!container) return;
+
     const cards = container.querySelectorAll('[data-features]');
-    console.log(`📦 [${tab}] Найдено карточек:`, cards.length);
-    
-    // Если фильтр пустой — показываем всё и выходим
+
     if (filter === '') {
         cards.forEach(card => card.style.display = 'block');
         return;
     }
-    
-    cards.forEach((card, index) => {
+
+    cards.forEach((card) => {
         let searchable = '';
-        
-        // Заголовок
+
         const titleEl = card.querySelector('h6, .fw-bold, .small');
-        if (titleEl) {
-            searchable += titleEl.innerText.toLowerCase() + ' ';
-            console.log(`[${tab}] Карточка ${index} заголовок:`, titleEl.innerText);
-        }
-        
-        // Признаки (атрибут data-features)
+        if (titleEl) searchable += titleEl.innerText.toLowerCase() + ' ';
+
         const featuresAttr = card.dataset.features;
-        console.log(`[${tab}] Карточка ${index} сырые data-features:`, featuresAttr);
-        
         if (featuresAttr && featuresAttr !== 'null' && featuresAttr !== '') {
             try {
-                // Пытаемся распарсить JSON, чтобы получить читаемые строки
                 const featuresObj = JSON.parse(featuresAttr);
-                // Преобразуем объект обратно в строку уже без экранирования и приводим к нижнему регистру
-                const featuresString = JSON.stringify(featuresObj).toLowerCase();
-                searchable += featuresString;
-                console.log(`[${tab}] Карточка ${index} после парсинга (первые 100 символов):`, featuresString.substring(0,100));
+                searchable += JSON.stringify(featuresObj).toLowerCase();
             } catch (e) {
-                console.warn(`[${tab}] Ошибка парсинга JSON для карточки ${index}:`, e);
-                // Если не JSON, добавляем как есть
                 searchable += featuresAttr.toLowerCase();
             }
         }
-        
-        const match = searchable.includes(filter);
-        console.log(`[${tab}] Карточка ${index} соответствует?`, match, 'searchable preview:', searchable.substring(0,100));
-        
-        card.style.display = match ? 'block' : 'none';
+
+        card.style.display = searchable.includes(filter) ? 'block' : 'none';
     });
 }
 
-// Функция для кнопок карты
-function showMapFromButton(button) {
-    const mapId = button.getAttribute('data-map-id');
-    const locationName = button.getAttribute('data-location-name');
-    showMap(mapId, locationName);
-}
-
-// Инициализация обработчиков
 document.addEventListener('DOMContentLoaded', function() {
     ['texts', 'images', 'geo'].forEach(tab => {
         let inputId;
@@ -457,13 +633,10 @@ document.addEventListener('DOMContentLoaded', function() {
         else if (tab === 'texts') inputId = 'textSearch';
         else if (tab === 'geo') inputId = 'geoSearch';
         else inputId = tab + 'Search';
-        
+
         const input = document.getElementById(inputId);
         if (input) {
             input.addEventListener('keyup', () => filterResources(tab));
-            console.log('✅ Обработчик добавлен для', tab, 'ID:', inputId);
-        } else {
-            console.warn('❌ Поле поиска для', tab, 'не найдено');
         }
     });
 });
