@@ -19,25 +19,27 @@ body {
 
 /* Сайдбар */
 .sidebar {
-    width: 260px;
+    width: 280px;
     background: var(--bg-sidebar);
     border-right: 1px solid var(--border-color);
     position: fixed;
     height: 100vh;
+    overflow-x: hidden;
     z-index: 100;
 }
-.sidebar-header { padding: 32px 24px; }
-.sidebar-logo { font-weight: 800; font-size: 1.4rem; color: var(--accent); text-decoration: none; letter-spacing: -0.5px; }
-.sidebar-nav { padding: 10px 16px; }
+.sidebar-header { padding: 28px 24px; }
+.sidebar-logo { font-weight: 800; font-size: 1.35rem; color: var(--accent); text-decoration: none; letter-spacing: -0.5px; }
+.sidebar-nav { padding: 8px 14px; }
 .nav-item {
-    display: flex; align-items: center; padding: 12px 16px; color: var(--text-secondary);
-    text-decoration: none; border-radius: 12px; font-weight: 600; margin-bottom: 4px; transition: 0.2s;
+    display: flex; align-items: flex-start; padding: 10px 14px; color: var(--text-secondary);
+    text-decoration: none; border-radius: 12px; font-weight: 600; margin-bottom: 2px;
+    transition: 0.2s; font-size: 0.9rem; line-height: 1.4;
 }
 .nav-item:hover, .nav-item.active { background-color: var(--accent-light); color: var(--accent); }
-.nav-item i { margin-right: 12px; font-size: 1.25rem; }
+.nav-item i { flex-shrink: 0; margin-right: 10px; font-size: 1.1rem; margin-top: 2px; }
 
 /* Контент */
-.main-content { margin-left: 260px; flex: 1; padding: 40px 50px; }
+.main-content { margin-left: 280px; flex: 1; padding: 40px 50px; }
 header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
 h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
 

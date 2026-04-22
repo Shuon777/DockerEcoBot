@@ -7,7 +7,8 @@ import folium
 from shapely import wkb
 import json
 
-from fastapi import FastAPI, Request, Depends, Body, Form, Depends, HTTPException
+from typing import List
+from fastapi import FastAPI, Request, Depends, Body, Form, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -41,6 +42,7 @@ load_dotenv()
 
 app.mount("/admin/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+templates.env.filters["tojson"] = lambda value, indent=None, **_: json.dumps(value, ensure_ascii=False, indent=indent)
 hb = BotHeartbeat(host=os.getenv('REDIS_HOST', 'redis'), port=int(os.getenv('REDIS_PORT', 6379)), db=2)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET_KEY', 'super-secret-key-for-admins'))
 BOT_CORE_URL = os.getenv("BOT_CORE_URL")
@@ -771,7 +773,7 @@ def _primary_synonym(synonyms: list[str]) -> str:
 async def geographical_list(
     request: Request,
     search: str = None,
-    filter_subtype: str = None,
+    filter_subtype: List[str] = Query(default=[]),
     db: AsyncSession = Depends(get_db),
 ):
     """Список достопримечательностей (eco_assistant.object, тип «Географический объект»)."""
@@ -797,13 +799,14 @@ async def geographical_list(
         .limit(1000)
     )
 
-    # 2. Фильтр по подтипу: subtypes — JSONB-массив
-    if filter_subtype and filter_subtype != "all":
+    # 2. Фильтр по подтипам: AND-логика, каждый подтип — отдельное условие
+    active_subtypes = [s for s in filter_subtype if s and s != "all"]
+    for st in active_subtypes:
         query = query.where(
             func.jsonb_path_exists(
                 Object.object_properties,
                 sql_text("'$.subtypes[*] ? (@ == $val)'"),
-                func.jsonb_build_object("val", filter_subtype),
+                func.jsonb_build_object("val", st),
             )
         )
 
@@ -841,7 +844,7 @@ async def geographical_list(
         "bot_online": bot_online,
         "entities": entities,
         "search": search or "",
-        "filter_subtype": filter_subtype or "all",
+        "active_subtypes": active_subtypes,
         "subtypes_stats": subtypes_stats,
     })
 
@@ -1270,6 +1273,29 @@ async def delete_geographical_geo_resource(
     return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
 
 
+def _geojson_bounds(geojson: dict):
+    """Вернуть [[minLat, minLng], [maxLat, maxLng]] из GeoJSON-геометрии."""
+    coords: list[tuple[float, float]] = []
+
+    def _extract(obj):
+        if isinstance(obj, list):
+            if obj and isinstance(obj[0], (int, float)):
+                coords.append((obj[1], obj[0]))  # (lat, lng)
+            else:
+                for item in obj:
+                    _extract(item)
+        elif isinstance(obj, dict):
+            for v in obj.values():
+                _extract(v)
+
+    _extract(geojson)
+    if not coords:
+        return None
+    lats = [c[0] for c in coords]
+    lngs = [c[1] for c in coords]
+    return [[min(lats), min(lngs)], [max(lats), max(lngs)]]
+
+
 @app.post("/geographical/get-map-html")
 async def get_geographical_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
     """Отрисовать геометрию из eco_assistant.geodata_value в виде HTML-карты (folium)."""
@@ -1286,9 +1312,118 @@ async def get_geographical_map_html(data: dict = Body(...), db: AsyncSession = D
         return {"html": "<p>Геометрия отсутствует</p>"}
 
     geometry_geojson = json.loads(geojson_data)
-    m = folium.Map(location=[53.2, 107.3], zoom_start=9, tiles="OpenStreetMap")
-    folium.GeoJson(geometry_geojson).add_to(m)
+    bounds = _geojson_bounds(geometry_geojson)
+    m = folium.Map(tiles="OpenStreetMap")
+    if bounds:
+        sw, ne = bounds
+        # Для точки добавить буфер, чтобы не было нулевого зума
+        if sw == ne:
+            buf = 0.02
+            m.fit_bounds([[sw[0] - buf, sw[1] - buf], [ne[0] + buf, ne[1] + buf]])
+        else:
+            m.fit_bounds([sw, ne], padding=(30, 30))
+    else:
+        m.location = [53.2, 107.3]
+        m.zoom_start = 9
+    folium.GeoJson(geometry_geojson, style_function=lambda f: {
+        "color": "#2563eb", "weight": 3, "fillColor": "#3b82f6", "fillOpacity": 0.25
+    }).add_to(m)
     return {"html": m._repr_html_()}
+
+
+@app.get("/geographical/resource/geo/{geodata_id}/geojson")
+async def get_geo_resource_geojson(geodata_id: int, db: AsyncSession = Depends(get_db)):
+    """Вернуть GeoJSON геометрии для редактирования в модальном окне."""
+    geojson_str = await db.scalar(
+        select(func.ST_AsGeoJSON(GeodataValue.geometry)).where(GeodataValue.id == geodata_id)
+    )
+    if not geojson_str:
+        raise HTTPException(status_code=404, detail="Геометрия не найдена")
+    return {"geojson": json.loads(geojson_str)}
+
+
+@app.post("/geographical/resource/edit/text/{resource_id}")
+async def edit_geographical_text_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    title: str = Form(...),
+    content: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Обновить заголовок и содержимое текстового ресурса."""
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        tv = (await db.execute(select(TextValue).where(TextValue.id == rv.value_id))).scalar()
+        if tv:
+            tv.structured_data = {"description": content}
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
+
+
+@app.post("/geographical/resource/edit/image/{resource_id}")
+async def edit_geographical_image_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    title: str = Form(...),
+    image_url: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Обновить заголовок и URL изображения."""
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        iv = (await db.execute(select(ImageValue).where(ImageValue.id == rv.value_id))).scalar()
+        if iv:
+            iv.url = image_url
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
+
+
+@app.post("/geographical/resource/edit/geo/{resource_id}")
+async def edit_geographical_geo_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    title: str = Form(...),
+    geojson: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Обновить заголовок и геометрию геоданных."""
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    try:
+        json.loads(geojson)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный GeoJSON: {exc}")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        await db.execute(
+            sql_text(
+                "UPDATE eco_assistant.geodata_value "
+                "SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(:gj), 4326) "
+                "WHERE id = :id"
+            ),
+            {"gj": geojson, "id": rv.value_id},
+        )
+    await db.commit()
+    return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
 
 @app.get("/testing", response_class=HTMLResponse)
 async def testing_list(request: Request, db: AsyncSession = Depends(get_db), admin_db = Depends(get_admin_db)):
