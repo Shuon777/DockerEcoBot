@@ -1,9 +1,12 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, DeclarativeBase
 
-Base = declarative_base()
+#Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 # --- СЛУЖЕБНЫЕ ТАБЛИЦЫ ---
 

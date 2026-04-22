@@ -13,5 +13,5 @@ REDIS_HOST = os.getenv("REDIS_HOST")
 REDIS_PORT = os.getenv("REDIS_PORT")
 REDIS_DB = os.getenv("REDIS_DB")
 
-EMBEDDING_MODEL_PATH = str(BASE_DIR / "embedding_models" / "bge-m3")
+EMBEDDING_MODEL_PATH = str(BASE_DIR / "embedding_models" / os.getenv("EMBEDDING_MODEL", "bge-m3"))
 FAISS_INDEX_PATH = str(BASE_DIR / "knowledge_base_scripts" / "Vector" / "faiss_index")

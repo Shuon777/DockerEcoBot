@@ -1,0 +1,471 @@
+{% extends "base.html" %}
+
+{% block title %}Карточка: {{ entity.name_ru }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Стили для дерева признаков */
+    .feature-object, .feature-array {
+        list-style: none;
+        padding-left: 20px;
+        margin: 5px 0;
+        border-left: 1px dashed #cbd5e1;
+    }
+    .feature-object > li, .feature-array > li {
+        margin: 4px 0;
+    }
+    .feature-value {
+        color: #2563eb;
+    }
+    /* Чтобы карта занимала всю модалку */
+    #mapModalBody {
+        padding: 0;
+        overflow: hidden;
+        height: 600px;
+    }
+    #mapModalBody iframe,
+    #mapModalBody .folium-map,
+    #mapModalBody > div {
+        width: 100% !important;
+        height: 100% !important;
+        border: none;
+    }
+</style>
+
+<!-- ========== МАКРОСЫ ДЛЯ ОТОБРАЖЕНИЯ ПРИЗНАКОВ ========== -->
+{% macro render_feature_value(value) %}
+    {% if value is mapping %}
+        <ul class="feature-object">
+        {% for k, v in value.items() %}
+            <li><strong>{{ k|replace('_', ' ')|capitalize }}:</strong> {{ render_feature_value(v) }}</li>
+        {% endfor %}
+        </ul>
+    {% elif value is iterable and value is not string %}
+        <ul class="feature-array">
+        {% for item in value %}
+            <li>{{ render_feature_value(item) }}</li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <span class="feature-value">{{ value if value is not none else '—' }}</span>
+    {% endif %}
+{% endmacro %}
+
+{% macro feature_modal(modal_id, title, feature_data) %}
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ title }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="nav nav-tabs mb-3" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#{{ modal_id }}_summary">Сводка</button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ modal_id }}_json">JSON</button>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane active" id="{{ modal_id }}_summary">
+                        {% if feature_data %}
+                            {{ render_feature_value(feature_data) }}
+                        {% else %}
+                            <p class="text-muted">Нет данных</p>
+                        {% endif %}
+                    </div>
+                    <div class="tab-pane" id="{{ modal_id }}_json">
+                        <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow: auto;">{{ feature_data | tojson(indent=2) if feature_data else '{}' }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endmacro %}
+<!-- ========== КОНЕЦ МАКРОСОВ ========== -->
+
+<div class="mb-4">
+    <a href="/admin/geographical" class="text-decoration-none text-secondary fw-bold">
+        <i class="bi bi-arrow-left"></i> Назад к списку
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Левая колонка: Информация об объекте -->
+    <div class="col-lg-4">
+        <div class="card shadow-sm p-4 border-0" style="border-radius: 16px;">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">
+                    {% set e_type = entity.type|lower if entity.type else '' %}
+                    {% if 'природ' in e_type %}
+                        🏞️ Природный
+                    {% elif 'культур' in e_type %}
+                        🏛️ Культурный
+                    {% elif 'истори' in e_type %}
+                        🏰 Исторический
+                    {% else %}
+                        🔷 {{ entity.type or 'Не указан' }}
+                    {% endif %}
+                </span>
+                <span class="text-muted fw-bold small">ID: {{ entity.id }}</span>
+            </div>
+            
+            <h3 class="fw-bold mb-1">{{ entity.name_ru }}</h3>
+            <p class="text-secondary mb-4">{{ entity.description or 'Описание не указано' }}</p>
+            
+            <div class="mb-3">
+                <p class="text-muted small fw-bold mb-1">ТИП ОБЪЕКТА</p>
+                <p class="fw-semibold">{{ entity.type or 'Не указан' }}</p>
+            </div>
+            
+            <div class="mb-3">
+                <p class="text-muted small fw-bold mb-1">ПРИЗНАКИ</p>
+                <p style="font-size: 0.95rem; line-height: 1.6;">
+                    {% if entity.feature_data %}
+                        <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#entityFeaturesModal">
+                            <i class="bi bi-tags"></i> Просмотреть признаки
+                        </button>
+                    {% else %}
+                        Признаки не заданы
+                    {% endif %}
+                </p>
+            </div>
+            
+            <button class="btn btn-outline-secondary w-100 fw-bold mt-2" style="border-radius: 10px;">
+                <i class="bi bi-pencil-square"></i> Редактировать инфо
+            </button>
+        </div>
+    </div>
+
+    <!-- Правая колонка: Модальности -->
+    <div class="col-lg-8">
+        <div class="card shadow-sm border-0" style="border-radius: 16px;">
+            <div class="card-header bg-white p-3 border-bottom">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active fw-bold text-dark" data-bs-toggle="tab" data-bs-target="#texts">
+                            📄 Тексты ({{ texts|length }})
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold text-dark" data-bs-toggle="tab" data-bs-target="#images">
+                            🖼️ Изображения ({{ images|length }})
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold text-dark" data-bs-toggle="tab" data-bs-target="#geo">
+                            📍 Геолокации ({{ locations|length }})
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="card-body p-4 tab-content">
+                
+                <!-- ========== Вкладка Текстов ========== -->
+                <div class="tab-pane fade show active" id="texts">
+                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addTextModal" style="border-radius: 10px;">
+                        <i class="bi bi-plus-lg"></i> Добавить текстовый ресурс
+                    </button>
+                    
+                    <div class="mb-3">
+                        <input type="text" id="textSearch" class="form-control" placeholder="🔍 Поиск по текстам и признакам...">
+                    </div>
+                    
+                    <div class="d-flex flex-column gap-3" id="textsContainer">
+                        {% for t in texts %}
+                        <div class="p-3 border rounded-3 bg-light shadow-sm" data-features='{{ t.feature_data | tojson | safe }}'>
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark">{{ t.title or 'Без заголовка' }}</h6>
+                                    <div class="d-flex gap-2 mb-2">
+                                        {% if t.content %}<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-justify-left"></i> Обычный текст</span>{% endif %}
+                                        {% if t.structured_data %}<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-braces"></i> JSON</span>{% endif %}
+                                    </div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button class="btn btn-sm btn-outline-primary border-0" data-bs-toggle="modal" data-bs-target="#viewTextModal{{ t.id }}"><i class="bi bi-eye"></i></button>
+                                    <button class="btn btn-sm btn-outline-info border-0" data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}"><i class="bi bi-tags"></i></button>
+                                    <form action="/admin/geographical/resource/delete/text/{{ t.id }}" method="post" onsubmit="return confirm('Удалить эту текстовую модальность?')">
+                                        <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
+                                    </form>
+                                </div>
+                            </div>
+                            <p class="mb-0 text-secondary" style="font-size: 0.9rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                                {{ (t.content or '') }}
+                            </p>
+                        </div>
+
+                        <!-- Модалка текста (просмотр содержимого) -->
+                        <div class="modal fade" id="viewTextModal{{ t.id }}" tabindex="-1">
+                            <div class="modal-dialog modal-dialog-centered modal-lg">
+                                <div class="modal-content" style="border-radius: 20px;">
+                                    <div class="modal-header border-bottom-0 px-4 pt-4">
+                                        <h5 class="fw-bold text-primary">{{ t.title }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                    </div>
+                                    <div class="modal-body px-4 pb-4">
+                                        {% if t.content %}<div class="p-3 bg-white border rounded-3 mb-4" style="white-space: pre-wrap; max-height: 40vh; overflow-y: auto;">{{ t.content }}</div>{% endif %}
+                                        {% if t.structured_data %}
+                                        <div class="p-4 bg-light border rounded-3" style="max-height: 40vh; overflow-y: auto;">
+                                            <h6 class="fw-bold text-info mb-3">Структурированные данные</h6>
+                                            {% for key, val in t.structured_data.items() %}
+                                                <div class="mb-2"><strong>{{ key|capitalize }}:</strong> {{ val }}</div>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Модалка признаков текста -->
+                        {{ feature_modal('textFeatureModal' ~ t.id, 'Признаки: ' ~ (t.title or 'текст'), t.feature_data) }}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- ========== Вкладка Изображений ========== -->
+                <div class="tab-pane fade" id="images">
+                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addImageModal" style="border-radius: 10px;">
+                        <i class="bi bi-cloud-arrow-up"></i> Прикрепить изображение
+                    </button>
+                    
+                    <div class="mb-3">
+                        <input type="text" id="imageSearch" class="form-control" placeholder="🔍 Поиск по изображениям и признакам...">
+                    </div>
+                    
+                    <div class="row g-3" id="imagesContainer">
+                        {% for img_obj in images %}
+                        <div class="col-md-4" data-features='{{ img_obj.data.feature_data | tojson | safe }}'>
+                            <div class="card h-100 shadow-sm border-0 position-relative">
+                                <form action="/admin/geographical/resource/delete/image/{{ img_obj.data.id }}" method="post" onsubmit="return confirm('Удалить?')" class="position-absolute top-0 end-0 m-2">
+                                    <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                                    <button type="submit" class="btn btn-sm btn-danger shadow-sm rounded-circle" style="width: 32px; height: 32px; padding: 0;"><i class="bi bi-trash3"></i></button>
+                                </form>
+                                <img src="{{ img_obj.url }}" class="card-img-top" style="height: 160px; object-fit: cover; border-radius: 10px 10px 0 0;" onerror="this.src='https://placehold.co/600x400?text=Ошибка+загрузки'">
+                                <div class="card-body p-2">
+                                    <!-- Название изображения (для поиска) -->
+                                    <p class="small text-truncate mb-0 mt-1" title="{{ img_obj.data.title }}">{{ img_obj.data.title }}</p>
+                                    <button class="btn btn-sm btn-outline-info w-100 mt-2" data-bs-toggle="modal" data-bs-target="#imageFeatureModal{{ img_obj.data.id }}">
+                                        <i class="bi bi-tags"></i> Признаки
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Модалка признаков изображения -->
+                        {{ feature_modal('imageFeatureModal' ~ img_obj.data.id, 'Признаки: ' ~ img_obj.data.title, img_obj.data.feature_data) }}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- ========== Вкладка Географии ========== -->
+                <div class="tab-pane fade" id="geo">
+                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" style="border-radius: 10px;" onclick="alert('Форма привязки геолокации в разработке!')">
+                        <i class="bi bi-geo-alt"></i> Привязать новую локацию
+                    </button>
+                    
+                    <div class="mb-3">
+                        <input type="text" id="geoSearch" class="form-control" placeholder="🔍 Поиск по локациям и признакам...">
+                    </div>
+                    
+                    <div class="row g-3" id="geoContainer">
+                        {% for loc in locations %}
+                        <div class="col-md-6" data-features='{{ loc.feature_data | tojson | safe }}'>
+                            <div class="p-3 border rounded-3 bg-white shadow-sm d-flex justify-content-between align-items-center">
+                                <div class="d-flex align-items-center gap-3">
+                                    <i class="bi bi-geo-alt-fill text-danger fs-4"></i>
+                                    <div>
+                                        <h6 class="fw-bold mb-0 text-dark">{{ loc.name_ru }}</h6>
+                                        <span class="badge bg-light text-secondary border">{{ loc.type or 'Локация' }}</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    {% if loc.is_map %}
+                                    <button class="btn btn-outline-primary btn-sm me-1" data-map-id="{{ loc.map_id }}" data-location-name="{{ loc.name_ru }}" onclick="showMapFromButton(this)">
+                                        <i class="bi bi-map"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}">
+                                        <i class="bi bi-tags"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Модалка признаков гео -->
+                        {{ feature_modal('geoFeatureModal' ~ loop.index, 'Признаки: ' ~ loc.name_ru, loc.feature_data) }}
+                        {% else %}
+                        <div class="col-12 text-center p-5 text-muted">
+                            <i class="bi bi-map fs-1 d-block mb-3 text-light"></i>
+                            Географические привязки отсутствуют.
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модалка признаков объекта -->
+{% if entity.feature_data %}
+<div class="modal fade" id="entityFeaturesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Признаки: {{ entity.name_ru }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {{ render_feature_value(entity.feature_data) }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Модалка карты -->
+<div class="modal fade" id="mapModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mapModalTitle">Карта</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="mapModalBody">
+                <!-- Сюда будет вставлена карта -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Скрипт для карты и фильтрации -->
+<script>
+// Функция загрузки карты
+async function showMap(mapId, locationName) {
+    const modalTitle = document.getElementById('mapModalTitle');
+    const modalBody = document.getElementById('mapModalBody');
+    
+    modalTitle.innerText = "Карта: " + locationName;
+    modalBody.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Загрузка карты...</p></div>';
+    
+    const mapModal = new bootstrap.Modal(document.getElementById('mapModal'));
+    mapModal.show();
+    
+    try {
+        const response = await fetch('/admin/geographical/get-map-html', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ map_id: mapId })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+        
+        const data = await response.json();
+        modalBody.innerHTML = data.html;
+    } catch (error) {
+        modalBody.innerHTML = `<div class="alert alert-danger m-3">Ошибка загрузки карты: ${error.message}</div>`;
+    }
+}
+
+// Фильтрация с детальным логированием
+function filterResources(tab) {
+    // Определяем ID поля ввода
+    let inputId;
+    if (tab === 'images') inputId = 'imageSearch';
+    else if (tab === 'texts') inputId = 'textSearch';
+    else if (tab === 'geo') inputId = 'geoSearch';
+    else inputId = tab + 'Search';
+    
+    const searchInput = document.getElementById(inputId);
+    if (!searchInput) {
+        console.warn('Поле поиска не найдено для вкладки', tab);
+        return;
+    }
+    const filter = searchInput.value.toLowerCase();
+    console.log(`🔍 [${tab}] Фильтр: "${filter}"`);
+    
+    const container = document.getElementById(tab + 'Container');
+    if (!container) {
+        console.warn('Контейнер не найден для вкладки', tab);
+        return;
+    }
+    
+    const cards = container.querySelectorAll('[data-features]');
+    console.log(`📦 [${tab}] Найдено карточек:`, cards.length);
+    
+    // Если фильтр пустой — показываем всё и выходим
+    if (filter === '') {
+        cards.forEach(card => card.style.display = 'block');
+        return;
+    }
+    
+    cards.forEach((card, index) => {
+        let searchable = '';
+        
+        // Заголовок
+        const titleEl = card.querySelector('h6, .fw-bold, .small');
+        if (titleEl) {
+            searchable += titleEl.innerText.toLowerCase() + ' ';
+            console.log(`[${tab}] Карточка ${index} заголовок:`, titleEl.innerText);
+        }
+        
+        // Признаки (атрибут data-features)
+        const featuresAttr = card.dataset.features;
+        console.log(`[${tab}] Карточка ${index} сырые data-features:`, featuresAttr);
+        
+        if (featuresAttr && featuresAttr !== 'null' && featuresAttr !== '') {
+            try {
+                // Пытаемся распарсить JSON, чтобы получить читаемые строки
+                const featuresObj = JSON.parse(featuresAttr);
+                // Преобразуем объект обратно в строку уже без экранирования и приводим к нижнему регистру
+                const featuresString = JSON.stringify(featuresObj).toLowerCase();
+                searchable += featuresString;
+                console.log(`[${tab}] Карточка ${index} после парсинга (первые 100 символов):`, featuresString.substring(0,100));
+            } catch (e) {
+                console.warn(`[${tab}] Ошибка парсинга JSON для карточки ${index}:`, e);
+                // Если не JSON, добавляем как есть
+                searchable += featuresAttr.toLowerCase();
+            }
+        }
+        
+        const match = searchable.includes(filter);
+        console.log(`[${tab}] Карточка ${index} соответствует?`, match, 'searchable preview:', searchable.substring(0,100));
+        
+        card.style.display = match ? 'block' : 'none';
+    });
+}
+
+// Функция для кнопок карты
+function showMapFromButton(button) {
+    const mapId = button.getAttribute('data-map-id');
+    const locationName = button.getAttribute('data-location-name');
+    showMap(mapId, locationName);
+}
+
+// Инициализация обработчиков
+document.addEventListener('DOMContentLoaded', function() {
+    ['texts', 'images', 'geo'].forEach(tab => {
+        let inputId;
+        if (tab === 'images') inputId = 'imageSearch';
+        else if (tab === 'texts') inputId = 'textSearch';
+        else if (tab === 'geo') inputId = 'geoSearch';
+        else inputId = tab + 'Search';
+        
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.addEventListener('keyup', () => filterResources(tab));
+            console.log('✅ Обработчик добавлен для', tab, 'ID:', inputId);
+        } else {
+            console.warn('❌ Поле поиска для', tab, 'не найдено');
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -1,9 +1,8 @@
 # Секреты и конфиги с паролями
-.env
-**/.env
-**/.env.regression
+**/.env*
 # Исключение: шаблоны без секретов
 !.env.example
+!**/.env.example
 
 # Данные БД и дампы
 data/postgres_data/
@@ -39,3 +38,4 @@ __pycache__/
 
 # Claude Code
 .claude/
+CLAUDE.md
