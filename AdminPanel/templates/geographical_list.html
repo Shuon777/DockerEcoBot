@@ -98,7 +98,7 @@
                 <button type="button" id="btnSubtype"
                         class="btn w-100 text-start fw-semibold"
                         style="border:1.5px solid #cbd5e1; border-radius:10px; background:#fff; color:#475569; font-size:0.9rem;"
-                        onclick="openSubtypeModal()">
+                        data-bs-toggle="modal" data-bs-target="#subtypeModal">
                     <i class="bi bi-funnel me-1 text-primary"></i>
                     <span id="subtypeLabel">
                         {%- if active_subtypes -%}
@@ -116,6 +116,7 @@
                 <select id="sortSelect" class="form-select fw-semibold" style="font-size:0.88rem;"
                         onchange="applyFilters()">
                     <option value="default"      {% if sort_by == 'default'      %}selected{% endif %}>↓ Новые</option>
+                    <option value="old"          {% if sort_by == 'old'          %}selected{% endif %}>↑ Старые</option>
                     <option value="no_resources" {% if sort_by == 'no_resources' %}selected{% endif %}>⚠ Пустые</option>
                     <option value="rich"         {% if sort_by == 'rich'         %}selected{% endif %}>★ Богатые</option>
                 </select>
@@ -244,6 +245,22 @@
     </table>
 </div>
 
+{% if total_pages > 1 %}
+<nav aria-label="Page navigation" class="mt-4 mb-4">
+    <ul class="pagination justify-content-center shadow-sm" style="border-radius: 10px;">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+            <a class="page-link fw-bold text-primary" href="#" onclick="goToPage({{ page - 1 }}); return false;">&laquo; Назад</a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link text-dark fw-bold bg-light">Страница {{ page }} из {{ total_pages }} (Всего: {{ total_items }})</span>
+        </li>
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+            <a class="page-link fw-bold text-primary" href="#" onclick="goToPage({{ page + 1 }}); return false;">Вперед &raquo;</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
 <!-- ===== Модалка выбора подтипов ===== -->
 <div class="modal fade" id="subtypeModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
@@ -291,17 +308,18 @@
 </div>
 
 <script>
-let activeSubtypes = {{ active_subtypes | tojson }};
+let activeSubtypes = {{ active_subtypes | tojson | safe }};
 
 function openSubtypeModal() {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('subtypeModal')).show();
 }
 
 function applySubtypes() {
-    activeSubtypes = [...document.querySelectorAll('.subtype-checkbox:checked')]
+    activeSubtypes =[...document.querySelectorAll('.subtype-checkbox:checked')]
         .map(cb => cb.value);
-    bootstrap.Modal.getInstance(document.getElementById('subtypeModal')).hide();
-    // Применяем фильтры после скрытия модалки без ожидания анимации
+    
+    // Убрали строку .hide() - она вызывала ошибку при повторном открытии.
+    // Страница и так перезагрузится из-за window.location.href внутри applyFilters
     applyFilters();
 }
 
@@ -312,14 +330,21 @@ function buildParams() {
     activeSubtypes.forEach(s => params.append('filter_subtype', s));
     const sort = document.getElementById('sortSelect').value;
     if (sort && sort !== 'default') params.append('sort_by', sort);
-    // Сохраняем текущий filter_resources из URL
+    
     const fr = new URLSearchParams(window.location.search).get('filter_resources');
     if (fr) params.append('filter_resources', fr);
     return params;
 }
 
 function applyFilters() {
+    // Любое применение фильтров сбрасывает страницу на первую
     window.location.href = '/admin/geographical?' + buildParams().toString();
+}
+
+function goToPage(p) {
+    const params = buildParams();
+    params.set('page', p);
+    window.location.href = '/admin/geographical?' + params.toString();
 }
 
 function removeSubtype(value) {
