@@ -1,53 +1,175 @@
 {% extends "base.html" %}
 
-{% block title %}Новый объект (ОФФ){% endblock %}
+{% block title %}Новый объект флоры/фауны{% endblock %}
 
 {% block content %}
-<div class="card shadow-sm" style="border-radius: 16px; max-width: 800px;">
+<div class="card shadow-sm" style="border-radius: 16px; max-width: 900px;">
     <div class="card-body p-5">
-        <h4 class="fw-bold mb-4 text-primary">Создание биологического объекта</h4>
-        
+        <h4 class="fw-bold mb-4" style="color:#10b981;">Создание объекта флоры / фауны</h4>
+
         <form action="/admin/biological/save" method="post">
+
+            <!-- Русское название -->
             <div class="row mb-4">
-                <div class="col-md-6">
+                <div class="col-md-12">
                     <label class="form-label fw-bold text-secondary small">РУССКОЕ НАЗВАНИЕ *</label>
-                    <input type="text" class="form-control form-control-lg" name="common_name_ru" placeholder="Напр: Байкальская нерпа" required>
-                </div>
-                <div class="col-md-6">
-                    <label class="form-label fw-bold text-secondary small">ЛАТИНСКОЕ НАЗВАНИЕ</label>
-                    <input type="text" class="form-control form-control-lg" name="scientific_name" placeholder="Напр: Pusa sibirica">
+                    <input type="text" class="form-control form-control-lg" name="name_ru"
+                           placeholder="Напр: Байкальская нерпа" required>
                 </div>
             </div>
 
+            <!-- Тип и научное название -->
             <div class="row mb-4">
                 <div class="col-md-6">
-                    <label class="form-label fw-bold text-secondary small">КАТЕГОРИЯ (ТИП) *</label>
-                    <select class="form-select form-select-lg" name="type" required>
-                        <option value="Объект флоры">🌿 Флора (Растения)</option>
-                        <option value="Объект фауны">🐾 Фауна (Животные)</option>
+                    <label class="form-label fw-bold text-secondary small">ТИП *</label>
+                    <select class="form-select form-select-lg" name="bio_type" id="bioTypeSelect" required onchange="updateSubtypeHint()">
+                        <option value="">— выберите —</option>
+                        <option value="Объект флоры">🌿 Объект флоры</option>
+                        <option value="Объект фауны">🐾 Объект фауны</option>
                     </select>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label fw-bold text-secondary small">ОХРАННЫЙ СТАТУС</label>
-                    <input type="text" class="form-control form-control-lg" name="status" placeholder="Напр: Красная книга Иркутской области">
+                    <label class="form-label fw-bold text-secondary small">НАУЧНОЕ (ЛАТИНСКОЕ) НАЗВАНИЕ</label>
+                    <input type="text" class="form-control form-control-lg" name="scientific_name"
+                           placeholder="Напр: Pusa sibirica" style="font-style:italic;">
                 </div>
             </div>
 
+            <!-- Подтипы -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <label class="form-label fw-bold text-secondary small">ПОДТИПЫ</label>
+                    <input type="text" class="form-control form-control-lg" name="subtypes"
+                           id="subtypesInput"
+                           list="subtypesList"
+                           placeholder="Через запятую, напр: Млекопитающие, Рыбы">
+                    <datalist id="subtypesList">
+                        {% for s in subtypes_options %}
+                        <option value="{{ s }}"></option>
+                        {% endfor %}
+                    </datalist>
+                    <div class="form-text text-muted mt-1">
+                        <i class="bi bi-info-circle"></i> Несколько подтипов разделяйте запятыми.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Охранный статус -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <label class="form-label fw-bold text-secondary small">ОХРАННЫЙ СТАТУС</label>
+                    <input type="text" class="form-control form-control-lg" name="conservation_status"
+                           placeholder="Напр: Красная книга РФ, МСОП (CR)">
+                </div>
+            </div>
+
+            <!-- Регион и отношение к Байкалу -->
+            <div class="row mb-4">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold text-secondary small">РЕГИОН</label>
+                    <input type="text" class="form-control form-control-lg" name="region"
+                           list="regionList"
+                           placeholder="Напр: Иркутская область">
+                    <datalist id="regionList">
+                        {% for r in region_options %}
+                        <option value="{{ r }}"></option>
+                        {% endfor %}
+                    </datalist>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold text-secondary small">ОТНОШЕНИЕ К БАЙКАЛУ</label>
+                    <select class="form-select form-select-lg" name="baikal_relation">
+                        <option value="">— не указано —</option>
+                        {% for br in baikal_relation_options %}
+                        <option value="{{ br }}">{{ br }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Описание -->
             <div class="mb-4">
-                <label class="form-label fw-bold text-secondary small">КРАТКАЯ СПРАВКА</label>
-                <textarea class="form-control" name="description" rows="4" placeholder="Базовое описание объекта..."></textarea>
+                <label class="form-label fw-bold text-secondary small">ОПИСАНИЕ</label>
+                <textarea class="form-control" name="description" rows="4"
+                          placeholder="Краткое описание вида..."></textarea>
                 <div class="form-text text-muted mt-2">
-                    <i class="bi bi-info-circle"></i> Подробные энциклопедические статьи и фотографии вы сможете привязать к объекту на следующем шаге.
+                    <i class="bi bi-info-circle"></i> Описание сохраняется как отдельный ресурс-текст. Подробные материалы, фотографии и ареалы обитания можно привязать на следующем шаге.
+                </div>
+            </div>
+
+            <!-- Метаданные ресурса-описания (аккордеон) -->
+            <div class="accordion mb-4" id="metadataAccordion">
+                <div class="accordion-item border-0">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed bg-light fw-bold small text-secondary" type="button"
+                                data-bs-toggle="collapse" data-bs-target="#metadataCollapse">
+                            <i class="bi bi-journal-text me-2"></i> Метаданные ресурса-описания (автор, источник, дата, достоверность)
+                        </button>
+                    </h2>
+                    <div id="metadataCollapse" class="accordion-collapse collapse" data-bs-parent="#metadataAccordion">
+                        <div class="accordion-body">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-secondary small">АВТОР</label>
+                                    <input type="text" class="form-control" name="author" list="authorsList" placeholder="Admin Panel">
+                                    <datalist id="authorsList">
+                                        {% for a in authors %}
+                                        <option value="{{ a }}"></option>
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-secondary small">ИСТОЧНИК</label>
+                                    <input type="text" class="form-control" name="source" list="sourcesList" placeholder="Admin Panel">
+                                    <datalist id="sourcesList">
+                                        {% for s in sources %}
+                                        <option value="{{ s }}"></option>
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-secondary small">ДАТА</label>
+                                    <input type="date" class="form-control" name="date">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold text-secondary small">ДОСТОВЕРНОСТЬ</label>
+                                    <input type="text" class="form-control" name="reliability" list="reliabilityList" placeholder="средняя">
+                                    <datalist id="reliabilityList">
+                                        {% for r in reliability_options %}
+                                        <option value="{{ r }}"></option>
+                                        {% endfor %}
+                                    </datalist>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="d-flex justify-content-between align-items-center mt-5 pt-3 border-top">
                 <a href="/admin/biological" class="btn btn-light text-secondary fw-bold px-4 py-2">Отмена</a>
-                <button type="submit" class="btn btn-primary px-5 py-2 fw-bold" style="background: var(--accent);">
+                <button type="submit" class="btn fw-bold px-5 py-2"
+                        style="background:#10b981; color:#fff; border-radius:10px;">
                     💾 Сохранить и продолжить
                 </button>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+function updateSubtypeHint() {
+    const type = document.getElementById('bioTypeSelect').value;
+    const input = document.getElementById('subtypesInput');
+    if (type === 'Флора') {
+        input.placeholder = 'Напр: Хвойные деревья, Мхи и лишайники';
+    } else if (type === 'Фауна') {
+        input.placeholder = 'Напр: Млекопитающие, Рыбы';
+    } else {
+        input.placeholder = 'Через запятую';
+    }
+}
+</script>
 {% endblock %}

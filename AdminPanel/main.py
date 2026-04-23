@@ -34,8 +34,9 @@ from models.eco_assistant_models import (
 from heartbeat import BotHeartbeat
 from dotenv import load_dotenv
 
-# Константа: id типа «Географический объект» в eco_assistant.object_type
-GEO_OBJECT_TYPE_ID = 2
+# Константы типов объектов в eco_assistant.object_type
+BIO_OBJECT_TYPE_ID = 1  # «Объект флоры и фауны»
+GEO_OBJECT_TYPE_ID = 2  # «Географический объект»
 
 app = FastAPI()
 load_dotenv()
@@ -222,45 +223,157 @@ async def save_config(request: Request, data: dict = Body(...)):
         raise HTTPException(status_code=500, detail="Ошибка сохранения конфига")
 
 # ==========================================
-# CMS: ФЛОРА И ФАУНА (MVP)
+# CMS: ФЛОРА И ФАУНА (eco_assistant схема)
 # ==========================================
 
 @app.get("/biological", response_class=HTMLResponse)
 async def biological_list(
-    request: Request, 
-    search: str = None, 
-    filter_type: str = None, 
-    db: AsyncSession = Depends(get_db)
+    request: Request,
+    search: str = None,
+    filter_type: str = None,
+    filter_resources: str = None,
+    sort_by: str = "default",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
 ):
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-    
     bot_online = await is_bot_online_redis()
-    
-    # Базовый запрос
-    query = select(BiologicalEntity)
 
-    # 1. Применяем текстовый поиск (по русскому ИЛИ латинскому названию)
-    if search:
+    # 1. Счётчики ресурсов по каждому объекту
+    counts_raw = await db.execute(sql_text("""
+        SELECT ro.object_id,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS text_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS image_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo_count
+        FROM eco_assistant.resource_object ro
+        JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
+        JOIN eco_assistant.modality m ON m.id = rv.modality_id
+        JOIN eco_assistant.object o ON o.id = ro.object_id
+        WHERE o.object_type_id = :otid
+        GROUP BY ro.object_id
+    """), {"otid": BIO_OBJECT_TYPE_ID})
+    resource_counts: dict[int, dict] = {
+        row.object_id: {"text": int(row.text_count), "image": int(row.image_count), "geo": int(row.geo_count)}
+        for row in counts_raw
+    }
+
+    # 2. Глобальная статистика (включая разбивку Флора/Фауна)
+    stats_raw = await db.execute(sql_text("""
+        WITH rs AS (
+            SELECT o.id, o.object_properties,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS txt,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS img,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo
+            FROM eco_assistant.object o
+            LEFT JOIN eco_assistant.resource_object ro ON ro.object_id = o.id
+            LEFT JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
+            LEFT JOIN eco_assistant.modality m ON m.id = rv.modality_id
+            WHERE o.object_type_id = :otid
+            GROUP BY o.id, o.object_properties
+        )
+        SELECT COUNT(*) AS total,
+               COUNT(*) FILTER (WHERE txt  > 0) AS has_text,
+               COUNT(*) FILTER (WHERE img  > 0) AS has_image,
+               COUNT(*) FILTER (WHERE geo  > 0) AS has_geo,
+               COUNT(*) FILTER (WHERE txt = 0 AND img = 0 AND geo = 0) AS no_resources,
+               COUNT(*) FILTER (WHERE object_properties->>'Тип ОФФ' = 'Объект флоры') AS flora_count,
+               COUNT(*) FILTER (WHERE object_properties->>'Тип ОФФ' = 'Объект фауны') AS fauna_count
+        FROM rs
+    """), {"otid": BIO_OBJECT_TYPE_ID})
+    sr = stats_raw.first()
+    stats = {
+        "total":        int(sr.total),
+        "has_text":     int(sr.has_text),
+        "has_image":    int(sr.has_image),
+        "has_geo":      int(sr.has_geo),
+        "no_resources": int(sr.no_resources),
+        "flora":        int(sr.flora_count),
+        "fauna":        int(sr.fauna_count),
+    }
+
+    # 3. Основной запрос
+    total_res_sq = (
+        select(func.count(func.distinct(resource_object_table.c.resource_id)))
+        .where(resource_object_table.c.object_id == Object.id)
+        .correlate(Object)
+        .scalar_subquery()
+    )
+    query = (
+        select(Object.id, Object.db_id, Object.object_properties,
+               func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
+               total_res_sq.label("total_resources"))
+        .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
+        .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
+        .where(Object.object_type_id == BIO_OBJECT_TYPE_ID)
+        .group_by(Object.id)
+    )
+
+    # 4. Фильтры
+    if filter_type and filter_type != "all":
+        type_val = "Объект флоры" if filter_type == "flora" else "Объект фауны"
         query = query.where(
-            or_(
-                BiologicalEntity.common_name_ru.ilike(f"%{search}%"),
-                BiologicalEntity.scientific_name.ilike(f"%{search}%")
+            func.jsonb_path_exists(
+                Object.object_properties,
+                sql_text("""'$."Тип ОФФ" ? (@ == $val)'"""),
+                func.jsonb_build_object("val", type_val),
             )
         )
 
-    # 2. Применяем фильтр по категории
-    if filter_type and filter_type != "all":
-        if filter_type == "flora":
-            query = query.where(BiologicalEntity.type.ilike("%флор%"))
-        elif filter_type == "fauna":
-            query = query.where(BiologicalEntity.type.ilike("%фаун%"))
+    if filter_resources == "none":
+        query = query.where(
+            Object.id.notin_(select(resource_object_table.c.object_id).distinct())
+        )
+    elif filter_resources in ("has_text", "has_image", "has_geo"):
+        key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
+        ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
+        query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
 
-    # Сортировка от новых к старым
-    query = query.order_by(BiologicalEntity.id.desc())
-    
-    result = await db.execute(query)
-    entities = result.scalars().all()
+    if search:
+        matching_ids = (
+            select(object_name_synonym_link.c.object_id)
+            .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id)
+            .where(ObjectNameSynonym.synonym.ilike(f"%{search}%"))
+        )
+        query = query.where(Object.id.in_(matching_ids))
+
+    # 5. Сортировка
+    if sort_by == "no_resources":
+        query = query.order_by(total_res_sq.asc(), Object.id.desc())
+    elif sort_by == "rich":
+        query = query.order_by(total_res_sq.desc(), Object.id.desc())
+    elif sort_by == "old":
+        query = query.order_by(Object.id.asc())
+    else:
+        query = query.order_by(Object.id.desc())
+
+    # 6. Пагинация
+    count_query = select(func.count()).select_from(query.order_by(None).subquery())
+    total_items = await db.scalar(count_query)
+    page_size = 50
+    total_pages = max(1, (total_items + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    query = query.limit(page_size).offset((page - 1) * page_size)
+    rows = (await db.execute(query)).all()
+
+    entities = []
+    for row in rows:
+        synonyms = [s for s in (row.synonyms or []) if s]
+        props = row.object_properties or {}
+        c = resource_counts.get(row.id, {"text": 0, "image": 0, "geo": 0})
+        entities.append({
+            "id": row.id,
+            "db_id": row.db_id,
+            "name_ru": _primary_synonym(synonyms),
+            "synonyms": synonyms,
+            "object_properties": props,
+            "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
+            "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
+            "text_count": c["text"],
+            "image_count": c["image"],
+            "geo_count": c["geo"],
+            "total_resources": int(row.total_resources or 0),
+        })
 
     return templates.TemplateResponse("biological_list.html", {
         "request": request,
@@ -268,270 +381,484 @@ async def biological_list(
         "bot_online": bot_online,
         "entities": entities,
         "search": search or "",
-        "filter_type": filter_type or "all"
+        "filter_type": filter_type or "all",
+        "filter_resources": filter_resources or "",
+        "sort_by": sort_by,
+        "stats": stats,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
     })
 
+
 @app.get("/biological/new", response_class=HTMLResponse)
-async def biological_new(request: Request):
-    """Страница с формой создания нового объекта"""
+async def biological_new(request: Request, db: AsyncSession = Depends(get_db)):
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
     bot_online = await is_bot_online_redis()
+
+    subtypes_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, "subtypes")
+    region_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, "region")
+    baikal_relation_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, "baikal_relation")
+    authors = (await db.execute(select(Author.name).order_by(Author.name))).scalars().all()
+    sources = (await db.execute(select(Source.name).order_by(Source.name))).scalars().all()
+    reliability_options = (await db.execute(select(ReliabilityLevel.name).order_by(ReliabilityLevel.name))).scalars().all()
+
     return templates.TemplateResponse("biological_form.html", {
-        "request": request, 
-        "active_page": "biological", 
-        "bot_online": bot_online, 
-        "entity": None # Передаем None, так как это создание, а не редактирование
+        "request": request,
+        "active_page": "biological",
+        "bot_online": bot_online,
+        "entity": None,
+        "subtypes_options": sorted(subtypes_options, key=str.lower),
+        "region_options": sorted(region_options, key=str.lower),
+        "baikal_relation_options": baikal_relation_options,
+        "authors": authors,
+        "sources": sources,
+        "reliability_options": reliability_options,
     })
+
 
 @app.post("/biological/save")
 async def biological_save(
-    request: Request, 
-    common_name_ru: str = Form(...),
-    scientific_name: str = Form(""),
-    type: str = Form(...),
-    status: str = Form(""),
-    description: str = Form(""),
-    db: AsyncSession = Depends(get_db)
-):
-    """Сохранение базового <Описания объекта> в базу"""
-    if not request.session.get("user_id"):
-        return RedirectResponse(url="/login")
-        
-    # 1. Создаем сам объект (ОФФ)
-    new_entity = BiologicalEntity(
-        common_name_ru=common_name_ru,
-        scientific_name=scientific_name,
-        type=type,
-        status=status,
-        description=description,
-        feature_data={} # Пустой JSONB, сюда потом лягут <Признаки ресурса>
-    )
-    db.add(new_entity)
-    await db.commit()
-    
-    # После создания возвращаем пользователя к списку
-    return RedirectResponse(url=f"/biological/{new_entity.id}", status_code=303)
-
-@app.post("/biological/{entity_id}/add_text")
-async def biological_add_text(
     request: Request,
-    entity_id: int,
-    title: str = Form(...),
-    content: str = Form(...),
-    db: AsyncSession = Depends(get_db)
+    name_ru: str = Form(...),
+    bio_type: str = Form(...),
+    subtypes: str = Form(""),
+    scientific_name: str = Form(""),
+    conservation_status: str = Form(""),
+    region: str = Form(""),
+    baikal_relation: str = Form(""),
+    description: str = Form(""),
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    РЕАЛИЗАЦИЯ ИНФОРМАЦИОННОЙ МОДЕЛИ:
-    Сборка <Ресурса> = <Объект> + <Модальность> + <Связь>
-    """
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
-    # 1. Создаем <Описание модальности> (Текст)
-    new_text = TextContent(
-        title=title, 
-        content=content, 
-        feature_data={}
+
+    obj = Object(
+        db_id=f"BIO_OBJ_{secrets.token_hex(6)}",
+        object_type_id=BIO_OBJECT_TYPE_ID,
+        object_properties=_build_bio_object_properties(
+            bio_type.strip(),
+            _parse_subtypes(subtypes),
+            scientific_name.strip() or None,
+            conservation_status.strip() or None,
+            region.strip() or None,
+            baikal_relation.strip() or None,
+        ),
     )
-    db.add(new_text)
-    await db.flush() # Получаем ID нового текста (new_text.id) без полного коммита транзакции
-    
-    # 2. Создаем связующее звено
-    relation = EntityRelation(
-        source_id=new_text.id,
-        source_type="text_content",
-        target_id=entity_id,
-        target_type="biological_entity",
-        relation_type="описание объекта"
-    )
-    db.add(relation)
-    await db.commit()
-    
-    return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+    db.add(obj)
+    await db.flush()
 
-@app.get("/biological/{entity_id}", response_class=HTMLResponse)
-async def biological_edit(request: Request, entity_id: int, db: AsyncSession = Depends(get_db)):
-    """Карточка объекта: просмотр и управление связанными ресурсами"""
-    if not request.session.get("user_id"):
-        return RedirectResponse(url="/login")
-        
-    bot_online = await is_bot_online_redis()
-    
-    result = await db.execute(select(BiologicalEntity).where(BiologicalEntity.id == entity_id))
-    entity = result.scalars().first()
-    
-    if not entity:
-        raise HTTPException(status_code=404, detail="Объект не найден")
+    syn = ObjectNameSynonym(synonym=name_ru, language="ru")
+    db.add(syn)
+    await db.flush()
+    await db.execute(insert(object_name_synonym_link).values(object_id=obj.id, synonym_id=syn.id))
 
-    # ИСПРАВЛЕНО: Теперь ищем от текста (source) к объекту (target)
-    text_query = (
-        select(TextContent)
-        .join(EntityRelation, (EntityRelation.source_id == TextContent.id) & (EntityRelation.source_type == 'text_content'))
-        .where((EntityRelation.target_id == entity_id) & (EntityRelation.target_type == 'biological_entity'))
-    )
-    texts = (await db.execute(text_query)).scalars().all()
-
-    # ИСПРАВЛЕНО: Теперь ищем от картинки (source) к объекту (target)
-    image_query = (
-        select(ImageContent, EntityIdentifier.file_path)
-        .join(EntityRelation, (EntityRelation.source_id == ImageContent.id) & (EntityRelation.source_type == 'image_content'))
-        .outerjoin(EntityIdentifierLink, (EntityIdentifierLink.entity_id == ImageContent.id) & (EntityIdentifierLink.entity_type == 'image_content'))
-        .outerjoin(EntityIdentifier, EntityIdentifier.id == EntityIdentifierLink.identifier_id)
-        .where((EntityRelation.target_id == entity_id) & (EntityRelation.target_type == 'biological_entity'))
-    )
-    images_result = await db.execute(image_query)
-    
-    # Формируем удобный список словарей для шаблона: [{"data": ImageContent, "url": "https..."}]
-    images =[{"data": img, "url": url} for img, url in images_result.all()]
-
-    geo_links_query = (
-        select(EntityGeo)
-        .where((EntityGeo.entity_id == entity_id) & (EntityGeo.entity_type == 'biological_entity'))
-    )
-    links = (await db.execute(geo_links_query)).scalars().all()
-    
-    locations = []
-
-    for link in links:
-        geo_id = link.geographical_entity_id
-        geo_res = await db.execute(select(GeographicalEntity).where(GeographicalEntity.id == geo_id))
-        geo_obj = geo_res.scalars().first()
-        if not geo_obj:
-            continue
-
-        location_item = {
-            "name_ru": geo_obj.name_ru,
-            "type": geo_obj.type or "Локация",
-            "is_map": False,
-            "geo_id": geo_id,
-            "feature_data": geo_obj.feature_data  # добавляем
-        }
-
-        # Проверяем карту (как раньше)
-        map_link_query = select(EntityGeo).where(
-            EntityGeo.entity_type == 'map_content',
-            EntityGeo.geographical_entity_id == geo_id
+    if description.strip():
+        parsed_date = None
+        if date.strip():
+            try:
+                parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = None
+        res = await _create_resource_scaffold(
+            db, title=name_ru, author_name=author.strip(),
+            source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date,
         )
-        map_link = (await db.execute(map_link_query)).scalars().first()
-        if map_link:
-            map_res = await db.execute(select(MapContent).where(MapContent.id == map_link.entity_id))
-            map_obj = map_res.scalars().first()
-            if map_obj:
-                location_item["is_map"] = True
-                location_item["map_id"] = map_obj.id
-                # Если у карты тоже есть feature_data, можно добавить:
-                # location_item["map_feature_data"] = map_obj.feature_data
-        locations.append(location_item)
+        await _attach_text_to_object(db, object_id=obj.id, resource=res, structured_data={"description": description})
+
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{obj.id}", status_code=303)
+
+
+@app.get("/biological/{object_id}", response_class=HTMLResponse)
+async def biological_edit(request: Request, object_id: int, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+
+    obj = (await db.execute(select(Object).where(Object.id == object_id))).scalar()
+    if not obj or obj.object_type_id != BIO_OBJECT_TYPE_ID:
+        raise HTTPException(status_code=404, detail="Биологический объект не найден")
+
+    synonyms = (await db.execute(
+        select(ObjectNameSynonym.synonym)
+        .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
+        .where(object_name_synonym_link.c.object_id == object_id)
+    )).scalars().all()
+
+    props = obj.object_properties or {}
+    entity = {
+        "id": obj.id,
+        "db_id": obj.db_id,
+        "name_ru": _primary_synonym(list(synonyms)),
+        "synonyms": list(synonyms),
+        "object_properties": props,
+        "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
+        "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
+        "conservation_status": props.get("conservation_status", "") if isinstance(props, dict) else "",
+        "subtypes": props.get("subtypes", []) if isinstance(props, dict) else [],
+    }
+
+    texts_q = (
+        select(Resource.id.label("resource_id"), Resource.title, Resource.features, TextValue.structured_data)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(TextValue, TextValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Текст")
+        .order_by(Resource.id.desc())
+    )
+    texts = []
+    for row in (await db.execute(texts_q)).all():
+        sd = row.structured_data or {}
+        content = sd.get("description") if isinstance(sd, dict) else None
+        texts.append({
+            "id": row.resource_id,
+            "title": row.title or "Без заголовка",
+            "content": content,
+            "structured_data": sd if isinstance(sd, dict) and not (len(sd) == 1 and "description" in sd) else None,
+            "feature_data": row.features or {},
+        })
+
+    images_q = (
+        select(Resource.id.label("resource_id"), Resource.title, Resource.features, ImageValue.url, ImageValue.file_path)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(ImageValue, ImageValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Изображение")
+        .order_by(Resource.id.desc())
+    )
+    images = []
+    for row in (await db.execute(images_q)).all():
+        url = row.url or row.file_path or ""
+        images.append({
+            "data": {"id": row.resource_id, "title": row.title or "Без названия", "feature_data": row.features or {}},
+            "url": url,
+        })
+
+    geos_q = (
+        select(Resource.id.label("resource_id"), Resource.title, Resource.features,
+               GeodataValue.id.label("geodata_id"), GeodataValue.geometry_type)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(GeodataValue, GeodataValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Геоданные")
+        .order_by(Resource.id.desc())
+    )
+    locations = []
+    for row in (await db.execute(geos_q)).all():
+        locations.append({
+            "resource_id": row.resource_id,
+            "geodata_id": row.geodata_id,
+            "name_ru": row.title or "Ареал",
+            "type": row.geometry_type or "Геометрия",
+            "is_map": True,
+            "geo_id": row.geodata_id,
+            "map_id": row.geodata_id,
+            "feature_data": row.features or {},
+        })
 
     return templates.TemplateResponse("biological_edit.html", {
-        "request": request, 
-        "active_page": "biological", 
-        "bot_online": bot_online, 
+        "request": request,
+        "active_page": "biological",
+        "bot_online": bot_online,
         "entity": entity,
         "texts": texts,
         "images": images,
-        "locations": locations
+        "locations": locations,
     })
 
-@app.post("/biological/{entity_id}/add_image")
-async def biological_add_image(
+
+@app.post("/biological/{object_id}/add_text")
+async def biological_add_text(
     request: Request,
-    entity_id: int,
+    object_id: int,
     title: str = Form(...),
-    image_url: str = Form(...),
-    db: AsyncSession = Depends(get_db)
+    content: str = Form(...),
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
 ):
-    """
-    Добавление изображения с сохранением названий объекта в entity_identifier
-    """
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-        
-    # 1. Сначала достаем информацию об объекте, чтобы узнать его названия
-    result = await db.execute(select(BiologicalEntity).where(BiologicalEntity.id == entity_id))
-    entity = result.scalars().first()
-    
-    if not entity:
-        raise HTTPException(status_code=404, detail="Объект не найден")
-
-    # 2. Создаем ImageContent
-    new_image = ImageContent(
-        title=title,
-        description="Добавлено через админ-панель",
-        feature_data={"source": "Admin Panel"} 
+    await _ensure_bio_object_exists(db, object_id)
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+    res = await _create_resource_scaffold(
+        db, title=title, author_name=author.strip(),
+        source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date,
     )
-    db.add(new_image)
-    await db.flush() 
-    
-    # 3. Привязываем картинку к биологическому объекту (relation)
-    relation = EntityRelation(
-        source_id=new_image.id,
-        source_type="image_content",
-        target_id=entity_id,
-        target_type="biological_entity",
-        relation_type="изображение объекта"
-    )
-    db.add(relation)
+    await _attach_text_to_object(db, object_id=object_id, resource=res, structured_data={"description": content})
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{object_id}", status_code=303)
 
-    # 4. Создаем запись в entity_identifier
-    # ИСПОЛЬЗУЕМ ДАННЫЕ ИЗ entity, КОТОРЫЕ ДОСТАЛИ ВЫШЕ
-    new_identifier = EntityIdentifier(
-        file_path=image_url,
-        name_ru=entity.common_name_ru,    # Название из карточки объекта
-        name_latin=entity.scientific_name # Латынь из карточки объекта
-    )
-    db.add(new_identifier)
-    await db.flush() 
 
-    # 5. Связываем картинку с её новым идентификатором
-    identifier_link = EntityIdentifierLink(
-        entity_id=new_image.id,
-        entity_type="image_content",
-        identifier_id=new_identifier.id
+@app.post("/biological/{object_id}/add_image")
+async def biological_add_image(
+    request: Request,
+    object_id: int,
+    title: str = Form(...),
+    image_url: str = Form(...),
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _ensure_bio_object_exists(db, object_id)
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+    fmt = image_url.rsplit(".", 1)[-1].lower() if "." in image_url.rsplit("/", 1)[-1] else None
+    res = await _create_resource_scaffold(
+        db, title=title, author_name=author.strip(),
+        source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date,
     )
-    db.add(identifier_link)
+    await _attach_image_to_object(db, object_id=object_id, resource=res, url=image_url, file_path=None, fmt=fmt)
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{object_id}", status_code=303)
 
-    await db.commit() 
-    
+
+@app.post("/biological/{object_id}/add_geo")
+async def biological_add_geo(
+    request: Request,
+    object_id: int,
+    title: str = Form(...),
+    geojson: str = Form(...),
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _ensure_bio_object_exists(db, object_id)
+    try:
+        parsed_geojson = json.loads(geojson)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный GeoJSON: {exc}")
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+    res = await _create_resource_scaffold(
+        db, title=title, author_name=author.strip(),
+        source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date,
+    )
+    await _attach_geodata_to_object(db, object_id=object_id, resource=res, geojson=parsed_geojson,
+                                    relation_type="ареал обитания вида")
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{object_id}", status_code=303)
+
+
+@app.post("/biological/resource/delete/text/{resource_id}")
+async def delete_biological_text_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
     return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
+
+@app.post("/biological/resource/delete/image/{resource_id}")
+async def delete_biological_image_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
+
+@app.post("/biological/resource/delete/geo/{resource_id}")
+async def delete_biological_geo_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
+
+@app.post("/biological/resource/edit/text/{resource_id}")
+async def edit_biological_text_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    title: str = Form(...),
+    content: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        tv = (await db.execute(select(TextValue).where(TextValue.id == rv.value_id))).scalar()
+        if tv:
+            tv.structured_data = {"description": content}
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
+
+@app.post("/biological/resource/edit/image/{resource_id}")
+async def edit_biological_image_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    title: str = Form(...),
+    image_url: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        iv = (await db.execute(select(ImageValue).where(ImageValue.id == rv.value_id))).scalar()
+        if iv:
+            iv.url = image_url
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
+
+@app.post("/biological/resource/edit/geo/{resource_id}")
+async def edit_biological_geo_resource(
+    request: Request,
+    resource_id: int,
+    entity_id: int = Form(...),
+    title: str = Form(...),
+    geojson: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    try:
+        json.loads(geojson)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный GeoJSON: {exc}")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        await db.execute(
+            sql_text("UPDATE eco_assistant.geodata_value SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(:gj), 4326) WHERE id = :id"),
+            {"gj": geojson, "id": rv.value_id},
+        )
+    await db.commit()
+    return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
+
+@app.post("/biological/get-map-html")
+async def get_biological_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
+    geodata_id = data.get("geodata_id") or data.get("map_id")
+    if not geodata_id:
+        return {"html": "<p>Идентификатор геоданных не указан</p>"}
+    gv = (await db.execute(select(GeodataValue).where(GeodataValue.id == int(geodata_id)))).scalar()
+    if not gv:
+        return {"html": "<p>Геометрия не найдена</p>"}
+    geojson_data = await db.scalar(select(func.ST_AsGeoJSON(gv.geometry)))
+    if not geojson_data:
+        return {"html": "<p>Геометрия отсутствует</p>"}
+    geometry_geojson = json.loads(geojson_data)
+    bounds = _geojson_bounds(geometry_geojson)
+    m = folium.Map(tiles="OpenStreetMap")
+    if bounds:
+        sw, ne = bounds
+        if sw == ne:
+            buf = 0.02
+            m.fit_bounds([[sw[0] - buf, sw[1] - buf], [ne[0] + buf, ne[1] + buf]])
+        else:
+            m.fit_bounds([sw, ne], padding=(30, 30))
+    else:
+        m.location = [53.5, 108.0]
+        m.zoom_start = 9
+    folium.GeoJson(geometry_geojson, style_function=lambda f: {
+        "color": "#10b981", "weight": 3, "fillColor": "#34d399", "fillOpacity": 0.3
+    }).add_to(m)
+    return {"html": m._repr_html_()}
+
+
+@app.get("/biological/resource/geo/{geodata_id}/geojson")
+async def get_bio_geo_resource_geojson(geodata_id: int, db: AsyncSession = Depends(get_db)):
+    geojson_str = await db.scalar(
+        select(func.ST_AsGeoJSON(GeodataValue.geometry)).where(GeodataValue.id == geodata_id)
+    )
+    if not geojson_str:
+        raise HTTPException(status_code=404, detail="Геометрия не найдена")
+    return {"geojson": json.loads(geojson_str)}
+
 
 @app.post("/resource/delete/image/{image_id}")
 async def delete_image_resource(
     request: Request,
     image_id: int,
-    entity_id: int = Form(...), # Чтобы знать, куда вернуться
+    entity_id: int = Form(...),
     db: AsyncSession = Depends(get_db)
 ):
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
-
-    # 1. Удаляем связи из entity_relation
     await db.execute(delete(EntityRelation).where(
         (EntityRelation.source_id == image_id) & (EntityRelation.source_type == 'image_content')
     ))
-
-    # 2. Находим и удаляем идентификаторы (ссылки)
-    # Сначала найдем ID идентификатора через линк
     link_result = await db.execute(select(EntityIdentifierLink).where(
         (EntityIdentifierLink.entity_id == image_id) & (EntityIdentifierLink.entity_type == 'image_content')
     ))
     links = link_result.scalars().all()
-    
     for link in links:
         await db.execute(delete(EntityIdentifier).where(EntityIdentifier.id == link.identifier_id))
-    
-    # 3. Удаляем сами линки
     await db.execute(delete(EntityIdentifierLink).where(
         (EntityIdentifierLink.entity_id == image_id) & (EntityIdentifierLink.entity_type == 'image_content')
     ))
-
-    # 4. Удаляем саму запись ImageContent
     await db.execute(delete(ImageContent).where(ImageContent.id == image_id))
-
     await db.commit()
     return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
+
 
 @app.post("/resource/delete/text/{text_id}")
 async def delete_text_modality(
@@ -540,39 +867,14 @@ async def delete_text_modality(
     entity_id: int = Form(...),
     db: AsyncSession = Depends(get_db)
 ):
-    # Временно отключаем проверку аутентификации для отладки
-    # if not request.session.get("user_id"):
-    #     return RedirectResponse(url="/login")
-    request.session["user_id"] = "debug_admin"
-
-    # 1. Удаляем связь из entity_relation (разрываем связку Ресурса)
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
     await db.execute(delete(EntityRelation).where(
         (EntityRelation.source_id == text_id) & (EntityRelation.source_type == 'text_content')
     ))
-
-    # 2. Удаляем саму текстовую модальность из text_content
     await db.execute(delete(TextContent).where(TextContent.id == text_id))
-
     await db.commit()
     return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
-
-@app.post("/biological/get-map-html")
-async def get_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
-    map_id = data.get("map_id")
-    result = await db.execute(select(MapContent).where(MapContent.id == map_id))
-    map_obj = result.scalars().first()
-    if not map_obj:
-        return {"html": "<p>Карта не найдена</p>"}
-    
-    # Преобразуем PostGIS геометрию в GeoJSON
-    geojson_data = await db.scalar(select(func.ST_AsGeoJSON(map_obj.geometry)))
-    if not geojson_data:
-        return {"html": "<p>Геометрия отсутствует</p>"}
-    
-    geometry_geojson = json.loads(geojson_data)
-    m = folium.Map(location=[53.2, 107.3], zoom_start=9, tiles="OpenStreetMap")
-    folium.GeoJson(geometry_geojson).add_to(m)
-    return {"html": m._repr_html_()}
 
 # ==========================================
 # HELPERS: работа со схемой eco_assistant
@@ -763,6 +1065,33 @@ def _primary_synonym(synonyms: list[str]) -> str:
     if not synonyms:
         return "Без названия"
     return max(synonyms, key=len)
+
+
+def _build_bio_object_properties(type_: str, subtypes: list[str], scientific_name: str | None,
+                                  conservation_status: str | None, region: str | None,
+                                  baikal_relation: str | None) -> dict:
+    """Собрать словарь object.object_properties для биологического объекта."""
+    props: dict = {"Тип ОФФ": type_}
+    if subtypes:
+        props["subtypes"] = subtypes
+    if scientific_name:
+        props["scientific_name"] = scientific_name
+    if conservation_status:
+        props["conservation_status"] = conservation_status
+    if region:
+        props["region"] = region
+    if baikal_relation:
+        props["baikal_relation"] = baikal_relation
+    return props
+
+
+async def _ensure_bio_object_exists(db: AsyncSession, object_id: int):
+    """Проверить, что объект с данным id существует и является биологическим."""
+    obj = (await db.execute(
+        select(Object.id).where(Object.id == object_id, Object.object_type_id == BIO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Биологический объект не найден")
 
 
 # ==========================================

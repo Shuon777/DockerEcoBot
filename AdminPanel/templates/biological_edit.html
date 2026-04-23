@@ -1,10 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Карточка: {{ entity.common_name_ru }}{% endblock %}
+{% block title %}Карточка: {{ entity.name_ru }}{% endblock %}
 
 {% block content %}
 <style>
-    /* Стили для дерева признаков */
     .feature-object, .feature-array {
         list-style: none;
         padding-left: 20px;
@@ -15,9 +14,8 @@
         margin: 4px 0;
     }
     .feature-value {
-        color: #2563eb;
+        color: #10b981;
     }
-    /* Чтобы карта занимала всю модалку */
     #mapModalBody {
         padding: 0;
         overflow: hidden;
@@ -32,7 +30,12 @@
     }
 </style>
 
-<!-- ========== МАКРОСЫ ДЛЯ ОТОБРАЖЕНИЯ ПРИЗНАКОВ ========== -->
+<!-- Leaflet + Leaflet-Geoman -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.16.0/dist/leaflet-geoman.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.16.0/dist/leaflet-geoman.min.js"></script>
+
 {% macro render_feature_value(value) %}
     {% if value is mapping %}
         <ul class="feature-object">
@@ -85,7 +88,6 @@
     </div>
 </div>
 {% endmacro %}
-<!-- ========== КОНЕЦ МАКРОСОВ ========== -->
 
 <div class="mb-4">
     <a href="/admin/biological" class="text-decoration-none text-secondary fw-bold">
@@ -94,41 +96,86 @@
 </div>
 
 <div class="row g-4">
-    <!-- Левая колонка: Информация об объекте -->
+    <!-- Левая колонка: информация об объекте -->
     <div class="col-lg-4">
         <div class="card shadow-sm p-4 border-0" style="border-radius: 16px;">
             <div class="d-flex justify-content-between align-items-start mb-3">
-                <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">
-                    {% set e_type = entity.type|lower if entity.type else '' %}
-                    {% if 'flora' in e_type or 'флор' in e_type or 'растен' in e_type %}
-                        🌿 Флора
+                <div>
+                    {% if entity.bio_type == 'Объект флоры' %}
+                        <span class="badge px-3 py-2" style="background:#dcfce7; color:#166534; font-size:0.85rem;">🌿 ФЛОРА</span>
+                    {% elif entity.bio_type == 'Объект фауны' %}
+                        <span class="badge px-3 py-2" style="background:#dbeafe; color:#1e40af; font-size:0.85rem;">🐾 ФАУНА</span>
                     {% else %}
-                        🐾 Фауна
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-3 py-2">Тип не указан</span>
                     {% endif %}
-                </span>
+                    {% if entity.subtypes %}
+                    <div class="mt-2">
+                        {% for s in entity.subtypes %}
+                        <span class="badge bg-light border text-secondary me-1 mb-1" style="font-size:0.75rem;">{{ s }}</span>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
                 <span class="text-muted fw-bold small">ID: {{ entity.id }}</span>
             </div>
-            
-            <h3 class="fw-bold mb-1">{{ entity.common_name_ru }}</h3>
-            <p class="text-secondary fst-italic mb-4">{{ entity.scientific_name or 'Латинское название не указано' }}</p>
-            
-            <div class="mb-3">
-                <p class="text-muted small fw-bold mb-1">СТАТУС</p>
-                <p class="fw-semibold">{{ entity.status or 'Обычный вид' }}</p>
+
+            <h3 class="fw-bold mb-1">{{ entity.name_ru }}</h3>
+            {% if entity.scientific_name %}
+            <p class="text-muted mb-2" style="font-style:italic; font-size:0.95rem;">{{ entity.scientific_name }}</p>
+            {% endif %}
+            {% if entity.db_id %}
+            <p class="text-muted small mb-3"><code>{{ entity.db_id }}</code></p>
+            {% endif %}
+
+            {% set props = entity.object_properties or {} %}
+            {% if entity.conservation_status %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">ОХРАННЫЙ СТАТУС</p>
+                <p class="mb-0">
+                    <span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.8rem; font-weight:600;">
+                        {{ entity.conservation_status }}
+                    </span>
+                </p>
             </div>
-            
-            <div class="mb-3">
-                <p class="text-muted small fw-bold mb-1">БАЗОВОЕ ОПИСАНИЕ</p>
-                <p style="font-size: 0.95rem; line-height: 1.6;">Нет описания</p>
+            {% endif %}
+            {% if props.region %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">РЕГИОН</p>
+                <p class="mb-0">{{ props.region }}</p>
             </div>
-            
-            <button class="btn btn-outline-secondary w-100 fw-bold mt-2" style="border-radius: 10px;">
-                <i class="bi bi-pencil-square"></i> Редактировать инфо
-            </button>
+            {% endif %}
+            {% if props.baikal_relation %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">ОТНОШЕНИЕ К БАЙКАЛУ</p>
+                <p class="mb-0">{{ props.baikal_relation }}</p>
+            </div>
+            {% endif %}
+
+            {% if entity.synonyms and entity.synonyms|length > 1 %}
+            <div class="mb-3 mt-2">
+                <p class="text-muted small fw-bold mb-1">ДРУГИЕ ИМЕНА</p>
+                {% for s in entity.synonyms %}
+                    {% if s != entity.name_ru %}
+                    <span class="badge bg-light text-secondary border me-1 mb-1">{{ s }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <div class="mb-3 mt-3">
+                <p class="text-muted small fw-bold mb-1">ВСЕ СВОЙСТВА</p>
+                {% if entity.object_properties %}
+                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#entityFeaturesModal">
+                        <i class="bi bi-tags"></i> Просмотреть JSON
+                    </button>
+                {% else %}
+                    <p class="text-muted small mb-0">Свойства не заданы</p>
+                {% endif %}
+            </div>
         </div>
     </div>
 
-    <!-- Правая колонка: Модальности -->
+    <!-- Правая колонка: ресурсы -->
     <div class="col-lg-8">
         <div class="card shadow-sm border-0" style="border-radius: 16px;">
             <div class="card-header bg-white p-3 border-bottom">
@@ -145,41 +192,52 @@
                     </li>
                     <li class="nav-item">
                         <button class="nav-link fw-bold text-dark" data-bs-toggle="tab" data-bs-target="#geo">
-                            📍 Места обитания ({{ locations|length }})
+                            🗺️ Ареалы обитания ({{ locations|length }})
                         </button>
                     </li>
                 </ul>
             </div>
-            
+
             <div class="card-body p-4 tab-content">
-                
-                <!-- ========== Вкладка Текстов ========== -->
+
+                <!-- ========== Тексты ========== -->
                 <div class="tab-pane fade show active" id="texts">
-                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addTextModal" style="border-radius: 10px;">
+                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#10b981; color:#fff; border-radius:10px;"
+                            data-bs-toggle="modal" data-bs-target="#addTextModal">
                         <i class="bi bi-plus-lg"></i> Добавить текстовый ресурс
                     </button>
-                    
+
                     <div class="mb-3">
                         <input type="text" id="textSearch" class="form-control" placeholder="🔍 Поиск по текстам и признакам...">
                     </div>
-                    
+
                     <div class="d-flex flex-column gap-3" id="textsContainer">
                         {% for t in texts %}
                         <div class="p-3 border rounded-3 bg-light shadow-sm" data-features='{{ t.feature_data | tojson | safe }}'>
                             <div class="d-flex justify-content-between align-items-start mb-2">
-                                <div>
-                                    <h6 class="fw-bold mb-1 text-dark">{{ t.title or 'Без заголовка' }}</h6>
-                                    <div class="d-flex gap-2 mb-2">
-                                        {% if t.content %}<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-justify-left"></i> Обычный текст</span>{% endif %}
-                                        {% if t.structured_data %}<span class="badge bg-info bg-opacity-10 text-info border border-info border-opacity-25" style="font-size: 0.7rem;"><i class="bi bi-braces"></i> JSON</span>{% endif %}
-                                    </div>
-                                </div>
-                                <div class="d-flex gap-2">
-                                    <button class="btn btn-sm btn-outline-primary border-0" data-bs-toggle="modal" data-bs-target="#viewTextModal{{ t.id }}"><i class="bi bi-eye"></i></button>
-                                    <button class="btn btn-sm btn-outline-info border-0" data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}"><i class="bi bi-tags"></i></button>
-                                    <form action="/admin/resource/delete/text/{{ t.id }}" method="post" onsubmit="return confirm('Удалить эту текстовую модальность?')">
+                                <h6 class="fw-bold mb-1 text-dark">{{ t.title or 'Без заголовка' }}</h6>
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-outline-primary border-0"
+                                            data-bs-toggle="modal" data-bs-target="#viewTextModal{{ t.id }}" title="Просмотр">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-warning border-0" title="Редактировать"
+                                            data-resource-id="{{ t.id }}"
+                                            data-title="{{ t.title | default('', true) | replace('"', '&quot;') }}"
+                                            data-content="{{ t.content | default('', true) | replace('"', '&quot;') }}"
+                                            onclick="openEditText(this)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info border-0"
+                                            data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}" title="Свойства">
+                                        <i class="bi bi-tags"></i>
+                                    </button>
+                                    <form action="/admin/biological/resource/delete/text/{{ t.id }}" method="post"
+                                          onsubmit="return confirm('Удалить этот текстовый ресурс?')">
                                         <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
                                     </form>
                                 </div>
                             </div>
@@ -188,21 +246,22 @@
                             </p>
                         </div>
 
-                        <!-- Модалка текста (просмотр содержимого) -->
                         <div class="modal fade" id="viewTextModal{{ t.id }}" tabindex="-1">
                             <div class="modal-dialog modal-dialog-centered modal-lg">
                                 <div class="modal-content" style="border-radius: 20px;">
                                     <div class="modal-header border-bottom-0 px-4 pt-4">
-                                        <h5 class="fw-bold text-primary">{{ t.title }}</h5>
+                                        <h5 class="fw-bold" style="color:#10b981;">{{ t.title }}</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                     </div>
                                     <div class="modal-body px-4 pb-4">
-                                        {% if t.content %}<div class="p-3 bg-white border rounded-3 mb-4" style="white-space: pre-wrap; max-height: 40vh; overflow-y: auto;">{{ t.content }}</div>{% endif %}
+                                        {% if t.content %}
+                                        <div class="p-3 bg-white border rounded-3 mb-4" style="white-space: pre-wrap; max-height: 40vh; overflow-y: auto;">{{ t.content }}</div>
+                                        {% endif %}
                                         {% if t.structured_data %}
                                         <div class="p-4 bg-light border rounded-3" style="max-height: 40vh; overflow-y: auto;">
                                             <h6 class="fw-bold text-info mb-3">Структурированные данные</h6>
                                             {% for key, val in t.structured_data.items() %}
-                                                <div class="mb-2"><strong>{{ key|capitalize }}:</strong> {{ val }}</div>
+                                            <div class="mb-2"><strong>{{ key|capitalize }}:</strong> {{ val }}</div>
                                             {% endfor %}
                                         </div>
                                         {% endif %}
@@ -211,87 +270,116 @@
                             </div>
                         </div>
 
-                        <!-- Модалка признаков текста -->
                         {{ feature_modal('textFeatureModal' ~ t.id, 'Признаки: ' ~ (t.title or 'текст'), t.feature_data) }}
                         {% endfor %}
                     </div>
                 </div>
 
-                <!-- ========== Вкладка Изображений ========== -->
+                <!-- ========== Изображения ========== -->
                 <div class="tab-pane fade" id="images">
-                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#addImageModal" style="border-radius: 10px;">
+                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#10b981; color:#fff; border-radius:10px;"
+                            data-bs-toggle="modal" data-bs-target="#addImageModal">
                         <i class="bi bi-cloud-arrow-up"></i> Прикрепить изображение
                     </button>
-                    
+
                     <div class="mb-3">
                         <input type="text" id="imageSearch" class="form-control" placeholder="🔍 Поиск по изображениям и признакам...">
                     </div>
-                    
+
                     <div class="row g-3" id="imagesContainer">
                         {% for img_obj in images %}
                         <div class="col-md-4" data-features='{{ img_obj.data.feature_data | tojson | safe }}'>
                             <div class="card h-100 shadow-sm border-0 position-relative">
-                                <form action="/admin/resource/delete/image/{{ img_obj.data.id }}" method="post" onsubmit="return confirm('Удалить?')" class="position-absolute top-0 end-0 m-2">
-                                    <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                                    <button type="submit" class="btn btn-sm btn-danger shadow-sm rounded-circle" style="width: 32px; height: 32px; padding: 0;"><i class="bi bi-trash3"></i></button>
-                                </form>
-                                <img src="{{ img_obj.url }}" class="card-img-top" style="height: 160px; object-fit: cover; border-radius: 10px 10px 0 0;" onerror="this.src='https://placehold.co/600x400?text=Ошибка+загрузки'">
+                                <div class="position-absolute top-0 end-0 m-2 d-flex gap-1" style="z-index:1;">
+                                    <button class="btn btn-sm btn-warning shadow-sm rounded-circle" style="width:32px;height:32px;padding:0;"
+                                            data-resource-id="{{ img_obj.data.id }}"
+                                            data-title="{{ img_obj.data.title | default('', true) | replace('"', '&quot;') }}"
+                                            data-url="{{ img_obj.url | replace('"', '&quot;') }}"
+                                            onclick="openEditImage(this)" title="Редактировать">
+                                        <i class="bi bi-pencil" style="font-size:0.75rem;"></i>
+                                    </button>
+                                    <form action="/admin/biological/resource/delete/image/{{ img_obj.data.id }}" method="post"
+                                          onsubmit="return confirm('Удалить?')">
+                                        <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                                        <button type="submit" class="btn btn-sm btn-danger shadow-sm rounded-circle" style="width:32px;height:32px;padding:0;">
+                                            <i class="bi bi-trash3" style="font-size:0.75rem;"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                                <img src="{{ img_obj.url }}" class="card-img-top"
+                                     style="height: 160px; object-fit: cover; border-radius: 10px 10px 0 0;"
+                                     onerror="this.src='https://placehold.co/600x400?text=Нет+изображения'">
                                 <div class="card-body p-2">
-                                    <!-- Название изображения (для поиска) -->
                                     <p class="small text-truncate mb-0 mt-1" title="{{ img_obj.data.title }}">{{ img_obj.data.title }}</p>
-                                    <button class="btn btn-sm btn-outline-info w-100 mt-2" data-bs-toggle="modal" data-bs-target="#imageFeatureModal{{ img_obj.data.id }}">
-                                        <i class="bi bi-tags"></i> Признаки
+                                    <button class="btn btn-sm btn-outline-info w-100 mt-2"
+                                            data-bs-toggle="modal" data-bs-target="#imageFeatureModal{{ img_obj.data.id }}">
+                                        <i class="bi bi-tags"></i> Свойства
                                     </button>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Модалка признаков изображения -->
-                        {{ feature_modal('imageFeatureModal' ~ img_obj.data.id, 'Признаки: ' ~ img_obj.data.title, img_obj.data.feature_data) }}
+                        {{ feature_modal('imageFeatureModal' ~ img_obj.data.id, 'Свойства: ' ~ img_obj.data.title, img_obj.data.feature_data) }}
                         {% endfor %}
                     </div>
                 </div>
 
-                <!-- ========== Вкладка Географии ========== -->
+                <!-- ========== Ареалы обитания ========== -->
                 <div class="tab-pane fade" id="geo">
-                    <button class="btn btn-primary fw-bold mb-4 shadow-sm" style="border-radius: 10px;" onclick="alert('Форма привязки геолокации в разработке!')">
-                        <i class="bi bi-geo-alt"></i> Привязать новую локацию
+                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#10b981; color:#fff; border-radius:10px;"
+                            data-bs-toggle="modal" data-bs-target="#addGeoModal">
+                        <i class="bi bi-geo-alt"></i> Добавить ареал обитания
                     </button>
-                    
+
                     <div class="mb-3">
-                        <input type="text" id="geoSearch" class="form-control" placeholder="🔍 Поиск по локациям и признакам...">
+                        <input type="text" id="geoSearch" class="form-control" placeholder="🔍 Поиск по ареалам и признакам...">
                     </div>
-                    
+
                     <div class="row g-3" id="geoContainer">
                         {% for loc in locations %}
                         <div class="col-md-6" data-features='{{ loc.feature_data | tojson | safe }}'>
                             <div class="p-3 border rounded-3 bg-white shadow-sm d-flex justify-content-between align-items-center">
                                 <div class="d-flex align-items-center gap-3">
-                                    <i class="bi bi-geo-alt-fill text-danger fs-4"></i>
+                                    <i class="bi bi-map-fill fs-4" style="color:#10b981;"></i>
                                     <div>
                                         <h6 class="fw-bold mb-0 text-dark">{{ loc.name_ru }}</h6>
-                                        <span class="badge bg-light text-secondary border">{{ loc.type or 'Локация' }}</span>
+                                        <span class="badge bg-light text-secondary border">{{ loc.type or 'Геометрия' }}</span>
                                     </div>
                                 </div>
-                                <div>
-                                    {% if loc.is_map %}
-                                    <button class="btn btn-outline-primary btn-sm me-1" onclick="showMap({{ loc.map_id }}, '{{ loc.name_ru }}')">
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-outline-success btn-sm"
+                                            data-geodata-id="{{ loc.geodata_id }}"
+                                            data-location-name="{{ loc.name_ru }}"
+                                            onclick="showMapFromButton(this)" title="Карта">
                                         <i class="bi bi-map"></i>
                                     </button>
-                                    {% endif %}
-                                    <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}">
+                                    <button class="btn btn-outline-warning btn-sm" title="Редактировать"
+                                            data-resource-id="{{ loc.resource_id }}"
+                                            data-geodata-id="{{ loc.geodata_id }}"
+                                            data-title="{{ loc.name_ru | replace('"', '&quot;') }}"
+                                            onclick="openEditGeo(this)">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-outline-info btn-sm"
+                                            data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}" title="Свойства">
                                         <i class="bi bi-tags"></i>
                                     </button>
+                                    <form action="/admin/biological/resource/delete/geo/{{ loc.resource_id }}" method="post"
+                                          onsubmit="return confirm('Удалить этот ареал обитания?')" class="d-inline">
+                                        <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </form>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Модалка признаков гео -->
                         {{ feature_modal('geoFeatureModal' ~ loop.index, 'Признаки: ' ~ loc.name_ru, loc.feature_data) }}
                         {% else %}
                         <div class="col-12 text-center p-5 text-muted">
                             <i class="bi bi-map fs-1 d-block mb-3 text-light"></i>
-                            Географические привязки отсутствуют.
+                            Ареалы обитания не добавлены.
                         </div>
                         {% endfor %}
                     </div>
@@ -301,43 +389,396 @@
     </div>
 </div>
 
-<!-- Модалка карты -->
-<div class="modal fade" id="mapModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
+<!-- ========== МОДАЛКА: добавить текст ========== -->
+<div class="modal fade" id="addTextModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
             <div class="modal-header">
-                <h5 class="modal-title" id="mapModalTitle">Карта</h5>
+                <h5 class="modal-title fw-bold">Новый текстовый ресурс</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" id="mapModalBody">
-                <!-- Сюда будет вставлена карта -->
-            </div>
+            <form action="/admin/biological/{{ entity.id }}/add_text" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ЗАГОЛОВОК *</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">СОДЕРЖАНИЕ *</label>
+                        <textarea class="form-control" name="content" rows="6" required></textarea>
+                    </div>
+                    <div class="accordion" id="addTextMetaAccordion">
+                        <div class="accordion-item border-0">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#addTextMetaCollapse">
+                                    Метаданные ресурса (автор, источник, дата, достоверность)
+                                </button>
+                            </h2>
+                            <div id="addTextMetaCollapse" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">АВТОР</label>
+                                            <input type="text" class="form-control" name="author" placeholder="Admin Panel">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ИСТОЧНИК</label>
+                                            <input type="text" class="form-control" name="source" placeholder="Admin Panel">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДАТА</label>
+                                            <input type="date" class="form-control" name="date">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДОСТОВЕРНОСТЬ</label>
+                                            <input type="text" class="form-control" name="reliability" placeholder="средняя">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn fw-bold" style="background:#10b981; color:#fff;">💾 Сохранить</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
-<!-- Скрипт для карты и фильтрации -->
+<!-- ========== МОДАЛКА: добавить изображение ========== -->
+<div class="modal fade" id="addImageModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новое изображение</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/biological/{{ entity.id }}/add_image" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
+                        <input type="text" class="form-control" name="title" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">URL ИЗОБРАЖЕНИЯ *</label>
+                        <input type="url" class="form-control" name="image_url" required placeholder="https://...">
+                    </div>
+                    <div class="accordion" id="addImageMetaAccordion">
+                        <div class="accordion-item border-0">
+                            <h2 class="accordion-header">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#addImageMetaCollapse">
+                                    Метаданные ресурса
+                                </button>
+                            </h2>
+                            <div id="addImageMetaCollapse" class="accordion-collapse collapse">
+                                <div class="accordion-body">
+                                    <div class="row mb-2">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">АВТОР</label>
+                                            <input type="text" class="form-control" name="author">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ИСТОЧНИК</label>
+                                            <input type="text" class="form-control" name="source">
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДАТА</label>
+                                            <input type="date" class="form-control" name="date">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label small fw-bold text-secondary">ДОСТОВЕРНОСТЬ</label>
+                                            <input type="text" class="form-control" name="reliability">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn fw-bold" style="background:#10b981; color:#fff;">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: добавить ареал обитания ========== -->
+<div class="modal fade" id="addGeoModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новый ареал обитания</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/biological/{{ entity.id }}/add_geo" method="post" id="addGeoForm">
+                <div class="modal-body p-0">
+                    <div class="px-4 pt-3 pb-2">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
+                        <input type="text" class="form-control" name="title" required
+                               placeholder="Напр: Ареал обитания в Прибайкалье">
+                    </div>
+
+                    <div class="px-4 pb-2 d-flex gap-2 align-items-center flex-wrap">
+                        <span class="text-muted small fw-bold">Нарисуйте на карте:</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="drawPoint" title="Точка">
+                            <i class="bi bi-geo-alt-fill"></i> Точка
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="drawLine" title="Линия">
+                            <i class="bi bi-bezier2"></i> Линия
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="drawPolygon" title="Полигон">
+                            <i class="bi bi-hexagon"></i> Полигон
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger ms-auto d-none" id="clearGeoBtn">
+                            <i class="bi bi-trash3"></i> Очистить
+                        </button>
+                    </div>
+
+                    <div id="drawMap" style="height: 420px; width: 100%; z-index: 0;"></div>
+
+                    <div class="px-4 py-3">
+                        <div id="geoSelectedInfo" class="alert alert-success py-2 d-none" style="font-size: 0.85rem;">
+                            <i class="bi bi-check-circle-fill me-1"></i>
+                            <span id="geoSelectedType"></span> — координаты захвачены.
+                            <a href="#" class="ms-2" data-bs-toggle="collapse" data-bs-target="#geoJsonPreviewCollapse">Показать GeoJSON</a>
+                        </div>
+                        <div id="geoNoSelection" class="alert alert-warning py-2" style="font-size: 0.85rem;">
+                            <i class="bi bi-exclamation-triangle me-1"></i>
+                            Геометрия не выбрана. Нарисуйте фигуру на карте или введите GeoJSON вручную.
+                        </div>
+                        <div class="collapse" id="geoJsonPreviewCollapse">
+                            <pre id="geoJsonPreviewText" class="bg-light p-2 rounded small mt-2" style="max-height: 130px; overflow: auto;"></pre>
+                        </div>
+
+                        <div class="accordion mt-2" id="manualGeoAccordion">
+                            <div class="accordion-item border-0">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed bg-white small text-secondary py-2 px-0" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#manualGeoCollapse"
+                                            style="box-shadow: none; font-weight: 600;">
+                                        <i class="bi bi-code-slash me-1"></i> Ввести GeoJSON вручную
+                                    </button>
+                                </h2>
+                                <div id="manualGeoCollapse" class="accordion-collapse collapse">
+                                    <div class="accordion-body px-0 pb-0">
+                                        <textarea class="form-control font-monospace" id="manualGeoInput" rows="5"
+                                                  placeholder='{"type": "Point", "coordinates": [107.3, 53.2]}'
+                                                  style="font-size: 0.8rem;"></textarea>
+                                        <button type="button" class="btn btn-sm btn-outline-success mt-2" id="applyManualGeo">
+                                            Применить
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <input type="hidden" name="geojson" id="geojsonHidden">
+
+                        <div class="accordion mt-3" id="addGeoMetaAccordion">
+                            <div class="accordion-item border-0">
+                                <h2 class="accordion-header">
+                                    <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button"
+                                            data-bs-toggle="collapse" data-bs-target="#addGeoMetaCollapse">
+                                        Метаданные ресурса
+                                    </button>
+                                </h2>
+                                <div id="addGeoMetaCollapse" class="accordion-collapse collapse">
+                                    <div class="accordion-body">
+                                        <div class="row mb-2">
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold text-secondary">АВТОР</label>
+                                                <input type="text" class="form-control" name="author">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold text-secondary">ИСТОЧНИК</label>
+                                                <input type="text" class="form-control" name="source">
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold text-secondary">ДАТА</label>
+                                                <input type="date" class="form-control" name="date">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small fw-bold text-secondary">ДОСТОВЕРНОСТЬ</label>
+                                                <input type="text" class="form-control" name="reliability">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn fw-bold" style="background:#10b981; color:#fff;">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: редактировать текст ========== -->
+<div class="modal fade" id="editTextModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Редактировать текст</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editTextForm" method="post" action="">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ЗАГОЛОВОК *</label>
+                        <input type="text" class="form-control" name="title" id="editTextTitle" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">СОДЕРЖАНИЕ *</label>
+                        <textarea class="form-control" name="content" id="editTextContent" rows="8" required></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-warning fw-bold">💾 Сохранить изменения</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: редактировать изображение ========== -->
+<div class="modal fade" id="editImageModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Редактировать изображение</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editImageForm" method="post" action="">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
+                        <input type="text" class="form-control" name="title" id="editImageTitle" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">URL ИЗОБРАЖЕНИЯ *</label>
+                        <input type="url" class="form-control" name="image_url" id="editImageUrl" required>
+                    </div>
+                    <div id="editImagePreview" class="text-center mt-2 d-none">
+                        <img id="editImagePreviewImg" src="" style="max-height:180px; border-radius:8px; max-width:100%;">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-warning fw-bold">💾 Сохранить изменения</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: редактировать ареал ========== -->
+<div class="modal fade" id="editGeoModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Редактировать ареал обитания</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editGeoForm" method="post" action="">
+                <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <div class="modal-body p-0">
+                    <div class="px-4 pt-3 pb-2">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
+                        <input type="text" class="form-control" name="title" id="editGeoTitle" required>
+                    </div>
+                    <div class="px-4 pb-2 d-flex gap-2 align-items-center flex-wrap">
+                        <span class="text-muted small fw-bold">Отредактируйте или перерисуйте:</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="editDrawPoint"><i class="bi bi-geo-alt-fill"></i> Точка</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="editDrawLine"><i class="bi bi-bezier2"></i> Линия</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="editDrawPolygon"><i class="bi bi-hexagon"></i> Полигон</button>
+                        <button type="button" class="btn btn-sm btn-outline-success ms-auto" id="editToggleEdit"><i class="bi bi-cursor"></i> Редакт. вершины</button>
+                    </div>
+                    <div id="editGeoMapLoader" class="text-center py-4 text-muted">
+                        <div class="spinner-border spinner-border-sm me-2"></div> Загрузка карты...
+                    </div>
+                    <div id="editDrawMap" style="height: 400px; width: 100%; z-index: 0; display: none;"></div>
+                    <div class="px-4 py-2">
+                        <div id="editGeoStatus" class="alert alert-info py-2 small d-none"></div>
+                        <input type="hidden" name="geojson" id="editGeojsonHidden">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-warning fw-bold" id="editGeoSaveBtn" disabled>💾 Сохранить изменения</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Модалка свойств объекта -->
+{% if entity.object_properties %}
+<div class="modal fade" id="entityFeaturesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Свойства: {{ entity.name_ru }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                {{ render_feature_value(entity.object_properties) }}
+                <hr>
+                <h6 class="fw-bold text-info mb-2">JSON</h6>
+                <pre class="bg-light p-3 rounded" style="max-height: 300px; overflow: auto;">{{ entity.object_properties | tojson(indent=2) }}</pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Модалка карты (ареал) -->
+<div class="modal fade" id="mapModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="mapModalTitle">Ареал обитания</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="mapModalBody"></div>
+        </div>
+    </div>
+</div>
+
 <script>
-// Функция загрузки карты
-async function showMap(mapId, locationName) {
+async function showMap(geodataId, locationName) {
     const modalTitle = document.getElementById('mapModalTitle');
     const modalBody = document.getElementById('mapModalBody');
-    
-    modalTitle.innerText = "Карта: " + locationName;
-    modalBody.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Загрузка карты...</p></div>';
-    
+    modalTitle.innerText = 'Ареал: ' + locationName;
+    modalBody.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-success" role="status"></div><p class="mt-2">Загрузка карты...</p></div>';
     const mapModal = new bootstrap.Modal(document.getElementById('mapModal'));
     mapModal.show();
-    
     try {
         const response = await fetch('/admin/biological/get-map-html', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ map_id: mapId })
+            body: JSON.stringify({ geodata_id: geodataId })
         });
-        
         if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-        
         const data = await response.json();
         modalBody.innerHTML = data.html;
     } catch (error) {
@@ -345,91 +786,310 @@ async function showMap(mapId, locationName) {
     }
 }
 
-// Фильтрация с детальным логированием
+function showMapFromButton(button) {
+    const geodataId = button.getAttribute('data-geodata-id');
+    const locationName = button.getAttribute('data-location-name');
+    showMap(geodataId, locationName);
+}
+
 function filterResources(tab) {
-    // Определяем ID поля ввода
     let inputId;
     if (tab === 'images') inputId = 'imageSearch';
     else if (tab === 'texts') inputId = 'textSearch';
     else if (tab === 'geo') inputId = 'geoSearch';
-    else inputId = tab + 'Search';
-    
+
     const searchInput = document.getElementById(inputId);
-    if (!searchInput) {
-        console.warn('Поле поиска не найдено для вкладки', tab);
-        return;
-    }
+    if (!searchInput) return;
     const filter = searchInput.value.toLowerCase();
-    console.log(`🔍 [${tab}] Фильтр: "${filter}"`);
-    
     const container = document.getElementById(tab + 'Container');
-    if (!container) {
-        console.warn('Контейнер не найден для вкладки', tab);
-        return;
-    }
-    
+    if (!container) return;
     const cards = container.querySelectorAll('[data-features]');
-    console.log(`📦 [${tab}] Найдено карточек:`, cards.length);
-    
-    // Если фильтр пустой — показываем всё и выходим
-    if (filter === '') {
-        cards.forEach(card => card.style.display = 'block');
-        return;
-    }
-    
-    cards.forEach((card, index) => {
+    if (filter === '') { cards.forEach(c => c.style.display = 'block'); return; }
+    cards.forEach(card => {
         let searchable = '';
-        
-        // Заголовок
         const titleEl = card.querySelector('h6, .fw-bold, .small');
-        if (titleEl) {
-            searchable += titleEl.innerText.toLowerCase() + ' ';
-            console.log(`[${tab}] Карточка ${index} заголовок:`, titleEl.innerText);
+        if (titleEl) searchable += titleEl.innerText.toLowerCase() + ' ';
+        const fa = card.dataset.features;
+        if (fa && fa !== 'null') {
+            try { searchable += JSON.stringify(JSON.parse(fa)).toLowerCase(); }
+            catch(e) { searchable += fa.toLowerCase(); }
         }
-        
-        // Признаки (атрибут data-features)
-        const featuresAttr = card.dataset.features;
-        console.log(`[${tab}] Карточка ${index} сырые data-features:`, featuresAttr);
-        
-        if (featuresAttr && featuresAttr !== 'null' && featuresAttr !== '') {
-            try {
-                // Пытаемся распарсить JSON, чтобы получить читаемые строки
-                const featuresObj = JSON.parse(featuresAttr);
-                // Преобразуем объект обратно в строку уже без экранирования и приводим к нижнему регистру
-                const featuresString = JSON.stringify(featuresObj).toLowerCase();
-                searchable += featuresString;
-                console.log(`[${tab}] Карточка ${index} после парсинга (первые 100 символов):`, featuresString.substring(0,100));
-            } catch (e) {
-                console.warn(`[${tab}] Ошибка парсинга JSON для карточки ${index}:`, e);
-                // Если не JSON, добавляем как есть
-                searchable += featuresAttr.toLowerCase();
-            }
-        }
-        
-        const match = searchable.includes(filter);
-        console.log(`[${tab}] Карточка ${index} соответствует?`, match, 'searchable preview:', searchable.substring(0,100));
-        
-        card.style.display = match ? 'block' : 'none';
+        card.style.display = searchable.includes(filter) ? 'block' : 'none';
     });
 }
 
-// Инициализация обработчиков
 document.addEventListener('DOMContentLoaded', function() {
     ['texts', 'images', 'geo'].forEach(tab => {
-        let inputId;
-        if (tab === 'images') inputId = 'imageSearch';
-        else if (tab === 'texts') inputId = 'textSearch';
-        else if (tab === 'geo') inputId = 'geoSearch';
-        else inputId = tab + 'Search';
-        
+        let inputId = tab === 'images' ? 'imageSearch' : tab === 'texts' ? 'textSearch' : 'geoSearch';
         const input = document.getElementById(inputId);
-        if (input) {
-            input.addEventListener('keyup', () => filterResources(tab));
-            console.log('✅ Обработчик добавлен для', tab, 'ID:', inputId);
-        } else {
-            console.warn('❌ Поле поиска для', tab, 'не найдено');
-        }
+        if (input) input.addEventListener('keyup', () => filterResources(tab));
     });
 });
+
+function openEditText(btn) {
+    document.getElementById('editTextForm').action = `/admin/biological/resource/edit/text/${btn.dataset.resourceId}`;
+    document.getElementById('editTextTitle').value = btn.dataset.title || '';
+    document.getElementById('editTextContent').value = btn.dataset.content || '';
+    new bootstrap.Modal(document.getElementById('editTextModal')).show();
+}
+
+function openEditImage(btn) {
+    document.getElementById('editImageForm').action = `/admin/biological/resource/edit/image/${btn.dataset.resourceId}`;
+    document.getElementById('editImageTitle').value = btn.dataset.title || '';
+    const urlInput = document.getElementById('editImageUrl');
+    urlInput.value = btn.dataset.url || '';
+    const preview = document.getElementById('editImagePreview');
+    const previewImg = document.getElementById('editImagePreviewImg');
+    if (btn.dataset.url) {
+        previewImg.src = btn.dataset.url;
+        preview.classList.remove('d-none');
+    } else {
+        preview.classList.add('d-none');
+    }
+    new bootstrap.Modal(document.getElementById('editImageModal')).show();
+}
+
+document.getElementById('editImageUrl').addEventListener('change', function() {
+    const preview = document.getElementById('editImagePreview');
+    const img = document.getElementById('editImagePreviewImg');
+    if (this.value) { img.src = this.value; preview.classList.remove('d-none'); }
+});
+
+let editGeoMap = null;
+let editDrawnLayer = null;
+let editIsEditMode = false;
+
+function openEditGeo(btn) {
+    const resourceId = btn.dataset.resourceId;
+    const geodataId = btn.dataset.geodataId;
+    const title = btn.dataset.title || '';
+
+    document.getElementById('editGeoForm').action = `/admin/biological/resource/edit/geo/${resourceId}`;
+    document.getElementById('editGeoTitle').value = title;
+    document.getElementById('editGeojsonHidden').value = '';
+    document.getElementById('editGeoSaveBtn').disabled = true;
+    document.getElementById('editGeoStatus').classList.add('d-none');
+    document.getElementById('editGeoMapLoader').style.display = '';
+    document.getElementById('editDrawMap').style.display = 'none';
+
+    const modal = new bootstrap.Modal(document.getElementById('editGeoModal'));
+    modal.show();
+    document.getElementById('editGeoModal').addEventListener('shown.bs.modal', function handler() {
+        this.removeEventListener('shown.bs.modal', handler);
+        initEditGeoMap(geodataId);
+    });
+}
+
+async function initEditGeoMap(geodataId) {
+    if (!editGeoMap) {
+        editGeoMap = L.map('editDrawMap').setView([53.5, 108.0], 8);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(editGeoMap);
+        try { editGeoMap.pm.setLang('ru'); } catch(e) {}
+        editGeoMap.pm.addControls({
+            drawMarker: false, drawCircle: false, drawCircleMarker: false,
+            drawPolyline: false, drawPolygon: false, drawRectangle: false, drawText: false,
+            editMode: false, dragMode: false, cutPolygon: false, removalMode: false
+        });
+        editGeoMap.on('pm:create', function(e) {
+            if (editDrawnLayer) editGeoMap.removeLayer(editDrawnLayer);
+            editDrawnLayer = e.layer;
+            setEditGeometry(e.layer.toGeoJSON().geometry);
+            resetEditDrawBtns();
+        });
+        editGeoMap.on('pm:edit', function(e) {
+            if (e.layer === editDrawnLayer) setEditGeometry(e.layer.toGeoJSON().geometry);
+        });
+        ['editDrawPoint', 'editDrawLine', 'editDrawPolygon'].forEach((id, i) => {
+            const modes = ['Marker', 'Line', 'Polygon'];
+            document.getElementById(id).addEventListener('click', function() {
+                editGeoMap.pm.disableDraw();
+                editGeoMap.pm.disableGlobalEditMode();
+                resetEditDrawBtns();
+                this.classList.replace('btn-outline-secondary', 'btn-primary');
+                editGeoMap.pm.enableDraw(modes[i], { snappable: true });
+            });
+        });
+        document.getElementById('editToggleEdit').addEventListener('click', function() {
+            if (editIsEditMode) {
+                editGeoMap.pm.disableGlobalEditMode();
+                editIsEditMode = false;
+                this.classList.replace('btn-success', 'btn-outline-success');
+                this.innerHTML = '<i class="bi bi-cursor"></i> Редакт. вершины';
+            } else {
+                editGeoMap.pm.enableGlobalEditMode();
+                editIsEditMode = true;
+                this.classList.replace('btn-outline-success', 'btn-success');
+                this.innerHTML = '<i class="bi bi-check"></i> Завершить правку';
+            }
+        });
+    }
+
+    try {
+        const resp = await fetch(`/admin/biological/resource/geo/${geodataId}/geojson`);
+        const data = await resp.json();
+        document.getElementById('editGeoMapLoader').style.display = 'none';
+        document.getElementById('editDrawMap').style.display = '';
+        editGeoMap.invalidateSize();
+        if (editDrawnLayer) { editGeoMap.removeLayer(editDrawnLayer); editDrawnLayer = null; }
+        const layer = L.geoJSON(data.geojson, {
+            style: { color: '#10b981', weight: 3, fillColor: '#34d399', fillOpacity: 0.25 }
+        }).addTo(editGeoMap);
+        editDrawnLayer = layer;
+        if (layer.getBounds && layer.getBounds().isValid()) {
+            editGeoMap.fitBounds(layer.getBounds(), { padding: [30, 30] });
+        }
+        setEditGeometry(data.geojson);
+    } catch(e) {
+        document.getElementById('editGeoMapLoader').innerHTML = '<span class="text-danger">Ошибка загрузки геометрии</span>';
+    }
+}
+
+function setEditGeometry(geo) {
+    document.getElementById('editGeojsonHidden').value = JSON.stringify(geo);
+    document.getElementById('editGeoSaveBtn').disabled = false;
+    const status = document.getElementById('editGeoStatus');
+    const types = { 'Point':'Точка', 'LineString':'Линия', 'Polygon':'Полигон', 'MultiPoint':'Мультиточка', 'MultiLineString':'Мультилиния', 'MultiPolygon':'Мультиполигон' };
+    status.textContent = `Геометрия: ${types[geo.type] || geo.type} — готова к сохранению`;
+    status.classList.remove('d-none');
+}
+
+function resetEditDrawBtns() {
+    ['editDrawPoint', 'editDrawLine', 'editDrawPolygon'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.replace('btn-primary', 'btn-outline-secondary');
+    });
+}
+
+document.getElementById('editGeoModal').addEventListener('hidden.bs.modal', function() {
+    if (editGeoMap) {
+        editGeoMap.pm.disableDraw();
+        editGeoMap.pm.disableGlobalEditMode();
+        editIsEditMode = false;
+        document.getElementById('editToggleEdit').classList.replace('btn-success', 'btn-outline-success');
+        document.getElementById('editToggleEdit').innerHTML = '<i class="bi bi-cursor"></i> Редакт. вершины';
+    }
+    resetEditDrawBtns();
+});
+
+// ===== Интерактивная карта добавления ареала =====
+(function() {
+    let drawMap = null;
+    let drawnLayer = null;
+    let activeDrawMode = null;
+
+    const modal = document.getElementById('addGeoModal');
+    const hiddenInput = document.getElementById('geojsonHidden');
+    const selectedInfo = document.getElementById('geoSelectedInfo');
+    const selectedType = document.getElementById('geoSelectedType');
+    const noSelection = document.getElementById('geoNoSelection');
+    const previewText = document.getElementById('geoJsonPreviewText');
+    const clearBtn = document.getElementById('clearGeoBtn');
+
+    const TYPE_LABELS = {
+        'Point': 'Точка', 'LineString': 'Линия', 'Polygon': 'Полигон',
+        'MultiPoint': 'Мультиточка', 'MultiLineString': 'Мультилиния', 'MultiPolygon': 'Мультиполигон',
+    };
+
+    function setGeometry(geojson) {
+        const jsonStr = JSON.stringify(geojson, null, 2);
+        hiddenInput.value = jsonStr;
+        previewText.textContent = jsonStr;
+        selectedType.textContent = TYPE_LABELS[geojson.type] || geojson.type;
+        selectedInfo.classList.remove('d-none');
+        noSelection.classList.add('d-none');
+        clearBtn.classList.remove('d-none');
+    }
+
+    function clearGeometry() {
+        hiddenInput.value = '';
+        previewText.textContent = '';
+        selectedInfo.classList.add('d-none');
+        noSelection.classList.remove('d-none');
+        clearBtn.classList.add('d-none');
+        if (drawnLayer && drawMap) { drawMap.removeLayer(drawnLayer); drawnLayer = null; }
+        if (drawMap) { drawMap.pm.disableDraw(); activeDrawMode = null; resetDrawButtons(); }
+    }
+
+    function resetDrawButtons() {
+        ['drawPoint', 'drawLine', 'drawPolygon'].forEach(id => {
+            const btn = document.getElementById(id);
+            if (btn) btn.classList.replace('btn-primary', 'btn-outline-secondary');
+        });
+    }
+
+    function activateDraw(mode, btnId) {
+        if (!drawMap) return;
+        drawMap.pm.disableDraw();
+        if (activeDrawMode === mode) { activeDrawMode = null; resetDrawButtons(); return; }
+        activeDrawMode = mode;
+        resetDrawButtons();
+        const btn = document.getElementById(btnId);
+        if (btn) btn.classList.replace('btn-outline-secondary', 'btn-primary');
+        drawMap.pm.enableDraw(mode, { snappable: true, snapDistance: 20 });
+    }
+
+    document.getElementById('drawPoint').addEventListener('click', () => activateDraw('Marker', 'drawPoint'));
+    document.getElementById('drawLine').addEventListener('click', () => activateDraw('Line', 'drawLine'));
+    document.getElementById('drawPolygon').addEventListener('click', () => activateDraw('Polygon', 'drawPolygon'));
+    clearBtn.addEventListener('click', clearGeometry);
+
+    document.getElementById('applyManualGeo').addEventListener('click', function() {
+        const raw = document.getElementById('manualGeoInput').value.trim();
+        if (!raw) return;
+        try {
+            const geo = JSON.parse(raw);
+            if (!geo.type) throw new Error('Отсутствует поле type');
+            if (drawMap) {
+                if (drawnLayer) drawMap.removeLayer(drawnLayer);
+                drawnLayer = L.geoJSON(geo).addTo(drawMap);
+                if (drawnLayer.getBounds && drawnLayer.getBounds().isValid()) {
+                    drawMap.fitBounds(drawnLayer.getBounds(), { padding: [20, 20] });
+                }
+            }
+            setGeometry(geo);
+        } catch(e) { alert('Некорректный GeoJSON: ' + e.message); }
+    });
+
+    document.getElementById('addGeoForm').addEventListener('submit', function(e) {
+        if (!hiddenInput.value) {
+            e.preventDefault();
+            noSelection.classList.remove('d-none');
+            noSelection.scrollIntoView({ behavior: 'smooth' });
+        }
+    });
+
+    modal.addEventListener('shown.bs.modal', function() {
+        if (!drawMap) {
+            drawMap = L.map('drawMap').setView([53.5, 108.0], 8);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(drawMap);
+            try { drawMap.pm.setLang('ru'); } catch(e) {}
+            drawMap.pm.addControls({
+                drawMarker: false, drawCircle: false, drawCircleMarker: false,
+                drawPolyline: false, drawPolygon: false, drawRectangle: false, drawText: false,
+                editMode: false, dragMode: false, cutPolygon: false, removalMode: false
+            });
+            drawMap.on('pm:create', function(e) {
+                if (drawnLayer) drawMap.removeLayer(drawnLayer);
+                drawnLayer = e.layer;
+                setGeometry(e.layer.toGeoJSON().geometry);
+                activeDrawMode = null;
+                resetDrawButtons();
+            });
+            drawMap.on('pm:edit', function(e) {
+                if (e.layer === drawnLayer) setGeometry(e.layer.toGeoJSON().geometry);
+            });
+            drawMap.on('pm:remove', function(e) {
+                if (e.layer === drawnLayer) { drawnLayer = null; clearGeometry(); }
+            });
+        }
+        drawMap.invalidateSize();
+    });
+
+    modal.addEventListener('hidden.bs.modal', function() {
+        clearGeometry();
+        document.getElementById('manualGeoInput').value = '';
+        document.querySelector('#addGeoForm input[name="title"]').value = '';
+    });
+})();
 </script>
 {% endblock %}
