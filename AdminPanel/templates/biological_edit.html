@@ -794,10 +794,10 @@
                         <input type="text" class="form-control" id="subtypesInput" placeholder="Добавить подтип...">
                         <button class="btn btn-outline-secondary" type="button" onclick="addSubtypeChip()">Добавить</button>
                     </div>
-                    {% elif prop.values | length > 0 %}
+                    {% elif prop['values'] | length > 0 %}
                     <select class="form-select" id="prop_{{ prop.name }}">
                         <option value="">— не указано —</option>
-                        {% for v in prop.values %}
+                        {% for v in prop['values'] %}
                         <option value="{{ v }}" {% if (entity.object_properties or {}).get(prop.name) == v %}selected{% endif %}>{{ v }}</option>
                         {% endfor %}
                     </select>

@@ -73,7 +73,7 @@
                             <td>
                                 <div class="d-flex gap-1 justify-content-end pe-2">
                                     <button class="btn btn-sm btn-outline-primary"
-                                            onclick="openEditFeature({{ feat.id }}, '{{ feat.feature_name | replace("'", "\\'") }}', {{ feat.feature_values | tojson | safe }})"
+                                            onclick="openEditFeature({{ feat.id }}, '{{ feat.feature_name | replace("'", "\\'") }}', {{ feat.feature_values | tojson }})"
                                             title="Редактировать значения">
                                         <i class="bi bi-pencil"></i>
                                     </button>
@@ -130,12 +130,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
-                        <textarea class="form-control" name="feature_values" rows="5"
-                                  placeholder="Значения через запятую. Оставьте пустым для свободного ввода.&#10;Пример: весна, лето, осень, зима"></textarea>
-                        <div class="form-text">
-                            Значения разделяются запятой. Пустое поле = свободный ввод.
-                            Признак имеет конкретные значения, не является простым флагом.
+                        <div id="addFeatChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2" style="min-height:38px;"></div>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="addFeatInput" placeholder="Введите значение...">
+                            <button type="button" class="btn btn-outline-secondary" onclick="addFeatChip()">+ Добавить</button>
                         </div>
+                        <div class="form-text">Добавляйте каждое значение отдельно. Пустой список = свободный ввод (без ограничений).</div>
+                        <textarea name="feature_values" id="addFeatHidden" class="d-none"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -159,13 +160,13 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
-                        <textarea class="form-control" name="feature_values" id="editFeatureValues" rows="8"
-                                  placeholder="Значения через запятую..."></textarea>
-                        <div class="form-text">
-                            Значения разделяются запятой.
-                            Сейчас: <span id="editFeatureCount" class="fw-bold">0</span> значений.
-                            Пустое поле = свободный ввод.
+                        <div id="editFeatChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2" style="min-height:38px;"></div>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="editFeatInput" placeholder="Добавить ещё значение...">
+                            <button type="button" class="btn btn-outline-secondary" onclick="editFeatChip()">+ Добавить</button>
                         </div>
+                        <div class="form-text">Итого: <span id="editFeatureCount" class="fw-bold">0</span> значений. Пустой список = свободный ввод.</div>
+                        <textarea name="feature_values" id="editFeatHidden" class="d-none"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -178,13 +179,79 @@
 </div>
 
 <script>
+function _createFeatChipBadge(val, removeFn) {
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1';
+    span.dataset.value = val;
+    span.style.fontSize = '0.82rem';
+    const text = document.createTextNode(val);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-close';
+    btn.style.fontSize = '0.55rem';
+    btn.onclick = removeFn;
+    span.appendChild(text);
+    span.appendChild(btn);
+    return span;
+}
+
+function _syncFeatHidden(chipsId, hiddenId, countId) {
+    const chips = document.querySelectorAll(`#${chipsId} [data-value]`);
+    const vals = Array.from(chips).map(c => c.dataset.value);
+    document.getElementById(hiddenId).value = vals.join(', ');
+    const countEl = document.getElementById(countId);
+    if (countEl) countEl.textContent = vals.length;
+}
+
+function addFeatChip() {
+    const input = document.getElementById('addFeatInput');
+    const val = input.value.trim();
+    if (!val) return;
+    const container = document.getElementById('addFeatChips');
+    container.appendChild(_createFeatChipBadge(val, function() {
+        this.closest('[data-value]').remove();
+        _syncFeatHidden('addFeatChips', 'addFeatHidden', null);
+    }));
+    input.value = '';
+    _syncFeatHidden('addFeatChips', 'addFeatHidden', null);
+}
+
+function editFeatChip() {
+    const input = document.getElementById('editFeatInput');
+    const val = input.value.trim();
+    if (!val) return;
+    const container = document.getElementById('editFeatChips');
+    container.appendChild(_createFeatChipBadge(val, function() {
+        this.closest('[data-value]').remove();
+        _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+    }));
+    input.value = '';
+    _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+}
+
 function openEditFeature(featId, featName, values) {
     document.getElementById('editFeatureTitle').textContent = 'Редактировать: ' + featName;
     document.getElementById('editFeatureForm').action = `/admin/features/${featId}/edit`;
-    const valStr = (values || []).join(', ');
-    document.getElementById('editFeatureValues').value = valStr;
-    document.getElementById('editFeatureCount').textContent = (values || []).length;
+    const container = document.getElementById('editFeatChips');
+    container.innerHTML = '';
+    (values || []).forEach(v => {
+        container.appendChild(_createFeatChipBadge(v, function() {
+            this.closest('[data-value]').remove();
+            _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+        }));
+    });
+    _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
     new bootstrap.Modal(document.getElementById('editFeatureModal')).show();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('addFeatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFeatChip(); } });
+    document.getElementById('editFeatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); editFeatChip(); } });
+    document.getElementById('addFeatureModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('addFeatChips').innerHTML = '';
+        document.getElementById('addFeatInput').value = '';
+        document.getElementById('addFeatHidden').value = '';
+    });
+});
 </script>
 {% endblock %}

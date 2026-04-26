@@ -69,7 +69,7 @@
                             <td>
                                 <div class="d-flex gap-1 justify-content-end pe-2">
                                     <button class="btn btn-sm btn-outline-primary"
-                                            onclick="openEditProperty({{ prop.id }}, '{{ prop.property_name | replace("'", "\\'") }}', {{ prop.property_values | tojson | safe }})"
+                                            onclick="openEditProperty({{ prop.id }}, '{{ prop.property_name | replace("'", "\\'") }}', {{ prop.property_values | tojson }})"
                                             title="Редактировать значения">
                                         <i class="bi bi-pencil"></i>
                                     </button>
@@ -126,9 +126,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
-                        <textarea class="form-control" name="property_values" rows="5"
-                                  placeholder="Значения через запятую. Оставьте пустым для свободного ввода.&#10;Пример: Иркутская обл., Бурятия, Забайкальский кр."></textarea>
-                        <div class="form-text">Значения разделяются запятой. Пустое поле = любое значение допустимо.</div>
+                        <div id="addPropChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2" style="min-height:38px;"></div>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="addPropInput" placeholder="Введите значение...">
+                            <button type="button" class="btn btn-outline-secondary" onclick="addPropChip()">+ Добавить</button>
+                        </div>
+                        <div class="form-text">Добавляйте каждое значение отдельно. Пустой список = свободный ввод.</div>
+                        <textarea name="property_values" id="addPropHidden" class="d-none"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -152,12 +156,13 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
-                        <textarea class="form-control" name="property_values" id="editPropertyValues" rows="8"
-                                  placeholder="Значения через запятую..."></textarea>
-                        <div class="form-text">
-                            Значения разделяются запятой.
-                            Сейчас: <span id="editPropertyCount" class="fw-bold">0</span> значений.
+                        <div id="editPropChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2" style="min-height:38px;"></div>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="editPropInput" placeholder="Добавить ещё значение...">
+                            <button type="button" class="btn btn-outline-secondary" onclick="editPropChip()">+ Добавить</button>
                         </div>
+                        <div class="form-text">Итого: <span id="editPropertyCount" class="fw-bold">0</span> значений. Пустой список = свободный ввод.</div>
+                        <textarea name="property_values" id="editPropHidden" class="d-none"></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -170,13 +175,79 @@
 </div>
 
 <script>
+function _createChipBadge(val, removeFn) {
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1';
+    span.dataset.value = val;
+    span.style.fontSize = '0.82rem';
+    const text = document.createTextNode(val);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-close';
+    btn.style.fontSize = '0.55rem';
+    btn.onclick = removeFn;
+    span.appendChild(text);
+    span.appendChild(btn);
+    return span;
+}
+
+function _syncHidden(chipsId, hiddenId, countId) {
+    const chips = document.querySelectorAll(`#${chipsId} [data-value]`);
+    const vals = Array.from(chips).map(c => c.dataset.value);
+    document.getElementById(hiddenId).value = vals.join(', ');
+    const countEl = document.getElementById(countId);
+    if (countEl) countEl.textContent = vals.length;
+}
+
+function addPropChip() {
+    const input = document.getElementById('addPropInput');
+    const val = input.value.trim();
+    if (!val) return;
+    const container = document.getElementById('addPropChips');
+    container.appendChild(_createChipBadge(val, function() {
+        this.closest('[data-value]').remove();
+        _syncHidden('addPropChips', 'addPropHidden', null);
+    }));
+    input.value = '';
+    _syncHidden('addPropChips', 'addPropHidden', null);
+}
+
+function editPropChip() {
+    const input = document.getElementById('editPropInput');
+    const val = input.value.trim();
+    if (!val) return;
+    const container = document.getElementById('editPropChips');
+    container.appendChild(_createChipBadge(val, function() {
+        this.closest('[data-value]').remove();
+        _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+    }));
+    input.value = '';
+    _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+}
+
 function openEditProperty(propId, propName, values) {
     document.getElementById('editPropertyTitle').textContent = 'Редактировать: ' + propName;
     document.getElementById('editPropertyForm').action = `/admin/properties/${propId}/edit`;
-    const valStr = (values || []).join(', ');
-    document.getElementById('editPropertyValues').value = valStr;
-    document.getElementById('editPropertyCount').textContent = (values || []).length;
+    const container = document.getElementById('editPropChips');
+    container.innerHTML = '';
+    (values || []).forEach(v => {
+        container.appendChild(_createChipBadge(v, function() {
+            this.closest('[data-value]').remove();
+            _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+        }));
+    });
+    _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
     new bootstrap.Modal(document.getElementById('editPropertyModal')).show();
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('addPropInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPropChip(); } });
+    document.getElementById('editPropInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); editPropChip(); } });
+    document.getElementById('addPropertyModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('addPropChips').innerHTML = '';
+        document.getElementById('addPropInput').value = '';
+        document.getElementById('addPropHidden').value = '';
+    });
+});
 </script>
 {% endblock %}
