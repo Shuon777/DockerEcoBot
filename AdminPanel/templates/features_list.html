@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Каталог признаков ресурсов{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">🔖 Каталог признаков ресурсов</h4>
+        <p class="text-muted small mb-0">Признаки привязаны к модальностям (Текст / Изображение / Геоданные) и имеют конкретные значения</p>
+    </div>
+    <button class="btn btn-primary fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#addFeatureModal">
+        <i class="bi bi-plus-lg"></i> Добавить признак
+    </button>
+</div>
+
+<div class="card shadow-sm border-0" style="border-radius: 16px;">
+    <div class="card-header bg-white p-3 border-bottom">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            {% for mod in modalities %}
+            <li class="nav-item">
+                <button class="nav-link fw-bold {% if loop.first %}active{% endif %}"
+                        data-bs-toggle="tab"
+                        data-bs-target="#mod{{ mod.id }}"
+                        type="button">
+                    {% if mod.modality_type == 'Текст' %}📄
+                    {% elif mod.modality_type == 'Изображение' %}🖼️
+                    {% elif mod.modality_type == 'Геоданные' %}🗺️
+                    {% endif %}
+                    {{ mod.modality_type }}
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="card-body tab-content p-0">
+        {% for mod in modalities %}
+        {% set mod_features = features | selectattr("modality_id", "equalto", mod.id) | list %}
+        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="mod{{ mod.id }}">
+            {% if mod_features %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4" style="width:25%">Признак</th>
+                            <th>Допустимые значения <span class="text-muted fw-normal">(первые 15)</span></th>
+                            <th class="text-center" style="width:80px">Всего</th>
+                            <th style="width:110px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for feat in mod_features %}
+                        <tr>
+                            <td class="ps-4">
+                                <span class="fw-bold">{{ feat.feature_name }}</span>
+                            </td>
+                            <td>
+                                {% if feat.feature_values %}
+                                    {% for v in feat.feature_values[:15] %}
+                                    <span class="badge bg-light text-dark border me-1 mb-1" style="font-size:0.75rem;">{{ v }}</span>
+                                    {% endfor %}
+                                    {% if feat.feature_values | length > 15 %}
+                                    <span class="text-muted small">… ещё {{ feat.feature_values | length - 15 }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small fst-italic">Свободный ввод (без ограничений)</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                                    {{ feat.feature_values | length if feat.feature_values else 0 }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1 justify-content-end pe-2">
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            onclick="openEditFeature({{ feat.id }}, '{{ feat.feature_name | replace("'", "\\'") }}', {{ feat.feature_values | tojson | safe }})"
+                                            title="Редактировать значения">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form action="/admin/features/{{ feat.id }}/delete" method="post"
+                                          onsubmit="return confirm('Удалить признак «{{ feat.feature_name }}»?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center p-5 text-muted">
+                <i class="bi bi-bookmark-check fs-1 d-block mb-3 opacity-25"></i>
+                <p>Признаки для модальности «{{ mod.modality_type }}» не определены.</p>
+                <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addFeatureModal">
+                    Добавить первый признак
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- ===== Модалка: добавить признак ===== -->
+<div class="modal fade" id="addFeatureModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новый признак ресурса</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/features/new" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">МОДАЛЬНОСТЬ *</label>
+                        <select class="form-select" name="modality_id" required>
+                            {% for mod in modalities %}
+                            <option value="{{ mod.id }}">{{ mod.modality_type }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ ПРИЗНАКА *</label>
+                        <input type="text" class="form-control" name="feature_name" required
+                               placeholder="Напр: season">
+                        <div class="form-text">Используется как ключ в resource.features JSONB.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
+                        <textarea class="form-control" name="feature_values" rows="5"
+                                  placeholder="Значения через запятую. Оставьте пустым для свободного ввода.&#10;Пример: весна, лето, осень, зима"></textarea>
+                        <div class="form-text">
+                            Значения разделяются запятой. Пустое поле = свободный ввод.
+                            Признак имеет конкретные значения, не является простым флагом.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Модалка: редактировать признак ===== -->
+<div class="modal fade" id="editFeatureModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="editFeatureTitle">Редактировать признак</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editFeatureForm" method="post" action="">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
+                        <textarea class="form-control" name="feature_values" id="editFeatureValues" rows="8"
+                                  placeholder="Значения через запятую..."></textarea>
+                        <div class="form-text">
+                            Значения разделяются запятой.
+                            Сейчас: <span id="editFeatureCount" class="fw-bold">0</span> значений.
+                            Пустое поле = свободный ввод.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openEditFeature(featId, featName, values) {
+    document.getElementById('editFeatureTitle').textContent = 'Редактировать: ' + featName;
+    document.getElementById('editFeatureForm').action = `/admin/features/${featId}/edit`;
+    const valStr = (values || []).join(', ');
+    document.getElementById('editFeatureValues').value = valStr;
+    document.getElementById('editFeatureCount').textContent = (values || []).length;
+    new bootstrap.Modal(document.getElementById('editFeatureModal')).show();
+}
+</script>
+{% endblock %}

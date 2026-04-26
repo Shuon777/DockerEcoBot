@@ -164,13 +164,16 @@
 
             <div class="mb-3 mt-3">
                 <p class="text-muted small fw-bold mb-1">ВСЕ СВОЙСТВА</p>
-                {% if entity.object_properties %}
-                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#entityFeaturesModal">
-                        <i class="bi bi-tags"></i> Просмотреть JSON
+                <div class="d-flex gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#editPropertiesModal">
+                        <i class="bi bi-pencil-square"></i> Редактировать
                     </button>
-                {% else %}
-                    <p class="text-muted small mb-0">Свойства не заданы</p>
-                {% endif %}
+                    {% if entity.object_properties %}
+                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#entityFeaturesModal">
+                        <i class="bi bi-code-slash"></i> JSON
+                    </button>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -227,6 +230,15 @@
                                             data-content="{{ t.content | default('', true) | replace('"', '&quot;') }}"
                                             onclick="openEditText(this)">
                                         <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-success border-0"
+                                            data-resource-id="{{ t.id }}"
+                                            data-modality="text"
+                                            data-features='{{ t.feature_data | tojson | safe }}'
+                                            data-title="{{ (t.title or 'текст') | replace('"', '&quot;') }}"
+                                            onclick="openEditFeaturesFromBtn(this)"
+                                            title="Редактировать признаки">
+                                        <i class="bi bi-pencil-square"></i>
                                     </button>
                                     <button class="btn btn-sm btn-outline-info border-0"
                                             data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}" title="Свойства">
@@ -311,10 +323,21 @@
                                      onerror="this.src='https://placehold.co/600x400?text=Нет+изображения'">
                                 <div class="card-body p-2">
                                     <p class="small text-truncate mb-0 mt-1" title="{{ img_obj.data.title }}">{{ img_obj.data.title }}</p>
-                                    <button class="btn btn-sm btn-outline-info w-100 mt-2"
-                                            data-bs-toggle="modal" data-bs-target="#imageFeatureModal{{ img_obj.data.id }}">
-                                        <i class="bi bi-tags"></i> Свойства
-                                    </button>
+                                    <div class="d-flex gap-1 mt-2">
+                                        <button class="btn btn-sm btn-outline-info flex-grow-1"
+                                                data-bs-toggle="modal" data-bs-target="#imageFeatureModal{{ img_obj.data.id }}">
+                                            <i class="bi bi-tags"></i> Признаки
+                                        </button>
+                                        <button class="btn btn-sm btn-outline-success"
+                                                data-resource-id="{{ img_obj.data.id }}"
+                                                data-modality="image"
+                                                data-features='{{ img_obj.data.feature_data | tojson | safe }}'
+                                                data-title="{{ (img_obj.data.title or 'изображение') | replace('"', '&quot;') }}"
+                                                onclick="openEditFeaturesFromBtn(this)"
+                                                title="Редактировать признаки">
+                                            <i class="bi bi-pencil-square"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -363,6 +386,15 @@
                                     <button class="btn btn-outline-info btn-sm"
                                             data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}" title="Свойства">
                                         <i class="bi bi-tags"></i>
+                                    </button>
+                                    <button class="btn btn-outline-success btn-sm"
+                                            data-resource-id="{{ loc.resource_id }}"
+                                            data-modality="geo"
+                                            data-features='{{ loc.feature_data | tojson | safe }}'
+                                            data-title="{{ loc.name_ru | replace('"', '&quot;') }}"
+                                            onclick="openEditFeaturesFromBtn(this)"
+                                            title="Редактировать признаки">
+                                        <i class="bi bi-pencil-square"></i>
                                     </button>
                                     <form action="/admin/biological/resource/delete/geo/{{ loc.resource_id }}" method="post"
                                           onsubmit="return confirm('Удалить этот ареал обитания?')" class="d-inline">
@@ -731,6 +763,78 @@
     </div>
 </div>
 
+<!-- Модалка: редактировать свойства объекта -->
+<div class="modal fade" id="editPropertiesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Свойства объекта</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-secondary">ТИП</label>
+                    <input type="text" class="form-control" value="{{ entity.bio_type or 'Объект флоры и фауны' }}" disabled>
+                </div>
+                {% for prop in available_properties %}
+                <div class="mb-3">
+                    <label class="form-label fw-bold small text-secondary">{{ prop.name | upper }}</label>
+                    {% if prop.name == 'subtypes' %}
+                    <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2">
+                        {% set cur_sub = (entity.object_properties or {}).get('subtypes', []) %}
+                        {% if cur_sub is string %}{% set cur_sub = [cur_sub] %}{% endif %}
+                        {% for s in cur_sub %}
+                        <span class="badge bg-light text-dark border d-flex align-items-center gap-1" style="font-size:0.85rem;">
+                            {{ s }}
+                            <button type="button" class="btn-close" style="font-size:0.6rem;" onclick="removeSubtypeChip(this)"></button>
+                        </span>
+                        {% endfor %}
+                    </div>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="subtypesInput" placeholder="Добавить подтип...">
+                        <button class="btn btn-outline-secondary" type="button" onclick="addSubtypeChip()">Добавить</button>
+                    </div>
+                    {% elif prop.values | length > 0 %}
+                    <select class="form-select" id="prop_{{ prop.name }}">
+                        <option value="">— не указано —</option>
+                        {% for v in prop.values %}
+                        <option value="{{ v }}" {% if (entity.object_properties or {}).get(prop.name) == v %}selected{% endif %}>{{ v }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" class="form-control" id="prop_{{ prop.name }}"
+                           value="{{ (entity.object_properties or {}).get(prop.name, '') }}">
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="text-muted small fst-italic">Каталог свойств для этого типа объекта пуст. Добавьте свойства в <a href="/admin/properties">каталоге</a>.</p>
+                {% endfor %}
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success fw-bold" onclick="saveProperties({{ entity.id }})">💾 Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модалка: редактировать признаки ресурса -->
+<div class="modal fade" id="editResourceFeaturesModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="editResFeatTitle">Признаки ресурса</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="editResFeatBody"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-success fw-bold" id="editResFeatSaveBtn">💾 Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Модалка свойств объекта -->
 {% if entity.object_properties %}
 <div class="modal fade" id="entityFeaturesModal" tabindex="-1">
@@ -1091,5 +1195,126 @@ document.getElementById('editGeoModal').addEventListener('hidden.bs.modal', func
         document.querySelector('#addGeoForm input[name="title"]').value = '';
     });
 })();
+
+// ===== Признаки ресурсов =====
+const FEATURE_CATALOG = {
+    text: {{ text_features | tojson | safe }},
+    image: {{ image_features | tojson | safe }},
+    geo: {{ geo_features | tojson | safe }}
+};
+
+function openEditFeaturesFromBtn(btn) {
+    const resourceId = btn.dataset.resourceId;
+    const modality = btn.dataset.modality;
+    const title = btn.dataset.title || 'ресурс';
+    let features = {};
+    try { features = JSON.parse(btn.dataset.features || '{}') || {}; } catch(e) {}
+    openEditFeatures(resourceId, modality, title, features);
+}
+
+function openEditFeatures(resourceId, modality, title, currentFeatures) {
+    document.getElementById('editResFeatTitle').textContent = 'Признаки: ' + title;
+    const body = document.getElementById('editResFeatBody');
+    const catalog = FEATURE_CATALOG[modality] || [];
+    if (catalog.length === 0) {
+        body.innerHTML = '<p class="text-muted">Признаки для этой модальности не определены в каталоге.</p>';
+    } else {
+        body.innerHTML = catalog.map(feat => {
+            const cur = (currentFeatures || {})[feat.name] || '';
+            const label = `<label class="form-label fw-bold small text-secondary">${feat.name.toUpperCase()}</label>`;
+            if (feat.values && feat.values.length > 0) {
+                const opts = feat.values.map(v =>
+                    `<option value="${v}"${cur === v ? ' selected' : ''}>${v}</option>`
+                ).join('');
+                return `<div class="mb-3">${label}<select class="form-select" data-feat-name="${feat.name}"><option value="">— не указано —</option>${opts}</select></div>`;
+            } else {
+                return `<div class="mb-3">${label}<input type="text" class="form-control" data-feat-name="${feat.name}" value="${cur.replace(/"/g, '&quot;')}"></div>`;
+            }
+        }).join('');
+    }
+    document.getElementById('editResFeatSaveBtn').onclick = () => saveResourceFeatures(resourceId);
+    new bootstrap.Modal(document.getElementById('editResourceFeaturesModal')).show();
+}
+
+async function saveResourceFeatures(resourceId) {
+    const body = document.getElementById('editResFeatBody');
+    const fields = body.querySelectorAll('[data-feat-name]');
+    const features = {};
+    fields.forEach(f => { if (f.value) features[f.dataset.featName] = f.value; });
+    try {
+        const resp = await fetch(`/admin/resource/${resourceId}/update_features`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ features })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editResourceFeaturesModal')).hide();
+            window.location.reload();
+        } else {
+            alert('Ошибка сохранения: ' + (data.error || 'неизвестная'));
+        }
+    } catch(e) {
+        alert('Ошибка сети: ' + e.message);
+    }
+}
+
+async function saveProperties(objectId) {
+    const props = {};
+    {% for prop in available_properties %}
+    {% if prop.name == 'subtypes' %}
+    {
+        const chips = document.querySelectorAll('#subtypes-chips .badge');
+        const subtypesList = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
+        if (subtypesList.length > 0) props['subtypes'] = subtypesList;
+    }
+    {% else %}
+    {
+        const el = document.getElementById('prop_{{ prop.name }}');
+        if (el && el.value) props['{{ prop.name }}'] = el.value;
+    }
+    {% endif %}
+    {% endfor %}
+    try {
+        const resp = await fetch(`/admin/biological/${objectId}/set_property`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ properties: props })
+        });
+        const data = await resp.json();
+        if (data.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editPropertiesModal')).hide();
+            window.location.reload();
+        } else {
+            alert('Ошибка сохранения: ' + (data.error || 'неизвестная'));
+        }
+    } catch(e) {
+        alert('Ошибка сети: ' + e.message);
+    }
+}
+
+function addSubtypeChip() {
+    const input = document.getElementById('subtypesInput');
+    const val = input.value.trim();
+    if (!val) return;
+    const container = document.getElementById('subtypes-chips');
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1';
+    span.style.fontSize = '0.85rem';
+    const text = document.createTextNode(val + ' ');
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'btn-close';
+    closeBtn.style.fontSize = '0.6rem';
+    closeBtn.onclick = function() { removeSubtypeChip(this); };
+    span.appendChild(text);
+    span.appendChild(closeBtn);
+    container.appendChild(span);
+    input.value = '';
+}
+
+function removeSubtypeChip(btn) {
+    btn.closest('.badge').remove();
+}
 </script>
 {% endblock %}

@@ -568,6 +568,19 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
             "feature_data": row.features or {},
         })
 
+    avail_props_rows = (await db.execute(
+        select(ObjectProperty)
+        .where(ObjectProperty.object_type_id == BIO_OBJECT_TYPE_ID)
+        .order_by(ObjectProperty.property_name)
+    )).scalars().all()
+    available_properties = [
+        {"id": p.id, "name": p.property_name, "values": list(p.property_values or [])}
+        for p in avail_props_rows
+    ]
+    text_features = await _get_modality_features(db, "Текст")
+    image_features = await _get_modality_features(db, "Изображение")
+    geo_features = await _get_modality_features(db, "Геоданные")
+
     return templates.TemplateResponse("biological_edit.html", {
         "request": request,
         "active_page": "biological",
@@ -576,6 +589,10 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         "texts": texts,
         "images": images,
         "locations": locations,
+        "available_properties": available_properties,
+        "text_features": text_features,
+        "image_features": image_features,
+        "geo_features": geo_features,
     })
 
 
@@ -922,6 +939,20 @@ async def get_modality_id(db: AsyncSession, modality_type: str) -> int:
     if row is None:
         raise HTTPException(status_code=500, detail=f"Модальность '{modality_type}' не зарегистрирована в eco_assistant.modality")
     return row
+
+
+async def _get_modality_features(db: AsyncSession, modality_type: str) -> list:
+    """Вернуть список признаков (из resource_feature) для указанной модальности."""
+    try:
+        mod_id = await get_modality_id(db, modality_type)
+        rows = (await db.execute(
+            select(ResourceFeature)
+            .where(ResourceFeature.modality_id == mod_id)
+            .order_by(ResourceFeature.feature_name)
+        )).scalars().all()
+        return [{"id": f.id, "name": f.feature_name, "values": list(f.feature_values or [])} for f in rows]
+    except Exception:
+        return []
 
 
 async def get_or_create(db: AsyncSession, model, **kwargs):
@@ -1479,6 +1510,19 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
             "feature_data": row.features or {},
         })
 
+    avail_props_rows = (await db.execute(
+        select(ObjectProperty)
+        .where(ObjectProperty.object_type_id == GEO_OBJECT_TYPE_ID)
+        .order_by(ObjectProperty.property_name)
+    )).scalars().all()
+    available_properties = [
+        {"id": p.id, "name": p.property_name, "values": list(p.property_values or [])}
+        for p in avail_props_rows
+    ]
+    text_features = await _get_modality_features(db, "Текст")
+    image_features = await _get_modality_features(db, "Изображение")
+    geo_features = await _get_modality_features(db, "Геоданные")
+
     return templates.TemplateResponse("geographical_edit.html", {
         "request": request,
         "active_page": "geographical",
@@ -1487,6 +1531,10 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         "texts": texts,
         "images": images,
         "locations": locations,
+        "available_properties": available_properties,
+        "text_features": text_features,
+        "image_features": image_features,
+        "geo_features": geo_features,
     })
 
 
@@ -1980,6 +2028,228 @@ async def get_test_results_api(session_id: str, admin_db = Depends(get_admin_db)
         "results": test.results,
         "objects": test.tested_objects
     }
+
+
+# ==========================================
+# CMS: КАТАЛОГ СВОЙСТВ (ObjectProperty)
+# ==========================================
+
+@app.get("/properties", response_class=HTMLResponse)
+async def properties_list_page(request: Request, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+    object_types = (await db.execute(select(ObjectType).order_by(ObjectType.id))).scalars().all()
+    properties = (await db.execute(
+        select(ObjectProperty).order_by(ObjectProperty.object_type_id, ObjectProperty.property_name)
+    )).scalars().all()
+    return templates.TemplateResponse("properties_list.html", {
+        "request": request,
+        "active_page": "properties",
+        "bot_online": bot_online,
+        "object_types": object_types,
+        "properties": properties,
+    })
+
+
+@app.post("/properties/new")
+async def properties_new(
+    request: Request,
+    object_type_id: int = Form(...),
+    property_name: str = Form(...),
+    property_values: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    values_list = [v.strip() for v in property_values.split(",") if v.strip()]
+    prop = ObjectProperty(
+        object_type_id=object_type_id,
+        property_name=property_name.strip(),
+        property_values=values_list,
+    )
+    db.add(prop)
+    await db.commit()
+    return RedirectResponse(url="/properties", status_code=303)
+
+
+@app.post("/properties/{prop_id}/edit")
+async def properties_edit(
+    request: Request,
+    prop_id: int,
+    property_values: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    prop = (await db.execute(select(ObjectProperty).where(ObjectProperty.id == prop_id))).scalar()
+    if not prop:
+        raise HTTPException(status_code=404)
+    prop.property_values = [v.strip() for v in property_values.split(",") if v.strip()]
+    await db.commit()
+    return RedirectResponse(url="/properties", status_code=303)
+
+
+@app.post("/properties/{prop_id}/delete")
+async def properties_delete(
+    request: Request,
+    prop_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await db.execute(delete(ObjectProperty).where(ObjectProperty.id == prop_id))
+    await db.commit()
+    return RedirectResponse(url="/properties", status_code=303)
+
+
+# ==========================================
+# CMS: КАТАЛОГ ПРИЗНАКОВ (ResourceFeature)
+# ==========================================
+
+@app.get("/features", response_class=HTMLResponse)
+async def features_list_page(request: Request, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+    modalities = (await db.execute(select(Modality).order_by(Modality.id))).scalars().all()
+    features = (await db.execute(
+        select(ResourceFeature).order_by(ResourceFeature.modality_id, ResourceFeature.feature_name)
+    )).scalars().all()
+    return templates.TemplateResponse("features_list.html", {
+        "request": request,
+        "active_page": "features",
+        "bot_online": bot_online,
+        "modalities": modalities,
+        "features": features,
+    })
+
+
+@app.post("/features/new")
+async def features_new(
+    request: Request,
+    modality_id: int = Form(...),
+    feature_name: str = Form(...),
+    feature_values: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    values_list = [v.strip() for v in feature_values.split(",") if v.strip()]
+    feat = ResourceFeature(
+        modality_id=modality_id,
+        feature_name=feature_name.strip(),
+        feature_values=values_list,
+    )
+    db.add(feat)
+    await db.commit()
+    return RedirectResponse(url="/features", status_code=303)
+
+
+@app.post("/features/{feat_id}/edit")
+async def features_edit(
+    request: Request,
+    feat_id: int,
+    feature_values: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    feat = (await db.execute(select(ResourceFeature).where(ResourceFeature.id == feat_id))).scalar()
+    if not feat:
+        raise HTTPException(status_code=404)
+    feat.feature_values = [v.strip() for v in feature_values.split(",") if v.strip()]
+    await db.commit()
+    return RedirectResponse(url="/features", status_code=303)
+
+
+@app.post("/features/{feat_id}/delete")
+async def features_delete(
+    request: Request,
+    feat_id: int,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await db.execute(delete(ResourceFeature).where(ResourceFeature.id == feat_id))
+    await db.commit()
+    return RedirectResponse(url="/features", status_code=303)
+
+
+# ==========================================
+# CMS: ОБНОВЛЕНИЕ СВОЙСТВ ОБЪЕКТА
+# ==========================================
+
+@app.post("/biological/{object_id}/set_property")
+async def biological_set_property(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    obj = (await db.execute(
+        select(Object).where(Object.id == object_id, Object.object_type_id == BIO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404)
+    current = dict(obj.object_properties or {})
+    for k, v in (data.get("properties") or {}).items():
+        if v is None or v == "" or v == []:
+            current.pop(k, None)
+        else:
+            current[k] = v
+    obj.object_properties = current
+    await db.commit()
+    return {"ok": True}
+
+
+@app.post("/geographical/{object_id}/set_property")
+async def geographical_set_property(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    obj = (await db.execute(
+        select(Object).where(Object.id == object_id, Object.object_type_id == GEO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404)
+    current = dict(obj.object_properties or {})
+    for k, v in (data.get("properties") or {}).items():
+        if v is None or v == "" or v == []:
+            current.pop(k, None)
+        else:
+            current[k] = v
+    obj.object_properties = current
+    await db.commit()
+    return {"ok": True}
+
+
+# ==========================================
+# CMS: ОБНОВЛЕНИЕ ПРИЗНАКОВ РЕСУРСА
+# ==========================================
+
+@app.post("/resource/{resource_id}/update_features")
+async def resource_update_features(
+    request: Request,
+    resource_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    new_features = {k: v for k, v in (data.get("features") or {}).items() if v is not None and v != ""}
+    res.features = new_features
+    await db.commit()
+    return {"ok": True}
 
 
 if __name__ == "__main__":

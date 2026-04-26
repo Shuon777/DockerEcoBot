@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Каталог свойств объектов{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-1">🏷️ Каталог свойств объектов</h4>
+        <p class="text-muted small mb-0">Управление допустимыми свойствами и их значениями для каждого типа объекта</p>
+    </div>
+    <button class="btn btn-success fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#addPropertyModal">
+        <i class="bi bi-plus-lg"></i> Добавить свойство
+    </button>
+</div>
+
+<div class="card shadow-sm border-0" style="border-radius: 16px;">
+    <div class="card-header bg-white p-3 border-bottom">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            {% for ot in object_types %}
+            <li class="nav-item">
+                <button class="nav-link fw-bold {% if loop.first %}active{% endif %}"
+                        data-bs-toggle="tab"
+                        data-bs-target="#type{{ ot.id }}"
+                        type="button">
+                    {{ ot.name }}
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="card-body tab-content p-0">
+        {% for ot in object_types %}
+        {% set type_props = properties | selectattr("object_type_id", "equalto", ot.id) | list %}
+        <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="type{{ ot.id }}">
+            {% if type_props %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th class="ps-4" style="width:25%">Свойство</th>
+                            <th>Допустимые значения <span class="text-muted fw-normal">(первые 15)</span></th>
+                            <th class="text-center" style="width:80px">Всего</th>
+                            <th style="width:110px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for prop in type_props %}
+                        <tr>
+                            <td class="ps-4">
+                                <span class="fw-bold">{{ prop.property_name }}</span>
+                            </td>
+                            <td>
+                                {% if prop.property_values %}
+                                    {% for v in prop.property_values[:15] %}
+                                    <span class="badge bg-light text-dark border me-1 mb-1" style="font-size:0.75rem;">{{ v }}</span>
+                                    {% endfor %}
+                                    {% if prop.property_values | length > 15 %}
+                                    <span class="text-muted small">… ещё {{ prop.property_values | length - 15 }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="text-muted small fst-italic">Свободный ввод (без ограничений)</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-secondary bg-opacity-10 text-secondary">
+                                    {{ prop.property_values | length if prop.property_values else 0 }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="d-flex gap-1 justify-content-end pe-2">
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            onclick="openEditProperty({{ prop.id }}, '{{ prop.property_name | replace("'", "\\'") }}', {{ prop.property_values | tojson | safe }})"
+                                            title="Редактировать значения">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <form action="/admin/properties/{{ prop.id }}/delete" method="post"
+                                          onsubmit="return confirm('Удалить свойство «{{ prop.property_name }}»?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Удалить">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center p-5 text-muted">
+                <i class="bi bi-tags fs-1 d-block mb-3 opacity-25"></i>
+                <p>Свойства для типа «{{ ot.name }}» не определены.</p>
+                <button class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#addPropertyModal">
+                    Добавить первое свойство
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- ===== Модалка: добавить свойство ===== -->
+<div class="modal fade" id="addPropertyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Новое свойство объекта</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="/admin/properties/new" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ТИП ОБЪЕКТА *</label>
+                        <select class="form-select" name="object_type_id" required>
+                            {% for ot in object_types %}
+                            <option value="{{ ot.id }}">{{ ot.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ СВОЙСТВА *</label>
+                        <input type="text" class="form-control" name="property_name" required
+                               placeholder="Напр: region">
+                        <div class="form-text">Используется как ключ в object_properties JSONB.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
+                        <textarea class="form-control" name="property_values" rows="5"
+                                  placeholder="Значения через запятую. Оставьте пустым для свободного ввода.&#10;Пример: Иркутская обл., Бурятия, Забайкальский кр."></textarea>
+                        <div class="form-text">Значения разделяются запятой. Пустое поле = любое значение допустимо.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- ===== Модалка: редактировать свойство ===== -->
+<div class="modal fade" id="editPropertyModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 16px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="editPropertyTitle">Редактировать свойство</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="editPropertyForm" method="post" action="">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
+                        <textarea class="form-control" name="property_values" id="editPropertyValues" rows="8"
+                                  placeholder="Значения через запятую..."></textarea>
+                        <div class="form-text">
+                            Значения разделяются запятой.
+                            Сейчас: <span id="editPropertyCount" class="fw-bold">0</span> значений.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-primary fw-bold">💾 Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function openEditProperty(propId, propName, values) {
+    document.getElementById('editPropertyTitle').textContent = 'Редактировать: ' + propName;
+    document.getElementById('editPropertyForm').action = `/admin/properties/${propId}/edit`;
+    const valStr = (values || []).join(', ');
+    document.getElementById('editPropertyValues').value = valStr;
+    document.getElementById('editPropertyCount').textContent = (values || []).length;
+    new bootstrap.Modal(document.getElementById('editPropertyModal')).show();
+}
+</script>
+{% endblock %}
