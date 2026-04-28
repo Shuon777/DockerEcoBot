@@ -171,6 +171,24 @@ async def proxy_to_core(request: Request, data: dict = Body(...)):
         except Exception as e:
             return [{"type": "text", "content": f"❌ Ошибка Core API: {str(e)}"}]
 
+@app.post("/chat/classify")
+async def classify_proxy(request: Request, data: dict = Body(...)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return {"error": "не авторизован"}
+    query = data.get("text", "").strip()
+    if not query:
+        return {"error": "пустой запрос"}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+        try:
+            response = await client.post(
+                f"{CORE_API_BASE}/classify",
+                json={"query": query}
+            )
+            return response.json()
+        except Exception as e:
+            return {"error": f"Ошибка Core API: {str(e)}"}
+
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):

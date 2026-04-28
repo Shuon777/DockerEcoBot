@@ -69,6 +69,11 @@
                 <input class="form-check-input" type="checkbox" id="setting-debug">
                 <label class="form-check-label fw-bold" for="setting-debug">🐞 Debug Mode</label>
             </div>
+            <!-- Classify -->
+            <div class="form-check form-switch text-success">
+                <input class="form-check-input" type="checkbox" id="setting-classify">
+                <label class="form-check-label fw-bold" for="setting-classify">🔍 Classify Mode</label>
+            </div>
         </div>
         <div>
             <span class="text-muted small">ID: <b>{{ request.session.user_id }}</b></span>
@@ -139,11 +144,31 @@ async function sendMessage(overrideText = null, isCallback = false) {
     if (!isCallback || !text.includes(':')) {
         appendMessage('user', text);
     }
-    
+
     if (!overrideText) input.value = '';
-    
+
     const loading = document.getElementById('loading-indicator');
     loading.classList.remove('d-none');
+
+    const classifyMode = document.getElementById('setting-classify').checked;
+
+    if (classifyMode) {
+        try {
+            const response = await fetch('/admin/chat/classify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text })
+            });
+            const data = await response.json();
+            renderClassification(data);
+        } catch (e) {
+            console.error("Ошибка classify:", e);
+            appendMessage('bot', '❌ Ошибка сети или Core API не отвечает.');
+        } finally {
+            loading.classList.add('d-none');
+        }
+        return;
+    }
 
     const chatSettings = {
         mode: document.getElementById('setting-mode').checked ? 'gigachat' : 'rasa',
@@ -155,12 +180,12 @@ async function sendMessage(overrideText = null, isCallback = false) {
         const response = await fetch('/admin/chat/ask', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 text: text,
                 settings: chatSettings // Шлем настройки
             })
         });
-        
+
         const responses = await response.json();
 
         if (Array.isArray(responses)) {
@@ -284,6 +309,33 @@ function appendImage(sender, url) {
     chat.appendChild(div);
     chat.scrollTop = chat.scrollHeight;
     return div; // Важно!
+}
+
+function renderClassification(data) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'message system-message';
+
+    // Подсветка JSON: ключи зелёным, строки янтарным, null серым
+    const pretty = JSON.stringify(data, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span style="color:#10b981">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
+        .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
+        .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
+
+    const template = data.template
+        ? `<span style="color:#a78bfa;font-weight:bold"> → ${data.template}</span>`
+        : '';
+
+    div.innerHTML = `
+        <div class="debug-header">
+            <i class="bi bi-search"></i> Slot Classification${template}
+        </div>
+        <pre class="debug-block">${pretty}</pre>
+    `;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
 }
 
 document.getElementById('user-input').addEventListener('keypress', (e) => {
