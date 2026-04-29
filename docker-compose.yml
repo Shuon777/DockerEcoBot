@@ -15,6 +15,8 @@ services:
     build: ./db_custom
     restart: always
     env_file: ./db_custom/.env
+    ports:
+      - "5432:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
       - ./db_custom/init.sql:/docker-entrypoint-initdb.d/init.sql
