@@ -14,7 +14,7 @@ class DatabaseConfig:
         return cls(
             dbname=os.getenv('DB_NAME', 'eco'),
             user=os.getenv('DB_USER', 'postgres'),
-            password=os.getenv('DB_PASSWORD'),
-            host=os.getenv('DB_HOST', 'localhost'),
+            password=os.getenv('DB_PASSWORD', 'Fdf78yh0a4b!'),
+            host=os.getenv('DB_HOST', 'db'),
             port=os.getenv('DB_PORT', '5432')
         )

@@ -59,8 +59,8 @@
 <div class="card shadow-sm mb-3" style="border-radius: 16px;">
     <div class="card-body d-flex align-items-center justify-content-between py-2 px-4 bg-light" style="border-radius: 16px;">
         <div class="d-flex gap-4">
-            <!-- Режим -->
-            <div class="form-check form-switch">
+            <!-- Режим (скрыт — пока работаем только с одним LLM-провайдером) -->
+            <div class="form-check form-switch" style="display:none">
                 <input class="form-check-input" type="checkbox" id="setting-mode" checked>
                 <label class="form-check-label fw-bold" for="setting-mode">GigaChat Mode</label>
             </div>
@@ -154,15 +154,18 @@ async function sendMessage(overrideText = null, isCallback = false) {
 
     if (classifyMode) {
         try {
-            const response = await fetch('/admin/chat/classify', {
+            const response = await fetch('/admin/chat/search', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: text })
             });
             const data = await response.json();
-            renderClassification(data);
+            renderClassification(data.slots || data);
+            if (data.search_request) renderSearchRequest(data.search_request);
+            if (data.search) await renderSearchResults(data.search, data.slots?.modality);
+            if (data.error) appendMessage('bot', `❌ ${data.error}`);
         } catch (e) {
-            console.error("Ошибка classify:", e);
+            console.error("Ошибка classify+search:", e);
             appendMessage('bot', '❌ Ошибка сети или Core API не отвечает.');
         } finally {
             loading.classList.add('d-none');
@@ -335,6 +338,168 @@ function renderClassification(data) {
         <pre class="debug-block">${pretty}</pre>
     `;
     chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function renderSearchRequest(req) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'message system-message';
+
+    const rawId = `req-raw-${Date.now()}`;
+    const rawJson = JSON.stringify(req, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span style="color:#10b981">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
+        .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
+        .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
+
+    div.innerHTML = `
+        <div class="debug-header" style="cursor:pointer;user-select:none" onclick="document.getElementById('${rawId}').classList.toggle('d-none')">
+            <i class="bi bi-arrow-up-right-square"></i> Search Request
+            <i class="bi bi-chevron-down ms-1" style="font-size:0.75rem;opacity:0.6"></i>
+        </div>
+        <pre id="${rawId}" class="debug-block d-none">${rawJson}</pre>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function resolveDeadHosts(urls) {
+    const currentOrigin = window.location.origin;
+    const foreignOrigins = new Set();
+    for (const url of urls) {
+        if (!url) continue;
+        try {
+            const origin = new URL(url).origin;
+            if (origin !== currentOrigin) foreignOrigins.add(origin);
+        } catch {}
+    }
+
+    const deadOrigins = new Set();
+    await Promise.all([...foreignOrigins].map(async (origin) => {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 1500);
+            await fetch(origin, { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
+            clearTimeout(timer);
+        } catch {
+            deadOrigins.add(origin);
+        }
+    }));
+    return deadOrigins;
+}
+
+function fixUrl(url, deadOrigins) {
+    if (!url) return url;
+    try {
+        const u = new URL(url);
+        if (deadOrigins.has(u.origin)) {
+            u.protocol = window.location.protocol;
+            u.host = window.location.host;
+            return u.toString();
+        }
+    } catch {}
+    return url;
+}
+
+function appendMapLink(sender, url) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = `message ${sender}-message`;
+    div.innerHTML = `<div class="message-bubble shadow-sm">
+        <a href="${url}" target="_blank" class="btn btn-sm btn-success shadow-sm px-3 py-2" style="border-radius:10px;text-decoration:none">
+            <i class="bi bi-geo-alt-fill me-1"></i> Открыть интерактивную карту
+        </a>
+    </div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function renderSearchResults(searchData, modalityFilter = null) {
+    const chat = document.getElementById('chat-window');
+    const allResources = searchData.resources || [];
+    const objects = searchData.objects || [];
+
+    // Фильтруем по модальности из слотов классификатора
+    const resources = modalityFilter
+        ? allResources.filter(r => r.modality_type === modalityFilter)
+        : allResources;
+
+    // Заголовок с разворачиваемым сырым JSON
+    const rawId = `search-raw-${Date.now()}`;
+    const rawJson = JSON.stringify(searchData, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span style="color:#10b981">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
+        .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
+        .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
+    const filterLabel = modalityFilter
+        ? `<span style="color:#a78bfa"> [${modalityFilter}]</span>`
+        : '';
+    const countLabel = modalityFilter && resources.length !== allResources.length
+        ? `<span style="color:#60a5fa">(объектов: ${objects.length}, ресурсов: ${resources.length} из ${allResources.length})</span>`
+        : `<span style="color:#60a5fa">(объектов: ${objects.length}, ресурсов: ${resources.length})</span>`;
+
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'message system-message';
+    headerDiv.innerHTML = `
+        <div class="debug-header" style="cursor:pointer;user-select:none" onclick="document.getElementById('${rawId}').classList.toggle('d-none')">
+            <i class="bi bi-database"></i> Search Results${filterLabel}
+            ${countLabel}
+            <i class="bi bi-chevron-down ms-1" style="font-size:0.75rem;opacity:0.6"></i>
+        </div>
+        <pre id="${rawId}" class="debug-block d-none">${rawJson}</pre>`;
+    chat.appendChild(headerDiv);
+
+    if (resources.length === 0) {
+        appendMessage('bot', '🔍 Ресурсов по запросу не найдено.');
+        chat.scrollTop = chat.scrollHeight;
+        return;
+    }
+
+    // Собираем все URL для проверки хостов
+    const allUrls = [];
+    resources.forEach(r => {
+        const c = r.content;
+        if (r.modality_type === 'Изображение') {
+            allUrls.push(typeof c === 'string' ? c : (c?.url || c?.file_path));
+        } else if (r.modality_type === 'Геоданные') {
+            allUrls.push(c?.map_links?.static);
+            allUrls.push(c?.map_links?.interactive);
+        }
+    });
+    const deadOrigins = await resolveDeadHosts(allUrls.filter(Boolean));
+
+    resources.forEach(r => {
+        const type = r.modality_type;
+        const content = r.content;
+
+        if (type === 'Текст') {
+            let text = '';
+            if (typeof content === 'string') {
+                text = content;
+            } else if (content && typeof content === 'object') {
+                text = content.text || content.description || JSON.stringify(content);
+            }
+            if (text) appendMessage('bot', text);
+
+        } else if (type === 'Изображение') {
+            let url = null;
+            if (typeof content === 'string') {
+                url = content;
+            } else if (content && typeof content === 'object') {
+                url = content.url || content.file_path;
+            }
+            if (url) appendImage('bot', fixUrl(url, deadOrigins));
+
+        } else if (type === 'Геоданные') {
+            const staticMap = content?.map_links?.static;
+            const interactiveMap = content?.map_links?.interactive;
+            if (staticMap) appendImage('bot', fixUrl(staticMap, deadOrigins));
+            if (interactiveMap) appendMapLink('bot', fixUrl(interactiveMap, deadOrigins));
+        }
+    });
+
     chat.scrollTop = chat.scrollHeight;
 }
 

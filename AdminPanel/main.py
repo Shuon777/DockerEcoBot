@@ -49,7 +49,6 @@ app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET_KEY',
 BOT_CORE_URL = os.getenv("BOT_CORE_URL")
 parsed_url = urlparse(BOT_CORE_URL)
 CORE_API_BASE = f"{parsed_url.scheme}://{parsed_url.netloc}" # Получится http://localhost:5001
-
 ADMIN_DB_URL = os.getenv('ADMIN_DB_URL')
 admin_engine = create_engine(ADMIN_DB_URL, connect_args={"check_same_thread": False})
 AdminSessionLocal = sessionmaker(bind=admin_engine)
@@ -183,6 +182,25 @@ async def classify_proxy(request: Request, data: dict = Body(...)):
         try:
             response = await client.post(
                 f"{CORE_API_BASE}/classify",
+                json={"query": query}
+            )
+            return response.json()
+        except Exception as e:
+            return {"error": f"Ошибка Core API: {str(e)}"}
+
+
+@app.post("/chat/search")
+async def search_proxy(request: Request, data: dict = Body(...)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return {"error": "не авторизован"}
+    query = data.get("text", "").strip()
+    if not query:
+        return {"error": "пустой запрос"}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+        try:
+            response = await client.post(
+                f"{CORE_API_BASE}/search_pipeline",
                 json={"query": query}
             )
             return response.json()

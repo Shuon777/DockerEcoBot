@@ -17,6 +17,7 @@ from utils.settings_manager import get_user_settings, update_user_settings
 from logic.DialogSystem.orchestrator import DialogueSystem
 from logic.DialogSystem.schemas import UserRequest, SystemResponse
 from logic.DialogSystem.slot_classifier import SlotClassifier
+from logic.DialogSystem.slot_search_executor import SlotSearchExecutor
 
 # Настройки
 LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - [%(funcName)s] - %(message)s'
@@ -170,6 +171,18 @@ async def classify_query(data: dict = Body(...)):
     provider = os.getenv("LLM_PROVIDER", "qwen")
     classifier = SlotClassifier(provider=provider)
     return await classifier.classify(query)
+
+
+@app.post("/search_pipeline")
+async def search_pipeline_endpoint(data: dict = Body(...)):
+    query = data.get("query", "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query required")
+    provider = os.getenv("LLM_PROVIDER", "qwen")
+    classifier = SlotClassifier(provider=provider)
+    slots = await classifier.classify(query)
+    executor = SlotSearchExecutor(session=session)
+    return await executor.execute(query, slots)
 
 
 @app.post("/clear_context")
