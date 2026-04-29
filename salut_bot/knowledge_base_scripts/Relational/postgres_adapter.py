@@ -59,7 +59,7 @@ class NewResourceImporter:
         
     def load_geodb(self):
         try:
-            with open("/var/www/salut_bot/json_files/geodb.json", 'r') as f:
+            with open("/app/json_files/geodb.json", 'r') as f:
                 return json.load(f)
         except:
             return {}   
@@ -78,7 +78,7 @@ class NewResourceImporter:
         """Получаем полные геоданные для объекта из geodb.json с учетом частичных совпадений"""
         if not hasattr(self, 'geodb_data'):
             try:
-                with open("/var/www/salut_bot/json_files/geodb.json", 'r') as f:
+                with open("/app/json_files/geodb.json", 'r') as f:
                     self.geodb_data = json.load(f)
             except Exception as e:
                 print(f"Error loading geodb.json: {e}")
