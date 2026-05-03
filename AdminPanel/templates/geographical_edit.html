@@ -186,6 +186,11 @@
                             📍 Геолокации ({{ locations|length }})
                         </button>
                     </li>
+                    <li class="nav-item">
+                        <button class="nav-link fw-bold text-dark" data-bs-toggle="tab" data-bs-target="#links">
+                            🔗 Связи ({{ links|length }})
+                        </button>
+                    </li>
                 </ul>
             </div>
 
@@ -380,6 +385,75 @@
                         {% endfor %}
                     </div>
                 </div>
+
+                <!-- ========== Вкладка Связей ========== -->
+                <div class="tab-pane fade" id="links">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <h6 class="fw-bold mb-0 text-primary">
+                            <i class="bi bi-diagram-3 me-1"></i> Связанные объекты ({{ links|length }})
+                        </h6>
+                    </div>
+
+                    {% if links %}
+                    <div class="table-responsive mb-4">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Объект</th>
+                                    <th>Тип объекта</th>
+                                    <th>Тип связи</th>
+                                    <th>Направление</th>
+                                    <th style="width:60px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for lnk in links %}
+                                <tr>
+                                    <td>
+                                        <a href="/admin/{{ lnk.object_section }}/{{ lnk.related_id }}" class="fw-bold text-decoration-none text-dark">
+                                            {{ lnk.name }}
+                                        </a>
+                                        {% if lnk.scientific_name %}
+                                        <div class="text-muted small fst-italic">{{ lnk.scientific_name }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="badge bg-light text-secondary border">{{ lnk.object_type }}</span></td>
+                                    <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ lnk.relation_type }}</span></td>
+                                    <td>
+                                        {% if lnk.direction == 'outgoing' %}
+                                        <span class="text-muted small"><i class="bi bi-arrow-right text-primary"></i> исходящая</span>
+                                        {% else %}
+                                        <span class="text-muted small"><i class="bi bi-arrow-left text-info"></i> входящая</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger border-0"
+                                                title="Удалить связь"
+                                                onclick="deleteLink({{ entity.id }}, {{ lnk.related_id }}, '{{ lnk.relation_type | replace("'", "\\'") }}', this)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-4 mb-4">
+                        <i class="bi bi-diagram-3 fs-1 d-block mb-2 text-light"></i>
+                        Связанные объекты отсутствуют.
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center mt-2">
+                        <button type="button" class="btn btn-primary fw-bold" style="border-radius:10px;"
+                                data-bs-toggle="modal" data-bs-target="#addLinkModal">
+                            <i class="bi bi-plus-lg me-1"></i> Добавить связь
+                        </button>
+                    </div>
+                    <div id="linkAddStatus" class="mt-2 text-center"></div>
+                </div>
+
             </div>
         </div>
     </div>
@@ -828,6 +902,61 @@
             </div>
             <div class="modal-body" id="mapModalBody">
                 <!-- Сюда будет вставлена карта -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: добавить связь ========== -->
+<div class="modal fade" id="addLinkModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-1 text-primary"></i> Добавить связь</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">ОБЪЕКТ *</label>
+                    <input type="text" id="modalLinkSearch" class="form-control"
+                           placeholder="Начните вводить название..." autocomplete="off">
+                    <div id="modalLinkResults" class="mt-2"
+                         style="max-height:220px; overflow-y:auto; border-radius:8px;"></div>
+                    <div id="modalSelectedObject" class="mt-2" style="display:none;">
+                        <div class="d-flex align-items-center gap-2 p-2 rounded"
+                             style="background:#eff6ff; border:1px solid #bfdbfe;">
+                            <i class="bi bi-check-circle-fill text-primary"></i>
+                            <span id="modalSelectedName" class="fw-bold"></span>
+                            <span id="modalSelectedType" class="badge bg-light text-secondary border"></span>
+                            <button type="button" class="btn btn-sm btn-link text-danger ms-auto p-0"
+                                    onclick="clearLinkSelection()">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <input type="hidden" id="modalLinkRelatedId">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">ТИП СВЯЗИ *</label>
+                    <input type="text" id="modalLinkRelationType" class="form-control"
+                           list="modalRelationTypesList" placeholder="Выберите или введите...">
+                    <datalist id="modalRelationTypesList">
+                        <option value="основной вид"></option>
+                        <option value="место обитания"></option>
+                        <option value="место произрастания"></option>
+                        <option value="часть экспозиции"></option>
+                        <option value="услуга по теме"></option>
+                        <option value="связанный объект"></option>
+                    </datalist>
+                </div>
+                <div id="modalLinkStatus"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" id="modalAddLinkBtn" class="btn btn-primary fw-bold"
+                        onclick="confirmAddLink({{ entity.id }})" disabled>
+                    <i class="bi bi-plus-lg me-1"></i> Добавить
+                </button>
             </div>
         </div>
     </div>
@@ -1364,6 +1493,119 @@ function addSubtypeChip() {
 
 function removeSubtypeChip(btn) {
     btn.closest('.badge').remove();
+}
+
+// ===== Связи: модальное окно =====
+let modalLinkSearchTimer = null;
+
+document.getElementById('modalLinkSearch').addEventListener('input', function() {
+    clearTimeout(modalLinkSearchTimer);
+    const q = this.value.trim();
+    const results = document.getElementById('modalLinkResults');
+    if (q.length < 2) { results.innerHTML = ''; return; }
+    modalLinkSearchTimer = setTimeout(() => searchObjectsModal(q), 300);
+});
+
+async function searchObjectsModal(q) {
+    try {
+        const resp = await fetch(`/admin/object/search?q=${encodeURIComponent(q)}&exclude_id={{ entity.id }}`);
+        const items = await resp.json();
+        const container = document.getElementById('modalLinkResults');
+        if (!items.length) {
+            container.innerHTML = '<div class="text-muted small p-2">Ничего не найдено.</div>';
+            return;
+        }
+        container.innerHTML = items.map(r =>
+            `<div class="px-3 py-2 border rounded mb-1 link-modal-item"
+                  style="cursor:pointer; background:#fff;"
+                  data-id="${r.id}"
+                  data-name="${r.name.replace(/"/g,'&quot;')}"
+                  data-type="${r.type}">
+                <span class="fw-bold">${r.name}</span>
+                <span class="badge bg-light text-secondary border ms-2" style="font-size:0.75rem;">${r.type}</span>
+            </div>`
+        ).join('');
+        container.querySelectorAll('.link-modal-item').forEach(item => {
+            item.addEventListener('mouseenter', () => item.style.background = '#eff6ff');
+            item.addEventListener('mouseleave', () => item.style.background = '#fff');
+            item.addEventListener('click', () =>
+                selectLinkObject(item.dataset.id, item.dataset.name, item.dataset.type));
+        });
+    } catch(e) { console.error('Ошибка поиска:', e); }
+}
+
+function selectLinkObject(id, name, type) {
+    document.getElementById('modalLinkRelatedId').value = id;
+    document.getElementById('modalSelectedName').textContent = name;
+    document.getElementById('modalSelectedType').textContent = type;
+    document.getElementById('modalSelectedObject').style.display = 'block';
+    document.getElementById('modalLinkSearch').value = '';
+    document.getElementById('modalLinkResults').innerHTML = '';
+    document.getElementById('modalAddLinkBtn').disabled = false;
+}
+
+function clearLinkSelection() {
+    document.getElementById('modalLinkRelatedId').value = '';
+    document.getElementById('modalSelectedObject').style.display = 'none';
+    document.getElementById('modalAddLinkBtn').disabled = true;
+}
+
+document.getElementById('addLinkModal').addEventListener('hidden.bs.modal', function() {
+    clearLinkSelection();
+    document.getElementById('modalLinkSearch').value = '';
+    document.getElementById('modalLinkResults').innerHTML = '';
+    document.getElementById('modalLinkRelationType').value = '';
+    document.getElementById('modalLinkStatus').innerHTML = '';
+});
+
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const resp = await fetch('/admin/object/link-types');
+        const types = await resp.json();
+        if (types.length > 0) {
+            const datalist = document.getElementById('modalRelationTypesList');
+            const existing = Array.from(datalist.options).map(o => o.value);
+            types.forEach(t => {
+                if (!existing.includes(t)) {
+                    const opt = document.createElement('option');
+                    opt.value = t;
+                    datalist.appendChild(opt);
+                }
+            });
+        }
+    } catch(e) { /* оставляем дефолты */ }
+});
+
+async function confirmAddLink(objectId) {
+    const relatedId = document.getElementById('modalLinkRelatedId').value;
+    const relationType = document.getElementById('modalLinkRelationType').value.trim();
+    const status = document.getElementById('modalLinkStatus');
+    if (!relatedId) { status.innerHTML = '<span class="text-danger small">Выберите объект.</span>'; return; }
+    if (!relationType) { status.innerHTML = '<span class="text-danger small">Укажите тип связи.</span>'; return; }
+    try {
+        const resp = await fetch(`/admin/object/${objectId}/links/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ related_id: parseInt(relatedId), relation_type: relationType })
+        });
+        const data = await resp.json();
+        if (data.ok) { window.location.reload(); }
+        else { status.innerHTML = `<span class="text-danger small">Ошибка: ${data.error || 'неизвестная'}</span>`; }
+    } catch(e) { status.innerHTML = `<span class="text-danger small">Ошибка сети: ${e.message}</span>`; }
+}
+
+async function deleteLink(objectId, relatedId, relationType, btn) {
+    if (!confirm(`Удалить связь «${relationType}»?`)) return;
+    try {
+        const resp = await fetch(`/admin/object/${objectId}/links/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ related_id: relatedId, relation_type: relationType })
+        });
+        const data = await resp.json();
+        if (data.ok) { btn.closest('tr').remove(); }
+        else { alert('Ошибка: ' + (data.error || 'неизвестная')); }
+    } catch(e) { alert('Ошибка сети: ' + e.message); }
 }
 </script>
 {% endblock %}
