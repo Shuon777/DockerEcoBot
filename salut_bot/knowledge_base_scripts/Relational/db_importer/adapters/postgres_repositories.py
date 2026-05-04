@@ -21,9 +21,12 @@ from ..domain.entities import (
     ReliabilityLevel,
 )
 from ..use_cases.interfaces import (
+    ObjectObjectRelationTypeRepository,
+    ResourceObjectRelationTypeRepository,
     ResourceRepository,
     ObjectRepository,
     ObjectTypeRepository,
+    ResourceResourceRelationTypeRepository,
     SynonymRepository,
     ModalityRepository,
     BibliographicRepository,
