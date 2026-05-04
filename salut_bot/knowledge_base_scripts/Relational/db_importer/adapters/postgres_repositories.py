@@ -512,3 +512,89 @@ class PostgresSupportMetadataRepository(SupportMetadataRepository):
             (PgJson({'resource_hash': resource_hash}), metadata_id)
         )
         self._client.commit()
+
+class PostgresResourceResourceRelationTypeRepository(ResourceResourceRelationTypeRepository):
+    def __init__(self, client: DatabaseClient):
+        self._client = client
+        self._cache: Dict[str, int] = {}
+
+    def get_or_create(self, name: str) -> int:
+        if not name:
+            raise ValueError("Relation type name cannot be empty")
+        
+        if name in self._cache:
+            return self._cache[name]
+
+        row = self._client.fetchone(
+            "SELECT id FROM eco_assistant.resource_resource_relation_type WHERE name = %s",
+            (name,)
+        )
+        if row:
+            self._cache[name] = row[0]
+            return row[0]
+
+        row = self._client.fetchone(
+            "INSERT INTO eco_assistant.resource_resource_relation_type (name) VALUES (%s) RETURNING id",
+            (name,)
+        )
+        self._client.commit()
+        self._cache[name] = row[0]
+        return row[0]
+
+
+class PostgresObjectObjectRelationTypeRepository(ObjectObjectRelationTypeRepository):
+    def __init__(self, client: DatabaseClient):
+        self._client = client
+        self._cache: Dict[str, int] = {}
+
+    def get_or_create(self, name: str) -> int:
+        if not name:
+            raise ValueError("Relation type name cannot be empty")
+        
+        if name in self._cache:
+            return self._cache[name]
+
+        row = self._client.fetchone(
+            "SELECT id FROM eco_assistant.object_object_relation_type WHERE name = %s",
+            (name,)
+        )
+        if row:
+            self._cache[name] = row[0]
+            return row[0]
+
+        row = self._client.fetchone(
+            "INSERT INTO eco_assistant.object_object_relation_type (name) VALUES (%s) RETURNING id",
+            (name,)
+        )
+        self._client.commit()
+        self._cache[name] = row[0]
+        return row[0]
+
+
+class PostgresResourceObjectRelationTypeRepository(ResourceObjectRelationTypeRepository):
+    def __init__(self, client: DatabaseClient):
+        self._client = client
+        self._cache: Dict[str, int] = {}
+
+    def get_or_create(self, name: str) -> int:
+        if not name:
+            raise ValueError("Relation type name cannot be empty")
+        
+        if name in self._cache:
+            return self._cache[name]
+
+        row = self._client.fetchone(
+            "SELECT id FROM eco_assistant.resource_object_relation_type WHERE name = %s",
+            (name,)
+        )
+        if row:
+            self._cache[name] = row[0]
+            return row[0]
+
+        row = self._client.fetchone(
+            "INSERT INTO eco_assistant.resource_object_relation_type (name) VALUES (%s) RETURNING id",
+            (name,)
+        )
+        self._client.commit()
+        self._cache[name] = row[0]
+        return row[0]

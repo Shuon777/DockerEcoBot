@@ -27,6 +27,9 @@ from .interfaces import (
     ModalityRepository,
     GeodataProvider,
     ResourceFeatureRepository,
+    ResourceResourceRelationTypeRepository,
+    ObjectObjectRelationTypeRepository,
+    ResourceObjectRelationTypeRepository,
 )
 
 
@@ -41,6 +44,9 @@ class ImportResourcesUseCase:
     modality_repo: ModalityRepository
     geodata_provider: GeodataProvider
     feature_repo: ResourceFeatureRepository
+    resource_resource_relation_type_repo: ResourceResourceRelationTypeRepository
+    object_object_relation_type_repo: ObjectObjectRelationTypeRepository
+    resource_object_relation_type_repo: ResourceObjectRelationTypeRepository
     missing_geometry_file: Path = Path(__file__).parent.parent.parent / 'missing_geometry.json'
 
     _logger = logging.getLogger(__name__)
@@ -49,6 +55,7 @@ class ImportResourcesUseCase:
         self._reset_missing_geometry_file()
         result = {'success': 0, 'skipped': 0, 'errors': 0}
         resource_relations_to_process = []
+        object_relations_to_process = []  # For resource-object relations
 
         for i, resource_data in enumerate(resources_data, 1):
             try:
@@ -64,11 +71,30 @@ class ImportResourcesUseCase:
 
                 if resource_id:
                     result['success'] += 1
+                    
+                    # Process resource-resource relations
                     for relation in resource_data.get('resource_relations', []):
                         related_id = relation.get('id')
                         relation_type = relation.get('type')
                         if related_id and relation_type:
+                            # Add relation type to dictionary if not exists
+                            try:
+                                self.resource_resource_relation_type_repo.get_or_create(relation_type)
+                            except Exception as e:
+                                self._logger.warning(f"Failed to add resource-resource relation type '{relation_type}': {e}")
                             resource_relations_to_process.append((resource_id, related_id, relation_type))
+                    
+                    # Process resource-object relations
+                    for relation in resource_data.get('object_relations', []):
+                        object_db_id = relation.get('db_id')
+                        relation_type = relation.get('type')
+                        if object_db_id and relation_type:
+                            # Add relation type to dictionary if not exists
+                            try:
+                                self.resource_object_relation_type_repo.get_or_create(relation_type)
+                            except Exception as e:
+                                self._logger.warning(f"Failed to add resource-object relation type '{relation_type}': {e}")
+                            object_relations_to_process.append((resource_id, object_db_id, relation_type))
                 else:
                     result['errors'] += 1
 
@@ -76,15 +102,29 @@ class ImportResourcesUseCase:
                 self._logger.error(f"Error importing resource {i}: {e}", exc_info=True)
                 result['errors'] += 1
 
+        # Process resource-resource links
         for resource_id, related_id, relation_type in resource_relations_to_process:
             try:
                 related_resource_id = self.resource_repo.find_resource_by_text_id(related_id)
                 if related_resource_id:
                     self.resource_repo.link_resource_to_resource(resource_id, related_resource_id, relation_type)
+                    self._logger.debug(f"Linked resource {resource_id} -> {related_resource_id} ({relation_type})")
                 else:
                     self._logger.warning(f"Related resource not found: {related_id}")
             except Exception as e:
                 self._logger.error(f"Error linking resources: {e}", exc_info=True)
+        
+        # Process resource-object links
+        for resource_id, object_db_id, relation_type in object_relations_to_process:
+            try:
+                obj = self.object_repo.find_by_db_id_only(object_db_id)
+                if obj:
+                    self.resource_repo.link_resource_to_object(resource_id, obj.id, relation_type)
+                    self._logger.debug(f"Linked resource {resource_id} -> object {obj.id} ({relation_type})")
+                else:
+                    self._logger.warning(f"Object not found for db_id: {object_db_id}")
+            except Exception as e:
+                self._logger.error(f"Error linking resource to object: {e}", exc_info=True)
 
         self._logger.info(f"Resources import: success={result['success']}, skipped={result['skipped']}, errors={result['errors']}")
         return result
@@ -185,14 +225,6 @@ class ImportResourcesUseCase:
             extracted = self._extract_features(features)
             for feat_name, values in extracted:
                 self.feature_repo.add_or_update_feature(modality_id, feat_name, values)
-
-        for relation in resource_data.get('object_relations', []):
-            object_db_id = relation.get('db_id')
-            relation_type = relation.get('type')
-            if object_db_id:
-                obj = self.object_repo.find_by_db_id_only(object_db_id)
-                if obj:
-                    self.resource_repo.link_resource_to_object(resource_id, obj.id, relation_type)
 
         return resource_id
 

@@ -288,3 +288,33 @@ INSERT INTO eco_assistant.object_type (name, schema) VALUES
 ('Услуга', '{}'),
 ('Экспонат', '{}')
 ON CONFLICT (name) DO NOTHING;
+
+-- ============================================================
+-- 19. Справочник типов связей для связей ресурс-ресурс
+-- ============================================================
+CREATE TABLE eco_assistant.resource_resource_relation_type (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+COMMENT ON TABLE eco_assistant.resource_resource_relation_type IS 'Типы связей между ресурсами';
+
+-- ============================================================
+-- 20. Справочник типов связей для связей объект-объект
+-- ============================================================
+CREATE TABLE eco_assistant.object_object_relation_type (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+COMMENT ON TABLE eco_assistant.object_object_relation_type IS 'Типы связей между объектами';
+
+-- ============================================================
+-- 21. Справочник типов связей для связей ресурс-объект
+-- ============================================================
+CREATE TABLE eco_assistant.resource_object_relation_type (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+COMMENT ON TABLE eco_assistant.resource_object_relation_type IS 'Типы связей между ресурсами и объектами';

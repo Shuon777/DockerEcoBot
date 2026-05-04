@@ -15,6 +15,7 @@ from .interfaces import (
     ObjectTypeRepository,
     SynonymRepository,
     ObjectPropertyRepository,
+    ObjectObjectRelationTypeRepository,
 )
 
 
@@ -24,6 +25,7 @@ class ImportObjectsUseCase:
     object_type_repo: ObjectTypeRepository
     synonym_repo: SynonymRepository
     property_repo: ObjectPropertyRepository
+    object_object_relation_type_repo: ObjectObjectRelationTypeRepository
 
     _logger = logging.getLogger(__name__)
 
@@ -82,22 +84,29 @@ class ImportObjectsUseCase:
                     for prop_name, values in extracted_props:
                         self.property_repo.add_or_update_property(object_type.id, prop_name, values)
 
+                # Process object relations and add relation types to dictionary
                 for relation in obj_data.get('object_relations', []):
                     related_db_id = relation.get('db_id')
                     relation_type = relation.get('type')
                     if related_db_id and relation_type:
+                        # Add relation type to dictionary if not exists
+                        try:
+                            self.object_object_relation_type_repo.get_or_create(relation_type)
+                        except Exception as e:
+                            self._logger.warning(f"Failed to add relation type '{relation_type}': {e}")
                         object_relations_to_process.append((object_id, related_db_id, relation_type))
 
             except Exception as e:
                 self._logger.error(f"Error importing object: {e}", exc_info=True)
                 result['errors'] += 1
 
+        # Process object-object links
         for object_id, related_db_id, relation_type in object_relations_to_process:
             try:
                 related_obj = self.object_repo.find_by_db_id(related_db_id)
                 if related_obj:
                     self.object_repo.link_object_to_object(object_id, related_obj.id, relation_type)
-                    self._logger.debug(f"Linked object {object_id} -> {related_obj.id}")
+                    self._logger.debug(f"Linked object {object_id} -> {related_obj.id} ({relation_type})")
                 else:
                     self._logger.warning(f"Related object not found for db_id: {related_db_id}")
             except Exception as e:

@@ -17,7 +17,10 @@ from .adapters import (
     PostgresSupportMetadataRepository,
     PostgresSchemaRepository,
     PostgresObjectPropertyRepository,
-    PostgresResourceFeatureRepository
+    PostgresResourceFeatureRepository,
+    PostgresResourceResourceRelationTypeRepository,
+    PostgresObjectObjectRelationTypeRepository,
+    PostgresResourceObjectRelationTypeRepository,
 )
 from .services import JsonSpeciesNormalizer, GeodataProvider
 from .use_cases import ImportObjectsUseCase, ImportResourcesUseCase
@@ -40,6 +43,11 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
     property_repo = PostgresObjectPropertyRepository(client)
     feature_repo = PostgresResourceFeatureRepository(client)
     
+    # New relation type repositories
+    resource_resource_relation_type_repo = PostgresResourceResourceRelationTypeRepository(client)
+    object_object_relation_type_repo = PostgresObjectObjectRelationTypeRepository(client)
+    resource_object_relation_type_repo = PostgresResourceObjectRelationTypeRepository(client)
+    
     species_normalizer = JsonSpeciesNormalizer(synonyms_path)
     geodata_provider = GeodataProvider(geodb_path)
 
@@ -47,8 +55,10 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
         object_repo=object_repo,
         object_type_repo=object_type_repo,
         synonym_repo=synonym_repo,
-        property_repo=property_repo
+        property_repo=property_repo,
+        object_object_relation_type_repo=object_object_relation_type_repo
     )
+    
     import_resources = ImportResourcesUseCase(
         resource_repo=resource_repo,
         object_repo=object_repo,
@@ -58,7 +68,10 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
         creation_repo=creation_repo,
         modality_repo=modality_repo,
         geodata_provider=geodata_provider,
-        feature_repo=feature_repo
+        feature_repo=feature_repo,
+        resource_resource_relation_type_repo=resource_resource_relation_type_repo,
+        object_object_relation_type_repo=object_object_relation_type_repo,
+        resource_object_relation_type_repo=resource_object_relation_type_repo
     )
     
     return client, import_objects, import_resources

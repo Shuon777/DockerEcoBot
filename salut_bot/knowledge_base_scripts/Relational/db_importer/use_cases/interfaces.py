@@ -169,3 +169,19 @@ class ResourceFeatureRepository(ABC):
     @abstractmethod
     def add_or_update_feature(self, modality_id: int, feature_name: str, values: List[str]) -> None:
         pass
+
+class ResourceResourceRelationTypeRepository(ABC):
+    @abstractmethod
+    def get_or_create(self, name: str) -> int:
+        """Get or create relation type by name, return its ID."""
+        pass
+
+class ObjectObjectRelationTypeRepository(ABC):
+    @abstractmethod
+    def get_or_create(self, name: str) -> int:
+        pass
+
+class ResourceObjectRelationTypeRepository(ABC):
+    @abstractmethod
+    def get_or_create(self, name: str) -> int:
+        pass

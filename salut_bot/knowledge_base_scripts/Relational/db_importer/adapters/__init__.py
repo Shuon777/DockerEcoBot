@@ -9,6 +9,9 @@ from .postgres_repositories import (
     PostgresCreationRepository,
     PostgresResourceStaticRepository,
     PostgresSupportMetadataRepository,
+    PostgresResourceResourceRelationTypeRepository,
+    PostgresObjectObjectRelationTypeRepository,
+    PostgresResourceObjectRelationTypeRepository,
 )
 from .schema_repository import PostgresSchemaRepository
 from .object_property_repository import PostgresObjectPropertyRepository
@@ -28,5 +31,8 @@ __all__ = [
     'PostgresSupportMetadataRepository',
     'PostgresSchemaRepository',
     'PostgresObjectPropertyRepository',
-    'PostgresResourceFeatureRepository'
+    'PostgresResourceFeatureRepository',
+    'PostgresResourceResourceRelationTypeRepository',
+    'PostgresObjectObjectRelationTypeRepository',
+    'PostgresResourceObjectRelationTypeRepository',
 ]
