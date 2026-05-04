@@ -3,6 +3,7 @@
 {% block title %}Каталог свойств объектов{% endblock %}
 
 {% block content %}
+<style>.chip-hidden { display: none !important; }</style>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h4 class="fw-bold mb-1">🏷️ Каталог свойств объектов</h4>
@@ -146,7 +147,7 @@
 
 <!-- ===== Модалка: редактировать свойство ===== -->
 <div class="modal fade" id="editPropertyModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content" style="border-radius: 16px;">
             <div class="modal-header">
                 <h5 class="modal-title fw-bold" id="editPropertyTitle">Редактировать свойство</h5>
@@ -156,12 +157,24 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
-                        <div id="editPropChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2" style="min-height:38px;"></div>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control border-start-0 ps-1" id="editPropSearch"
+                                   placeholder="Поиск среди значений...">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="editPropSearchClear"
+                                    style="display:none;" onclick="clearEditPropSearch()" title="Сбросить поиск">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <div id="editPropChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2"
+                             style="min-height:38px; max-height:280px; overflow-y:auto;"></div>
                         <div class="input-group">
                             <input type="text" class="form-control" id="editPropInput" placeholder="Добавить ещё значение...">
                             <button type="button" class="btn btn-outline-secondary" onclick="editPropChip()">+ Добавить</button>
                         </div>
-                        <div class="form-text">Итого: <span id="editPropertyCount" class="fw-bold">0</span> значений. Пустой список = свободный ввод.</div>
+                        <div class="form-text">Итого: <span id="editPropertyCount" class="fw-bold">0</span> значений.
+                            <span id="editPropFoundCount" class="text-muted"></span>
+                            Пустой список = свободный ввод.</div>
                         <textarea name="property_values" id="editPropHidden" class="d-none"></textarea>
                     </div>
                 </div>
@@ -175,39 +188,175 @@
 </div>
 
 <script>
-function _createChipBadge(val, removeFn) {
-    const span = document.createElement('span');
-    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1';
-    span.dataset.value = val;
-    span.style.fontSize = '0.82rem';
-    const text = document.createTextNode(val);
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-close';
-    btn.style.fontSize = '0.55rem';
-    btn.onclick = removeFn;
-    span.appendChild(text);
-    span.appendChild(btn);
-    return span;
-}
+/* ---- Вспомогательные функции ---- */
 
 function _syncHidden(chipsId, hiddenId, countId) {
     const chips = document.querySelectorAll(`#${chipsId} [data-value]`);
     const vals = Array.from(chips).map(c => c.dataset.value);
     document.getElementById(hiddenId).value = vals.join(', ');
-    const countEl = document.getElementById(countId);
-    if (countEl) countEl.textContent = vals.length;
+    if (countId) document.getElementById(countId).textContent = vals.length;
 }
+
+/* ---- Создание чипа для ДОБАВЛЕНИЯ (без редактирования) ---- */
+
+function _createAddChip(val) {
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1';
+    span.dataset.value = val;
+    span.style.fontSize = '0.82rem';
+    span.appendChild(document.createTextNode(val));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-close';
+    btn.style.fontSize = '0.55rem';
+    btn.onclick = function() {
+        span.remove();
+        _syncHidden('addPropChips', 'addPropHidden', null);
+    };
+    span.appendChild(btn);
+    return span;
+}
+
+/* ---- Создание чипа для РЕДАКТИРОВАНИЯ (с карандашом) ---- */
+
+function _createEditChip(val) {
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1 edit-chip';
+    span.dataset.value = val;
+    span.style.fontSize = '0.82rem';
+    span.style.padding = '5px 6px';
+
+    const label = document.createElement('span');
+    label.className = 'chip-label';
+    label.textContent = val;
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn p-0 border-0 bg-transparent text-secondary chip-edit-btn';
+    editBtn.style.cssText = 'font-size:0.6rem; line-height:1; opacity:0.6;';
+    editBtn.title = 'Редактировать значение';
+    editBtn.innerHTML = '<i class="bi bi-pencil-fill"></i>';
+    editBtn.onclick = function() { _startChipEdit(span); };
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-close';
+    removeBtn.style.fontSize = '0.55rem';
+    removeBtn.onclick = function() {
+        span.remove();
+        _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+        _updatePropFoundCount();
+    };
+
+    span.appendChild(label);
+    span.appendChild(editBtn);
+    span.appendChild(removeBtn);
+    return span;
+}
+
+function _startChipEdit(chipEl) {
+    if (chipEl.classList.contains('chip-editing')) return;
+    chipEl.classList.add('chip-editing');
+
+    const label = chipEl.querySelector('.chip-label');
+    const editBtn = chipEl.querySelector('.chip-edit-btn');
+    const removeBtn = chipEl.querySelector('.btn-close');
+    const oldVal = chipEl.dataset.value;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control form-control-sm';
+    input.style.cssText = 'min-width:100px; max-width:220px; font-size:0.82rem; padding:1px 5px; height:auto;';
+    input.value = oldVal;
+
+    label.style.display = 'none';
+    editBtn.style.display = 'none';
+    removeBtn.style.display = 'none';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn btn-sm btn-success p-0 px-1';
+    confirmBtn.style.fontSize = '0.65rem';
+    confirmBtn.title = 'Подтвердить (Enter)';
+    confirmBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-sm btn-outline-secondary p-0 px-1';
+    cancelBtn.style.fontSize = '0.65rem';
+    cancelBtn.title = 'Отмена (Esc)';
+    cancelBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+
+    chipEl.insertBefore(input, label);
+    chipEl.insertBefore(confirmBtn, label);
+    chipEl.insertBefore(cancelBtn, label);
+    input.focus();
+    input.select();
+
+    const confirm = () => {
+        const newVal = input.value.trim();
+        if (newVal) {
+            chipEl.dataset.value = newVal;
+            label.textContent = newVal;
+        }
+        input.remove(); confirmBtn.remove(); cancelBtn.remove();
+        label.style.display = ''; editBtn.style.display = ''; removeBtn.style.display = '';
+        chipEl.classList.remove('chip-editing');
+        _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+    };
+
+    const cancel = () => {
+        input.remove(); confirmBtn.remove(); cancelBtn.remove();
+        label.style.display = ''; editBtn.style.display = ''; removeBtn.style.display = '';
+        chipEl.classList.remove('chip-editing');
+    };
+
+    confirmBtn.onclick = confirm;
+    cancelBtn.onclick = cancel;
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+        if (e.key === 'Escape') cancel();
+    });
+    input.addEventListener('blur', e => {
+        if (!chipEl.contains(e.relatedTarget)) confirm();
+    });
+}
+
+/* ---- Поиск по чипам ---- */
+
+function _updatePropFoundCount() {
+    const q = (document.getElementById('editPropSearch')?.value || '').toLowerCase().trim();
+    const chips = document.querySelectorAll('#editPropChips .edit-chip');
+    if (!q) {
+        chips.forEach(c => c.classList.remove('chip-hidden'));
+        const fc = document.getElementById('editPropFoundCount');
+        if (fc) fc.textContent = '';
+        return;
+    }
+    let found = 0;
+    chips.forEach(c => {
+        const match = c.dataset.value.toLowerCase().includes(q);
+        c.classList.toggle('chip-hidden', !match);
+        if (match) found++;
+    });
+    const fc = document.getElementById('editPropFoundCount');
+    if (fc) fc.textContent = `(найдено: ${found})`;
+}
+
+function clearEditPropSearch() {
+    const si = document.getElementById('editPropSearch');
+    if (si) si.value = '';
+    document.getElementById('editPropSearchClear').style.display = 'none';
+    _updatePropFoundCount();
+}
+
+/* ---- Публичные функции чипов ---- */
 
 function addPropChip() {
     const input = document.getElementById('addPropInput');
     const val = input.value.trim();
     if (!val) return;
-    const container = document.getElementById('addPropChips');
-    container.appendChild(_createChipBadge(val, function() {
-        this.closest('[data-value]').remove();
-        _syncHidden('addPropChips', 'addPropHidden', null);
-    }));
+    document.getElementById('addPropChips').appendChild(_createAddChip(val));
     input.value = '';
     _syncHidden('addPropChips', 'addPropHidden', null);
 }
@@ -216,37 +365,70 @@ function editPropChip() {
     const input = document.getElementById('editPropInput');
     const val = input.value.trim();
     if (!val) return;
-    const container = document.getElementById('editPropChips');
-    container.appendChild(_createChipBadge(val, function() {
-        this.closest('[data-value]').remove();
-        _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
-    }));
+    // Проверяем дубли
+    const existing = [...document.querySelectorAll('#editPropChips [data-value]')]
+        .map(c => c.dataset.value.toLowerCase());
+    if (existing.includes(val.toLowerCase())) {
+        input.classList.add('is-invalid');
+        setTimeout(() => input.classList.remove('is-invalid'), 1200);
+        return;
+    }
+    document.getElementById('editPropChips').appendChild(_createEditChip(val));
     input.value = '';
     _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+    // Сбрасываем поиск чтобы новый чип был виден
+    clearEditPropSearch();
 }
 
 function openEditProperty(propId, propName, values) {
     document.getElementById('editPropertyTitle').textContent = 'Редактировать: ' + propName;
     document.getElementById('editPropertyForm').action = `/admin/properties/${propId}/edit`;
+
     const container = document.getElementById('editPropChips');
     container.innerHTML = '';
-    (values || []).forEach(v => {
-        container.appendChild(_createChipBadge(v, function() {
-            this.closest('[data-value]').remove();
-            _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
-        }));
-    });
+    (values || []).forEach(v => container.appendChild(_createEditChip(v)));
     _syncHidden('editPropChips', 'editPropHidden', 'editPropertyCount');
+
+    // Сбросить поиск
+    const si = document.getElementById('editPropSearch');
+    if (si) si.value = '';
+    const sc = document.getElementById('editPropSearchClear');
+    if (sc) sc.style.display = 'none';
+    const fc = document.getElementById('editPropFoundCount');
+    if (fc) fc.textContent = '';
+
     new bootstrap.Modal(document.getElementById('editPropertyModal')).show();
 }
 
+/* ---- DOMContentLoaded ---- */
+
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('addPropInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addPropChip(); } });
-    document.getElementById('editPropInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); editPropChip(); } });
+    document.getElementById('addPropInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); addPropChip(); }
+    });
+    document.getElementById('editPropInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); editPropChip(); }
+    });
+
+    // Поиск в edit-модалке
+    const searchInput = document.getElementById('editPropSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const clearBtn = document.getElementById('editPropSearchClear');
+            if (clearBtn) clearBtn.style.display = this.value ? '' : 'none';
+            _updatePropFoundCount();
+        });
+    }
+
     document.getElementById('addPropertyModal').addEventListener('hidden.bs.modal', function() {
         document.getElementById('addPropChips').innerHTML = '';
         document.getElementById('addPropInput').value = '';
         document.getElementById('addPropHidden').value = '';
+    });
+    document.getElementById('editPropertyModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('editPropSearch').value = '';
+        document.getElementById('editPropSearchClear').style.display = 'none';
+        document.getElementById('editPropFoundCount').textContent = '';
     });
 });
 </script>

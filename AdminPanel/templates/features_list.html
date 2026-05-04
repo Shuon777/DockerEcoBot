@@ -3,6 +3,7 @@
 {% block title %}Каталог признаков ресурсов{% endblock %}
 
 {% block content %}
+<style>.chip-hidden { display: none !important; }</style>
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
         <h4 class="fw-bold mb-1">🔖 Каталог признаков ресурсов</h4>
@@ -150,7 +151,7 @@
 
 <!-- ===== Модалка: редактировать признак ===== -->
 <div class="modal fade" id="editFeatureModal" tabindex="-1">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content" style="border-radius: 16px;">
             <div class="modal-header">
                 <h5 class="modal-title fw-bold" id="editFeatureTitle">Редактировать признак</h5>
@@ -160,12 +161,24 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ДОПУСТИМЫЕ ЗНАЧЕНИЯ</label>
-                        <div id="editFeatChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2" style="min-height:38px;"></div>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                            <input type="text" class="form-control border-start-0 ps-1" id="editFeatSearch"
+                                   placeholder="Поиск среди значений...">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="editFeatSearchClear"
+                                    style="display:none;" onclick="clearEditFeatSearch()" title="Сбросить поиск">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <div id="editFeatChips" class="d-flex flex-wrap gap-1 p-2 border rounded mb-2"
+                             style="min-height:38px; max-height:280px; overflow-y:auto;"></div>
                         <div class="input-group">
                             <input type="text" class="form-control" id="editFeatInput" placeholder="Добавить ещё значение...">
                             <button type="button" class="btn btn-outline-secondary" onclick="editFeatChip()">+ Добавить</button>
                         </div>
-                        <div class="form-text">Итого: <span id="editFeatureCount" class="fw-bold">0</span> значений. Пустой список = свободный ввод.</div>
+                        <div class="form-text">Итого: <span id="editFeatureCount" class="fw-bold">0</span> значений.
+                            <span id="editFeatFoundCount" class="text-muted"></span>
+                            Пустой список = свободный ввод.</div>
                         <textarea name="feature_values" id="editFeatHidden" class="d-none"></textarea>
                     </div>
                 </div>
@@ -179,39 +192,175 @@
 </div>
 
 <script>
-function _createFeatChipBadge(val, removeFn) {
-    const span = document.createElement('span');
-    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1';
-    span.dataset.value = val;
-    span.style.fontSize = '0.82rem';
-    const text = document.createTextNode(val);
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-close';
-    btn.style.fontSize = '0.55rem';
-    btn.onclick = removeFn;
-    span.appendChild(text);
-    span.appendChild(btn);
-    return span;
-}
+/* ---- Вспомогательные функции ---- */
 
 function _syncFeatHidden(chipsId, hiddenId, countId) {
     const chips = document.querySelectorAll(`#${chipsId} [data-value]`);
     const vals = Array.from(chips).map(c => c.dataset.value);
     document.getElementById(hiddenId).value = vals.join(', ');
-    const countEl = document.getElementById(countId);
-    if (countEl) countEl.textContent = vals.length;
+    if (countId) document.getElementById(countId).textContent = vals.length;
 }
+
+/* ---- Чип для ДОБАВЛЕНИЯ ---- */
+
+function _createAddFeatChip(val) {
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1';
+    span.dataset.value = val;
+    span.style.fontSize = '0.82rem';
+    span.appendChild(document.createTextNode(val));
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-close';
+    btn.style.fontSize = '0.55rem';
+    btn.onclick = function() {
+        span.remove();
+        _syncFeatHidden('addFeatChips', 'addFeatHidden', null);
+    };
+    span.appendChild(btn);
+    return span;
+}
+
+/* ---- Чип для РЕДАКТИРОВАНИЯ (с карандашом) ---- */
+
+function _createEditFeatChip(val) {
+    const span = document.createElement('span');
+    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1 mb-1 edit-feat-chip';
+    span.dataset.value = val;
+    span.style.fontSize = '0.82rem';
+    span.style.padding = '5px 6px';
+
+    const label = document.createElement('span');
+    label.className = 'chip-label';
+    label.textContent = val;
+
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'btn p-0 border-0 bg-transparent text-secondary chip-edit-btn';
+    editBtn.style.cssText = 'font-size:0.6rem; line-height:1; opacity:0.6;';
+    editBtn.title = 'Редактировать значение';
+    editBtn.innerHTML = '<i class="bi bi-pencil-fill"></i>';
+    editBtn.onclick = function() { _startFeatChipEdit(span); };
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-close';
+    removeBtn.style.fontSize = '0.55rem';
+    removeBtn.onclick = function() {
+        span.remove();
+        _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+        _updateFeatFoundCount();
+    };
+
+    span.appendChild(label);
+    span.appendChild(editBtn);
+    span.appendChild(removeBtn);
+    return span;
+}
+
+function _startFeatChipEdit(chipEl) {
+    if (chipEl.classList.contains('chip-editing')) return;
+    chipEl.classList.add('chip-editing');
+
+    const label = chipEl.querySelector('.chip-label');
+    const editBtn = chipEl.querySelector('.chip-edit-btn');
+    const removeBtn = chipEl.querySelector('.btn-close');
+    const oldVal = chipEl.dataset.value;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control form-control-sm';
+    input.style.cssText = 'min-width:100px; max-width:220px; font-size:0.82rem; padding:1px 5px; height:auto;';
+    input.value = oldVal;
+
+    label.style.display = 'none';
+    editBtn.style.display = 'none';
+    removeBtn.style.display = 'none';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn btn-sm btn-success p-0 px-1';
+    confirmBtn.style.fontSize = '0.65rem';
+    confirmBtn.title = 'Подтвердить (Enter)';
+    confirmBtn.innerHTML = '<i class="bi bi-check-lg"></i>';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-sm btn-outline-secondary p-0 px-1';
+    cancelBtn.style.fontSize = '0.65rem';
+    cancelBtn.title = 'Отмена (Esc)';
+    cancelBtn.innerHTML = '<i class="bi bi-x-lg"></i>';
+
+    chipEl.insertBefore(input, label);
+    chipEl.insertBefore(confirmBtn, label);
+    chipEl.insertBefore(cancelBtn, label);
+    input.focus();
+    input.select();
+
+    const confirm = () => {
+        const newVal = input.value.trim();
+        if (newVal) {
+            chipEl.dataset.value = newVal;
+            label.textContent = newVal;
+        }
+        input.remove(); confirmBtn.remove(); cancelBtn.remove();
+        label.style.display = ''; editBtn.style.display = ''; removeBtn.style.display = '';
+        chipEl.classList.remove('chip-editing');
+        _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+    };
+
+    const cancel = () => {
+        input.remove(); confirmBtn.remove(); cancelBtn.remove();
+        label.style.display = ''; editBtn.style.display = ''; removeBtn.style.display = '';
+        chipEl.classList.remove('chip-editing');
+    };
+
+    confirmBtn.onclick = confirm;
+    cancelBtn.onclick = cancel;
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); confirm(); }
+        if (e.key === 'Escape') cancel();
+    });
+    input.addEventListener('blur', e => {
+        if (!chipEl.contains(e.relatedTarget)) confirm();
+    });
+}
+
+/* ---- Поиск по чипам ---- */
+
+function _updateFeatFoundCount() {
+    const q = (document.getElementById('editFeatSearch')?.value || '').toLowerCase().trim();
+    const chips = document.querySelectorAll('#editFeatChips .edit-feat-chip');
+    if (!q) {
+        chips.forEach(c => c.classList.remove('chip-hidden'));
+        const fc = document.getElementById('editFeatFoundCount');
+        if (fc) fc.textContent = '';
+        return;
+    }
+    let found = 0;
+    chips.forEach(c => {
+        const match = c.dataset.value.toLowerCase().includes(q);
+        c.classList.toggle('chip-hidden', !match);
+        if (match) found++;
+    });
+    const fc = document.getElementById('editFeatFoundCount');
+    if (fc) fc.textContent = `(найдено: ${found})`;
+}
+
+function clearEditFeatSearch() {
+    const si = document.getElementById('editFeatSearch');
+    if (si) si.value = '';
+    document.getElementById('editFeatSearchClear').style.display = 'none';
+    _updateFeatFoundCount();
+}
+
+/* ---- Публичные функции ---- */
 
 function addFeatChip() {
     const input = document.getElementById('addFeatInput');
     const val = input.value.trim();
     if (!val) return;
-    const container = document.getElementById('addFeatChips');
-    container.appendChild(_createFeatChipBadge(val, function() {
-        this.closest('[data-value]').remove();
-        _syncFeatHidden('addFeatChips', 'addFeatHidden', null);
-    }));
+    document.getElementById('addFeatChips').appendChild(_createAddFeatChip(val));
     input.value = '';
     _syncFeatHidden('addFeatChips', 'addFeatHidden', null);
 }
@@ -220,37 +369,66 @@ function editFeatChip() {
     const input = document.getElementById('editFeatInput');
     const val = input.value.trim();
     if (!val) return;
-    const container = document.getElementById('editFeatChips');
-    container.appendChild(_createFeatChipBadge(val, function() {
-        this.closest('[data-value]').remove();
-        _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
-    }));
+    const existing = [...document.querySelectorAll('#editFeatChips [data-value]')]
+        .map(c => c.dataset.value.toLowerCase());
+    if (existing.includes(val.toLowerCase())) {
+        input.classList.add('is-invalid');
+        setTimeout(() => input.classList.remove('is-invalid'), 1200);
+        return;
+    }
+    document.getElementById('editFeatChips').appendChild(_createEditFeatChip(val));
     input.value = '';
     _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+    clearEditFeatSearch();
 }
 
 function openEditFeature(featId, featName, values) {
     document.getElementById('editFeatureTitle').textContent = 'Редактировать: ' + featName;
     document.getElementById('editFeatureForm').action = `/admin/features/${featId}/edit`;
+
     const container = document.getElementById('editFeatChips');
     container.innerHTML = '';
-    (values || []).forEach(v => {
-        container.appendChild(_createFeatChipBadge(v, function() {
-            this.closest('[data-value]').remove();
-            _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
-        }));
-    });
+    (values || []).forEach(v => container.appendChild(_createEditFeatChip(v)));
     _syncFeatHidden('editFeatChips', 'editFeatHidden', 'editFeatureCount');
+
+    const si = document.getElementById('editFeatSearch');
+    if (si) si.value = '';
+    const sc = document.getElementById('editFeatSearchClear');
+    if (sc) sc.style.display = 'none';
+    const fc = document.getElementById('editFeatFoundCount');
+    if (fc) fc.textContent = '';
+
     new bootstrap.Modal(document.getElementById('editFeatureModal')).show();
 }
 
+/* ---- DOMContentLoaded ---- */
+
 document.addEventListener('DOMContentLoaded', function() {
-    document.getElementById('addFeatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addFeatChip(); } });
-    document.getElementById('editFeatInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); editFeatChip(); } });
+    document.getElementById('addFeatInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); addFeatChip(); }
+    });
+    document.getElementById('editFeatInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); editFeatChip(); }
+    });
+
+    const searchInput = document.getElementById('editFeatSearch');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const clearBtn = document.getElementById('editFeatSearchClear');
+            if (clearBtn) clearBtn.style.display = this.value ? '' : 'none';
+            _updateFeatFoundCount();
+        });
+    }
+
     document.getElementById('addFeatureModal').addEventListener('hidden.bs.modal', function() {
         document.getElementById('addFeatChips').innerHTML = '';
         document.getElementById('addFeatInput').value = '';
         document.getElementById('addFeatHidden').value = '';
+    });
+    document.getElementById('editFeatureModal').addEventListener('hidden.bs.modal', function() {
+        document.getElementById('editFeatSearch').value = '';
+        document.getElementById('editFeatSearchClear').style.display = 'none';
+        document.getElementById('editFeatFoundCount').textContent = '';
     });
 });
 </script>

@@ -352,6 +352,16 @@ async def _biological_list_impl(
         .correlate(Object)
         .scalar_subquery()
     )
+    # Подзапрос для сортировки по имени: берём самый длинный синоним (соответствует _primary_synonym)
+    primary_name_sq = (
+        select(ObjectNameSynonym.synonym)
+        .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
+        .where(object_name_synonym_link.c.object_id == Object.id)
+        .order_by(func.length(ObjectNameSynonym.synonym).desc())
+        .limit(1)
+        .correlate(Object)
+        .scalar_subquery()
+    )
     query = (
         select(Object.id, Object.db_id, Object.object_properties,
                func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
@@ -414,6 +424,10 @@ async def _biological_list_impl(
         query = query.order_by(total_res_sq.desc(), Object.id.desc())
     elif sort_by == "old":
         query = query.order_by(Object.id.asc())
+    elif sort_by == "name_asc":
+        query = query.order_by(primary_name_sq.asc().nullslast())
+    elif sort_by == "name_desc":
+        query = query.order_by(primary_name_sq.desc().nullslast())
     else:
         query = query.order_by(Object.id.desc())
 
@@ -1338,6 +1352,15 @@ async def geographical_list(
         .correlate(Object)
         .scalar_subquery()
     )
+    primary_name_sq = (
+        select(ObjectNameSynonym.synonym)
+        .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
+        .where(object_name_synonym_link.c.object_id == Object.id)
+        .order_by(func.length(ObjectNameSynonym.synonym).desc())
+        .limit(1)
+        .correlate(Object)
+        .scalar_subquery()
+    )
 
     query = (
         select(Object.id, Object.db_id, Object.object_properties,
@@ -1393,6 +1416,10 @@ async def geographical_list(
         query = query.order_by(total_res_sq.desc(), Object.id.desc())
     elif sort_by == "old":
         query = query.order_by(Object.id.asc())
+    elif sort_by == "name_asc":
+        query = query.order_by(primary_name_sq.asc().nullslast())
+    elif sort_by == "name_desc":
+        query = query.order_by(primary_name_sq.desc().nullslast())
     else:
         query = query.order_by(Object.id.desc())
 
@@ -2125,6 +2152,15 @@ async def service_list(
         .correlate(Object)
         .scalar_subquery()
     )
+    primary_name_sq = (
+        select(ObjectNameSynonym.synonym)
+        .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
+        .where(object_name_synonym_link.c.object_id == Object.id)
+        .order_by(func.length(ObjectNameSynonym.synonym).desc())
+        .limit(1)
+        .correlate(Object)
+        .scalar_subquery()
+    )
     query = (
         select(Object.id, Object.db_id, Object.object_properties,
                func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
@@ -2175,6 +2211,10 @@ async def service_list(
         query = query.order_by(total_res_sq.desc(), Object.id.desc())
     elif sort_by == "old":
         query = query.order_by(Object.id.asc())
+    elif sort_by == "name_asc":
+        query = query.order_by(primary_name_sq.asc().nullslast())
+    elif sort_by == "name_desc":
+        query = query.order_by(primary_name_sq.desc().nullslast())
     else:
         query = query.order_by(Object.id.desc())
 
