@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+{% block title %}Фауна{% endblock %}
+
+{% block content %}
+<style>
+.stat-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 20px; font-size: 0.82rem; font-weight: 600;
+    border: 1.5px solid transparent; text-decoration: none; transition: opacity 0.15s;
+    cursor: pointer;
+}
+.stat-pill:hover { opacity: 0.8; }
+.stat-pill.active { box-shadow: 0 0 0 2px rgba(0,0,0,0.15); }
+.res-badge {
+    display: inline-flex; align-items: center; gap: 2px;
+    font-size: 0.78rem; font-weight: 700; min-width: 26px;
+}
+.res-badge.zero { color: #cbd5e1; }
+#bioTable { table-layout: auto; }
+#bioTable th { padding: 12px 16px; font-size: 0.7rem; white-space: nowrap; }
+#bioTable td { padding: 12px 16px; font-size: 0.88rem; }
+#bioTable .td-id   { width: 80px; }
+#bioTable .td-name { min-width: 260px; font-weight: 700; color: var(--text-primary); }
+#bioTable .td-res  { width: 105px; text-align: center; white-space: nowrap; }
+#bioTable .td-act  { width: 90px; text-align: center; white-space: nowrap; }
+</style>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="text-secondary mb-0" style="font-size:1.05rem; font-weight:500;">
+        🐾 Управление объектами фауны базы знаний
+    </p>
+    <a href="/admin/biological/new" class="btn-stats"
+       style="background:#2563eb; box-shadow:0 4px 6px rgba(37,99,235,0.2);">
+        <i class="bi bi-plus-lg me-1"></i> Добавить
+    </a>
+</div>
+
+<!-- Статбар -->
+<div class="d-flex flex-wrap gap-2 mb-3">
+    {% set res_defs = [
+        ('has_text',  'has_text',     '#1d4ed8', '#eff6ff', 'С текстами',   'bi-file-text'),
+        ('has_image', 'has_image',    '#7c3aed', '#f5f3ff', 'С фото',       'bi-image'),
+        ('has_geo',   'has_geo',      '#0891b2', '#ecfeff', 'С ареалами',   'bi-map'),
+        ('none',      'no_resources', '#dc2626', '#fef2f2', 'Без ресурсов', 'bi-exclamation-circle'),
+        ('has_links', 'has_links',    '#0f766e', '#f0fdfa', 'Со связями',   'bi-diagram-3'),
+    ] %}
+    <span class="stat-pill active" style="background:#1e293b; color:#fff; border-color:#47556920;">
+        <i class="bi bi-collection"></i> Фауна <strong>{{ stats.fauna }}</strong>
+    </span>
+    {% for fval, stat_key, clr, bg, label, icon in res_defs %}
+    {% set is_active = filter_resources == fval %}
+    <a class="stat-pill {% if is_active %}active{% endif %}"
+       href="?filter_resources={{ fval }}{% if search %}&search={{ search }}{% endif %}{% if sort_by and sort_by != 'default' %}&sort_by={{ sort_by }}{% endif %}"
+       style="background:{{ '#1e293b' if is_active else bg }}; color:{{ '#fff' if is_active else clr }}; border-color:{{ clr }}20;">
+        <i class="bi {{ icon }}"></i>
+        {{ label }}
+        <strong>{{ stats[stat_key] }}</strong>
+    </a>
+    {% endfor %}
+    {% if filter_resources %}
+    <a class="stat-pill"
+       href="?{% if search %}search={{ search }}{% endif %}{% if sort_by and sort_by != 'default' %}&sort_by={{ sort_by }}{% endif %}"
+       style="background:#fff; color:#64748b; border-color:#e2e8f0;">
+        <i class="bi bi-x-circle"></i> Снять
+    </a>
+    {% endif %}
+</div>
+
+<!-- Поиск / сортировка -->
+<div class="card mb-3 shadow-sm border-0" style="border-radius:14px;">
+    <div class="card-body p-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text bg-white border-end-0 text-muted"><i class="bi bi-search"></i></span>
+                    <input type="text" id="searchInput" class="form-control border-start-0 ps-1"
+                           placeholder="Поиск по названию..." value="{{ search }}">
+                </div>
+            </div>
+            <div class="col-md-3">
+                <select id="sortSelect" class="form-select fw-semibold" style="font-size:0.88rem;" onchange="applyFilters()">
+                    <option value="default"      {% if sort_by == 'default'      %}selected{% endif %}>↓ Новые</option>
+                    <option value="old"          {% if sort_by == 'old'          %}selected{% endif %}>↑ Старые</option>
+                    <option value="no_resources" {% if sort_by == 'no_resources' %}selected{% endif %}>⚠ Пустые</option>
+                    <option value="rich"         {% if sort_by == 'rich'         %}selected{% endif %}>★ Богатые</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-primary fw-bold flex-grow-1" style="border-radius:10px;" onclick="applyFilters()">Найти</button>
+                {% if search %}
+                <a href="/admin/fauna{% if filter_resources %}?filter_resources={{ filter_resources }}{% endif %}{% if sort_by and sort_by != 'default' %}{% if filter_resources %}&{% else %}?{% endif %}sort_by={{ sort_by }}{% endif %}"
+                   class="btn btn-outline-danger fw-bold" style="border-radius:10px;" title="Сбросить поиск">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица -->
+<div class="card" style="overflow-x:auto;">
+    <table class="table table-auto" id="bioTable">
+        <thead>
+            <tr>
+                <th class="td-id">ID</th>
+                <th class="td-name">Название</th>
+                <th class="td-res" title="Тексты / Фото / Ареалы">Ресурсы</th>
+                <th class="td-act"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in entities %}
+            <tr>
+                <td class="td-id" style="color:#94a3b8; font-weight:700; font-size:0.8rem;">
+                    #{{ e.id }}
+                    {% if e.db_id %}
+                    <div style="font-size:0.65rem; font-weight:400; color:#cbd5e1; word-break:break-all;">{{ e.db_id }}</div>
+                    {% endif %}
+                </td>
+                <td class="td-name">
+                    {{ e.name_ru }}
+                    {% if e.scientific_name %}
+                    <div style="font-size:0.76rem; color:#94a3b8; font-style:italic; font-weight:400;">{{ e.scientific_name }}</div>
+                    {% endif %}
+                </td>
+                <td class="td-res">
+                    <span class="res-badge {% if e.text_count == 0 %}zero{% endif %}" style="{% if e.text_count > 0 %}color:#1d4ed8{% endif %}" title="Тексты">
+                        <i class="bi bi-file-text" style="font-size:0.72rem;"></i>{{ e.text_count }}
+                    </span>
+                    <span class="res-badge {% if e.image_count == 0 %}zero{% endif %}" style="{% if e.image_count > 0 %}color:#7c3aed{% endif %}" title="Фото">
+                        <i class="bi bi-image" style="font-size:0.72rem;"></i>{{ e.image_count }}
+                    </span>
+                    <span class="res-badge {% if e.geo_count == 0 %}zero{% endif %}" style="{% if e.geo_count > 0 %}color:#0891b2{% endif %}" title="Ареалы">
+                        <i class="bi bi-map" style="font-size:0.72rem;"></i>{{ e.geo_count }}
+                    </span>
+                </td>
+                <td class="td-act">
+                    <a href="/admin/biological/{{ e.id }}" class="btn-details">Открыть</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-center text-secondary py-5">
+                    <i class="bi bi-inbox fs-1 d-block mb-2"></i>
+                    Ничего не найдено.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if total_pages > 1 %}
+<nav aria-label="Page navigation" class="mt-4 mb-4">
+    <ul class="pagination justify-content-center shadow-sm" style="border-radius: 10px;">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+            <a class="page-link fw-bold text-primary" href="#" onclick="goToPage({{ page - 1 }}); return false;">&laquo; Назад</a>
+        </li>
+        <li class="page-item disabled">
+            <span class="page-link text-dark fw-bold bg-light">Страница {{ page }} из {{ total_pages }} (Всего: {{ total_items }})</span>
+        </li>
+        <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+            <a class="page-link fw-bold text-primary" href="#" onclick="goToPage({{ page + 1 }}); return false;">Вперед &raquo;</a>
+        </li>
+    </ul>
+</nav>
+{% endif %}
+
+<script>
+function buildParams() {
+    const params = new URLSearchParams();
+    const search = document.getElementById('searchInput').value.trim();
+    if (search) params.append('search', search);
+    const sort = document.getElementById('sortSelect').value;
+    if (sort && sort !== 'default') params.append('sort_by', sort);
+    const fr = new URLSearchParams(window.location.search).get('filter_resources');
+    if (fr) params.append('filter_resources', fr);
+    return params;
+}
+function applyFilters() {
+    window.location.href = '/admin/fauna?' + buildParams().toString();
+}
+function goToPage(p) {
+    const params = buildParams();
+    params.set('page', p);
+    window.location.href = '/admin/fauna?' + params.toString();
+}
+document.getElementById('searchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') applyFilters();
+});
+</script>
+
+{% endblock %}

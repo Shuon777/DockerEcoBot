@@ -14,7 +14,7 @@
         margin: 4px 0;
     }
     .feature-value {
-        color: #10b981;
+        color: #d97706;
     }
     #mapModalBody {
         padding: 0;
@@ -28,9 +28,10 @@
         height: 100% !important;
         border: none;
     }
+    .link-row { transition: background 0.1s; }
+    .link-row:hover { background: #fffbeb; }
 </style>
 
-<!-- Leaflet + Leaflet-Geoman -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.16.0/dist/leaflet-geoman.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -90,58 +91,42 @@
 {% endmacro %}
 
 <div class="mb-4">
-    <a href="/admin/biological" class="text-decoration-none text-secondary fw-bold">
+    <a href="/admin/service" class="text-decoration-none text-secondary fw-bold">
         <i class="bi bi-arrow-left"></i> Назад к списку
     </a>
 </div>
 
 <div class="row g-4">
-    <!-- Левая колонка: информация об объекте -->
+    <!-- Левая колонка: Информация об объекте -->
     <div class="col-lg-4">
         <div class="card shadow-sm p-4 border-0" style="border-radius: 16px;">
             <div class="d-flex justify-content-between align-items-start mb-3">
                 <div>
-                    {% if entity.bio_type == 'Объект флоры' %}
-                        <span class="badge px-3 py-2" style="background:#dcfce7; color:#166534; font-size:0.85rem;">🌿 ФЛОРА</span>
-                    {% elif entity.bio_type == 'Объект фауны' %}
-                        <span class="badge px-3 py-2" style="background:#dbeafe; color:#1e40af; font-size:0.85rem;">🐾 ФАУНА</span>
-                    {% else %}
-                        <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-3 py-2">Тип не указан</span>
-                    {% endif %}
                     {% if entity.subtypes %}
-                    <div class="mt-2">
                         {% for s in entity.subtypes %}
-                        <span class="badge bg-light border text-secondary me-1 mb-1" style="font-size:0.75rem;">{{ s }}</span>
+                        <span class="badge me-1 mb-1 px-2 py-1" style="background:#fef3c7; color:#92400e; border:1.5px solid #fde68a; font-size:0.82rem;">{{ s }}</span>
                         {% endfor %}
-                    </div>
+                    {% else %}
+                        <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25 px-3 py-2">Подтип не указан</span>
                     {% endif %}
                 </div>
                 <span class="text-muted fw-bold small">ID: {{ entity.id }}</span>
             </div>
 
             <h3 class="fw-bold mb-1">{{ entity.name_ru }}</h3>
-            {% if entity.scientific_name %}
-            <p class="text-muted mb-2" style="font-style:italic; font-size:0.95rem;">{{ entity.scientific_name }}</p>
-            {% endif %}
-            {% if entity.db_id %}
-            <p class="text-muted small mb-3"><code>{{ entity.db_id }}</code></p>
-            {% endif %}
+            {% if entity.db_id %}<p class="text-muted small mb-3"><code>{{ entity.db_id }}</code></p>{% endif %}
 
             {% set props = entity.object_properties or {} %}
-            {% if entity.conservation_status %}
-            <div class="mb-2">
-                <p class="text-muted small fw-bold mb-1">ОХРАННЫЙ СТАТУС</p>
-                <p class="mb-0">
-                    <span class="badge" style="background:#fef3c7; color:#92400e; font-size:0.8rem; font-weight:600;">
-                        {{ entity.conservation_status }}
-                    </span>
-                </p>
-            </div>
-            {% endif %}
             {% if props.region %}
             <div class="mb-2">
                 <p class="text-muted small fw-bold mb-1">РЕГИОН</p>
                 <p class="mb-0">{{ props.region }}</p>
+            </div>
+            {% endif %}
+            {% if props.exact_location %}
+            <div class="mb-2">
+                <p class="text-muted small fw-bold mb-1">ТОЧНАЯ ЛОКАЦИЯ</p>
+                <p class="mb-0" style="font-size: 0.9rem;">{{ props.exact_location }}</p>
             </div>
             {% endif %}
             {% if props.baikal_relation %}
@@ -165,7 +150,7 @@
             <div class="mb-3 mt-3">
                 <p class="text-muted small fw-bold mb-1">ВСЕ СВОЙСТВА</p>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#editPropertiesModal">
+                    <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#editPropertiesModal">
                         <i class="bi bi-pencil-square"></i> Редактировать
                     </button>
                     {% if entity.object_properties %}
@@ -178,7 +163,7 @@
         </div>
     </div>
 
-    <!-- Правая колонка: ресурсы -->
+    <!-- Правая колонка: Модальности -->
     <div class="col-lg-8">
         <div class="card shadow-sm border-0" style="border-radius: 16px;">
             <div class="card-header bg-white p-3 border-bottom">
@@ -195,7 +180,7 @@
                     </li>
                     <li class="nav-item">
                         <button class="nav-link fw-bold text-dark" data-bs-toggle="tab" data-bs-target="#geo">
-                            🗺️ Ареалы обитания ({{ locations|length }})
+                            📍 Геолокации ({{ locations|length }})
                         </button>
                     </li>
                     <li class="nav-item">
@@ -208,9 +193,9 @@
 
             <div class="card-body p-4 tab-content">
 
-                <!-- ========== Тексты ========== -->
+                <!-- ========== Вкладка Текстов ========== -->
                 <div class="tab-pane fade show active" id="texts">
-                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#10b981; color:#fff; border-radius:10px;"
+                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#d97706; color:#fff; border-radius:10px;"
                             data-bs-toggle="modal" data-bs-target="#addTextModal">
                         <i class="bi bi-plus-lg"></i> Добавить текстовый ресурс
                     </button>
@@ -223,19 +208,16 @@
                         {% for t in texts %}
                         <div class="p-3 border rounded-3 bg-light shadow-sm" data-features='{{ t.feature_data | tojson | safe }}'>
                             <div class="d-flex justify-content-between align-items-start mb-2">
-                                <h6 class="fw-bold mb-1 text-dark">{{ t.title or 'Без заголовка' }}</h6>
+                                <div>
+                                    <h6 class="fw-bold mb-1 text-dark">{{ t.title or 'Без заголовка' }}</h6>
+                                </div>
                                 <div class="d-flex gap-1">
-                                    <button class="btn btn-sm btn-outline-primary border-0"
-                                            data-bs-toggle="modal" data-bs-target="#viewTextModal{{ t.id }}" title="Просмотр">
-                                        <i class="bi bi-eye"></i>
-                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary border-0" data-bs-toggle="modal" data-bs-target="#viewTextModal{{ t.id }}" title="Просмотр"><i class="bi bi-eye"></i></button>
                                     <button class="btn btn-sm btn-outline-warning border-0" title="Редактировать"
                                             data-resource-id="{{ t.id }}"
                                             data-title="{{ t.title | default('', true) | replace('"', '&quot;') }}"
                                             data-content="{{ t.content | default('', true) | replace('"', '&quot;') }}"
-                                            onclick="openEditText(this)">
-                                        <i class="bi bi-pencil"></i>
-                                    </button>
+                                            onclick="openEditText(this)"><i class="bi bi-pencil"></i></button>
                                     <button class="btn btn-sm btn-outline-success border-0"
                                             data-resource-id="{{ t.id }}"
                                             data-modality="text"
@@ -245,16 +227,10 @@
                                             title="Редактировать признаки">
                                         <i class="bi bi-pencil-square"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-outline-info border-0"
-                                            data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}" title="Свойства">
-                                        <i class="bi bi-tags"></i>
-                                    </button>
-                                    <form action="/admin/biological/resource/delete/text/{{ t.id }}" method="post"
-                                          onsubmit="return confirm('Удалить этот текстовый ресурс?')">
+                                    <button class="btn btn-sm btn-outline-info border-0" data-bs-toggle="modal" data-bs-target="#textFeatureModal{{ t.id }}" title="Свойства"><i class="bi bi-tags"></i></button>
+                                    <form action="/admin/service/resource/delete/text/{{ t.id }}" method="post" onsubmit="return confirm('Удалить этот текстовый ресурс?')">
                                         <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0">
-                                            <i class="bi bi-trash3"></i>
-                                        </button>
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
                                     </form>
                                 </div>
                             </div>
@@ -267,18 +243,16 @@
                             <div class="modal-dialog modal-dialog-centered modal-lg">
                                 <div class="modal-content" style="border-radius: 20px;">
                                     <div class="modal-header border-bottom-0 px-4 pt-4">
-                                        <h5 class="fw-bold" style="color:#10b981;">{{ t.title }}</h5>
+                                        <h5 class="fw-bold" style="color:#d97706;">{{ t.title }}</h5>
                                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                     </div>
                                     <div class="modal-body px-4 pb-4">
-                                        {% if t.content %}
-                                        <div class="p-3 bg-white border rounded-3 mb-4" style="white-space: pre-wrap; max-height: 40vh; overflow-y: auto;">{{ t.content }}</div>
-                                        {% endif %}
+                                        {% if t.content %}<div class="p-3 bg-white border rounded-3 mb-4" style="white-space: pre-wrap; max-height: 40vh; overflow-y: auto;">{{ t.content }}</div>{% endif %}
                                         {% if t.structured_data %}
                                         <div class="p-4 bg-light border rounded-3" style="max-height: 40vh; overflow-y: auto;">
                                             <h6 class="fw-bold text-info mb-3">Структурированные данные</h6>
                                             {% for key, val in t.structured_data.items() %}
-                                            <div class="mb-2"><strong>{{ key|capitalize }}:</strong> {{ val }}</div>
+                                                <div class="mb-2"><strong>{{ key|capitalize }}:</strong> {{ val }}</div>
                                             {% endfor %}
                                         </div>
                                         {% endif %}
@@ -292,9 +266,9 @@
                     </div>
                 </div>
 
-                <!-- ========== Изображения ========== -->
+                <!-- ========== Вкладка Изображений ========== -->
                 <div class="tab-pane fade" id="images">
-                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#10b981; color:#fff; border-radius:10px;"
+                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#d97706; color:#fff; border-radius:10px;"
                             data-bs-toggle="modal" data-bs-target="#addImageModal">
                         <i class="bi bi-cloud-arrow-up"></i> Прикрепить изображение
                     </button>
@@ -315,17 +289,12 @@
                                             onclick="openEditImage(this)" title="Редактировать">
                                         <i class="bi bi-pencil" style="font-size:0.75rem;"></i>
                                     </button>
-                                    <form action="/admin/biological/resource/delete/image/{{ img_obj.data.id }}" method="post"
-                                          onsubmit="return confirm('Удалить?')">
+                                    <form action="/admin/service/resource/delete/image/{{ img_obj.data.id }}" method="post" onsubmit="return confirm('Удалить?')">
                                         <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                                        <button type="submit" class="btn btn-sm btn-danger shadow-sm rounded-circle" style="width:32px;height:32px;padding:0;">
-                                            <i class="bi bi-trash3" style="font-size:0.75rem;"></i>
-                                        </button>
+                                        <button type="submit" class="btn btn-sm btn-danger shadow-sm rounded-circle" style="width:32px;height:32px;padding:0;"><i class="bi bi-trash3" style="font-size:0.75rem;"></i></button>
                                     </form>
                                 </div>
-                                <img src="{{ img_obj.url }}" class="card-img-top"
-                                     style="height: 160px; object-fit: cover; border-radius: 10px 10px 0 0;"
-                                     onerror="this.src='https://placehold.co/600x400?text=Нет+изображения'">
+                                <img src="{{ img_obj.url }}" class="card-img-top" style="height: 160px; object-fit: cover; border-radius: 10px 10px 0 0;" onerror="this.src='https://placehold.co/600x400?text=Нет+изображения'">
                                 <div class="card-body p-2">
                                     <p class="small text-truncate mb-0 mt-1" title="{{ img_obj.data.title }}">{{ img_obj.data.title }}</p>
                                     <div class="d-flex gap-1 mt-2">
@@ -346,21 +315,20 @@
                                 </div>
                             </div>
                         </div>
-
                         {{ feature_modal('imageFeatureModal' ~ img_obj.data.id, 'Свойства: ' ~ img_obj.data.title, img_obj.data.feature_data) }}
                         {% endfor %}
                     </div>
                 </div>
 
-                <!-- ========== Ареалы обитания ========== -->
+                <!-- ========== Вкладка Географии ========== -->
                 <div class="tab-pane fade" id="geo">
-                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#10b981; color:#fff; border-radius:10px;"
+                    <button class="btn fw-bold mb-4 shadow-sm" style="background:#d97706; color:#fff; border-radius:10px;"
                             data-bs-toggle="modal" data-bs-target="#addGeoModal">
-                        <i class="bi bi-geo-alt"></i> Добавить ареал обитания
+                        <i class="bi bi-geo-alt"></i> Привязать геолокацию (GeoJSON)
                     </button>
 
                     <div class="mb-3">
-                        <input type="text" id="geoSearch" class="form-control" placeholder="🔍 Поиск по ареалам и признакам...">
+                        <input type="text" id="geoSearch" class="form-control" placeholder="🔍 Поиск по локациям и признакам...">
                     </div>
 
                     <div class="row g-3" id="geoContainer">
@@ -368,17 +336,14 @@
                         <div class="col-md-6" data-features='{{ loc.feature_data | tojson | safe }}'>
                             <div class="p-3 border rounded-3 bg-white shadow-sm d-flex justify-content-between align-items-center">
                                 <div class="d-flex align-items-center gap-3">
-                                    <i class="bi bi-map-fill fs-4" style="color:#10b981;"></i>
+                                    <i class="bi bi-geo-alt-fill text-danger fs-4"></i>
                                     <div>
                                         <h6 class="fw-bold mb-0 text-dark">{{ loc.name_ru }}</h6>
                                         <span class="badge bg-light text-secondary border">{{ loc.type or 'Геометрия' }}</span>
                                     </div>
                                 </div>
                                 <div class="d-flex gap-1">
-                                    <button class="btn btn-outline-success btn-sm"
-                                            data-geodata-id="{{ loc.geodata_id }}"
-                                            data-location-name="{{ loc.name_ru }}"
-                                            onclick="showMapFromButton(this)" title="Карта">
+                                    <button class="btn btn-outline-primary btn-sm" data-geodata-id="{{ loc.geodata_id }}" data-location-name="{{ loc.name_ru }}" onclick="showMapFromButton(this)" title="Карта">
                                         <i class="bi bi-map"></i>
                                     </button>
                                     <button class="btn btn-outline-warning btn-sm" title="Редактировать"
@@ -388,8 +353,7 @@
                                             onclick="openEditGeo(this)">
                                         <i class="bi bi-pencil"></i>
                                     </button>
-                                    <button class="btn btn-outline-info btn-sm"
-                                            data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}" title="Свойства">
+                                    <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#geoFeatureModal{{ loop.index }}" title="Свойства">
                                         <i class="bi bi-tags"></i>
                                     </button>
                                     <button class="btn btn-outline-success btn-sm"
@@ -401,22 +365,18 @@
                                             title="Редактировать признаки">
                                         <i class="bi bi-pencil-square"></i>
                                     </button>
-                                    <form action="/admin/biological/resource/delete/geo/{{ loc.resource_id }}" method="post"
-                                          onsubmit="return confirm('Удалить этот ареал обитания?')" class="d-inline">
+                                    <form action="/admin/service/resource/delete/geo/{{ loc.resource_id }}" method="post" onsubmit="return confirm('Удалить эту геолокацию?')" class="d-inline">
                                         <input type="hidden" name="entity_id" value="{{ entity.id }}">
-                                        <button type="submit" class="btn btn-outline-danger btn-sm">
-                                            <i class="bi bi-trash3"></i>
-                                        </button>
+                                        <button type="submit" class="btn btn-outline-danger btn-sm"><i class="bi bi-trash3"></i></button>
                                     </form>
                                 </div>
                             </div>
                         </div>
-
                         {{ feature_modal('geoFeatureModal' ~ loop.index, 'Признаки: ' ~ loc.name_ru, loc.feature_data) }}
                         {% else %}
                         <div class="col-12 text-center p-5 text-muted">
                             <i class="bi bi-map fs-1 d-block mb-3 text-light"></i>
-                            Ареалы обитания не добавлены.
+                            Географические привязки отсутствуют.
                         </div>
                         {% endfor %}
                     </div>
@@ -425,11 +385,12 @@
                 <!-- ========== Вкладка Связей ========== -->
                 <div class="tab-pane fade" id="links">
                     <div class="d-flex justify-content-between align-items-center mb-4">
-                        <h6 class="fw-bold mb-0 text-success">
+                        <h6 class="fw-bold mb-0" style="color:#d97706;">
                             <i class="bi bi-diagram-3 me-1"></i> Связанные объекты ({{ links|length }})
                         </h6>
                     </div>
 
+                    <!-- Таблица связей -->
                     {% if links %}
                     <div class="table-responsive mb-4">
                         <table class="table table-sm table-hover align-middle">
@@ -442,9 +403,11 @@
                                     <th style="width:60px;"></th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="linksTableBody">
                                 {% for lnk in links %}
-                                <tr>
+                                <tr class="link-row"
+                                    data-related-id="{{ lnk.related_id }}"
+                                    data-relation-type="{{ lnk.relation_type }}">
                                     <td>
                                         <a href="/admin/{{ lnk.object_section }}/{{ lnk.related_id }}" class="fw-bold text-decoration-none text-dark">
                                             {{ lnk.name }}
@@ -454,10 +417,10 @@
                                         {% endif %}
                                     </td>
                                     <td><span class="badge bg-light text-secondary border">{{ lnk.object_type }}</span></td>
-                                    <td><span class="badge" style="background:#dcfce7; color:#166534;">{{ lnk.relation_type }}</span></td>
+                                    <td><span class="badge" style="background:#fef3c7; color:#92400e;">{{ lnk.relation_type }}</span></td>
                                     <td>
                                         {% if lnk.direction == 'outgoing' %}
-                                        <span class="text-muted small"><i class="bi bi-arrow-right text-success"></i> исходящая</span>
+                                        <span class="text-muted small"><i class="bi bi-arrow-right text-warning"></i> исходящая</span>
                                         {% else %}
                                         <span class="text-muted small"><i class="bi bi-arrow-left text-info"></i> входящая</span>
                                         {% endif %}
@@ -482,7 +445,7 @@
                     {% endif %}
 
                     <div class="text-center mt-2">
-                        <button type="button" class="btn btn-success fw-bold" style="border-radius:10px;"
+                        <button type="button" class="btn fw-bold" style="background:#d97706; color:#fff; border-radius:10px;"
                                 data-bs-toggle="modal" data-bs-target="#addLinkModal">
                             <i class="bi bi-plus-lg me-1"></i> Добавить связь
                         </button>
@@ -503,7 +466,7 @@
                 <h5 class="modal-title fw-bold">Новый текстовый ресурс</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="/admin/biological/{{ entity.id }}/add_text" method="post">
+            <form action="/admin/service/{{ entity.id }}/add_text" method="post">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ЗАГОЛОВОК *</label>
@@ -516,8 +479,7 @@
                     <div class="accordion" id="addTextMetaAccordion">
                         <div class="accordion-item border-0">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#addTextMetaCollapse">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addTextMetaCollapse">
                                     Метаданные ресурса (автор, источник, дата, достоверность)
                                 </button>
                             </h2>
@@ -550,7 +512,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn fw-bold" style="background:#10b981; color:#fff;">💾 Сохранить</button>
+                    <button type="submit" class="btn fw-bold" style="background:#d97706; color:#fff;">💾 Сохранить</button>
                 </div>
             </form>
         </div>
@@ -565,7 +527,7 @@
                 <h5 class="modal-title fw-bold">Новое изображение</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="/admin/biological/{{ entity.id }}/add_image" method="post">
+            <form action="/admin/service/{{ entity.id }}/add_image" method="post">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
@@ -578,8 +540,7 @@
                     <div class="accordion" id="addImageMetaAccordion">
                         <div class="accordion-item border-0">
                             <h2 class="accordion-header">
-                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button"
-                                        data-bs-toggle="collapse" data-bs-target="#addImageMetaCollapse">
+                                <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addImageMetaCollapse">
                                     Метаданные ресурса
                                 </button>
                             </h2>
@@ -612,29 +573,27 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn fw-bold" style="background:#10b981; color:#fff;">💾 Сохранить</button>
+                    <button type="submit" class="btn fw-bold" style="background:#d97706; color:#fff;">💾 Сохранить</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
-<!-- ========== МОДАЛКА: добавить ареал обитания ========== -->
+<!-- ========== МОДАЛКА: добавить геоданные ========== -->
 <div class="modal fade" id="addGeoModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px;">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold">Новый ареал обитания</h5>
+                <h5 class="modal-title fw-bold">Новая геолокация</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <form action="/admin/biological/{{ entity.id }}/add_geo" method="post" id="addGeoForm">
+            <form action="/admin/service/{{ entity.id }}/add_geo" method="post" id="addGeoForm">
                 <div class="modal-body p-0">
                     <div class="px-4 pt-3 pb-2">
                         <label class="form-label fw-bold small text-secondary">НАЗВАНИЕ *</label>
-                        <input type="text" class="form-control" name="title" required
-                               placeholder="Напр: Ареал обитания в Прибайкалье">
+                        <input type="text" class="form-control" name="title" required placeholder="Напр: Место проведения экскурсии">
                     </div>
-
                     <div class="px-4 pb-2 d-flex gap-2 align-items-center flex-wrap">
                         <span class="text-muted small fw-bold">Нарисуйте на карте:</span>
                         <button type="button" class="btn btn-sm btn-outline-secondary" id="drawPoint" title="Точка">
@@ -650,9 +609,7 @@
                             <i class="bi bi-trash3"></i> Очистить
                         </button>
                     </div>
-
                     <div id="drawMap" style="height: 420px; width: 100%; z-index: 0;"></div>
-
                     <div class="px-4 py-3">
                         <div id="geoSelectedInfo" class="alert alert-success py-2 d-none" style="font-size: 0.85rem;">
                             <i class="bi bi-check-circle-fill me-1"></i>
@@ -666,7 +623,6 @@
                         <div class="collapse" id="geoJsonPreviewCollapse">
                             <pre id="geoJsonPreviewText" class="bg-light p-2 rounded small mt-2" style="max-height: 130px; overflow: auto;"></pre>
                         </div>
-
                         <div class="accordion mt-2" id="manualGeoAccordion">
                             <div class="accordion-item border-0">
                                 <h2 class="accordion-header">
@@ -681,21 +637,16 @@
                                         <textarea class="form-control font-monospace" id="manualGeoInput" rows="5"
                                                   placeholder='{"type": "Point", "coordinates": [107.3, 53.2]}'
                                                   style="font-size: 0.8rem;"></textarea>
-                                        <button type="button" class="btn btn-sm btn-outline-success mt-2" id="applyManualGeo">
-                                            Применить
-                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-primary mt-2" id="applyManualGeo">Применить</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
-
                         <input type="hidden" name="geojson" id="geojsonHidden">
-
                         <div class="accordion mt-3" id="addGeoMetaAccordion">
                             <div class="accordion-item border-0">
                                 <h2 class="accordion-header">
-                                    <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button"
-                                            data-bs-toggle="collapse" data-bs-target="#addGeoMetaCollapse">
+                                    <button class="accordion-button collapsed bg-light small fw-bold text-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#addGeoMetaCollapse">
                                         Метаданные ресурса
                                     </button>
                                 </h2>
@@ -729,7 +680,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                    <button type="submit" class="btn fw-bold" style="background:#10b981; color:#fff;">💾 Сохранить</button>
+                    <button type="submit" class="btn fw-bold" style="background:#d97706; color:#fff;">💾 Сохранить</button>
                 </div>
             </form>
         </div>
@@ -797,12 +748,12 @@
     </div>
 </div>
 
-<!-- ========== МОДАЛКА: редактировать ареал ========== -->
+<!-- ========== МОДАЛКА: редактировать геолокацию ========== -->
 <div class="modal fade" id="editGeoModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px;">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold">Редактировать ареал обитания</h5>
+                <h5 class="modal-title fw-bold">Редактировать геолокацию</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form id="editGeoForm" method="post" action="">
@@ -846,10 +797,6 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label fw-bold small text-secondary">ТИП</label>
-                    <input type="text" class="form-control" value="{{ entity.bio_type or 'Объект флоры и фауны' }}" disabled>
-                </div>
                 {% for prop in available_properties %}
                 <div class="mb-3">
                     <label class="form-label fw-bold small text-secondary">{{ prop.name | upper }}</label>
@@ -886,7 +833,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-success fw-bold" onclick="saveProperties({{ entity.id }})">💾 Сохранить</button>
+                <button type="button" class="btn fw-bold" style="background:#d97706; color:#fff;" onclick="saveProperties({{ entity.id }})">💾 Сохранить</button>
             </div>
         </div>
     </div>
@@ -909,7 +856,6 @@
     </div>
 </div>
 
-<!-- Модалка свойств объекта -->
 {% if entity.object_properties %}
 <div class="modal fade" id="entityFeaturesModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
@@ -929,12 +875,12 @@
 </div>
 {% endif %}
 
-<!-- Модалка карты (ареал) -->
+<!-- Модалка карты -->
 <div class="modal fade" id="mapModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="mapModalTitle">Ареал обитания</h5>
+                <h5 class="modal-title" id="mapModalTitle">Карта</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="mapModalBody"></div>
@@ -947,7 +893,7 @@
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px;">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-1 text-success"></i> Добавить связь</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-1" style="color:#d97706;"></i> Добавить связь</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -959,8 +905,8 @@
                          style="max-height:220px; overflow-y:auto; border-radius:8px;"></div>
                     <div id="modalSelectedObject" class="mt-2" style="display:none;">
                         <div class="d-flex align-items-center gap-2 p-2 rounded"
-                             style="background:#f0fdf4; border:1px solid #bbf7d0;">
-                            <i class="bi bi-check-circle-fill text-success"></i>
+                             style="background:#fffbeb; border:1px solid #fde68a;">
+                            <i class="bi bi-check-circle-fill" style="color:#d97706;"></i>
                             <span id="modalSelectedName" class="fw-bold"></span>
                             <span id="modalSelectedType" class="badge bg-light text-secondary border"></span>
                             <button type="button" class="btn btn-sm btn-link text-danger ms-auto p-0"
@@ -988,7 +934,8 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" id="modalAddLinkBtn" class="btn btn-success fw-bold"
+                <button type="button" id="modalAddLinkBtn" class="btn fw-bold"
+                        style="background:#d97706; color:#fff;"
                         onclick="confirmAddLink({{ entity.id }})" disabled>
                     <i class="bi bi-plus-lg me-1"></i> Добавить
                 </button>
@@ -1001,12 +948,12 @@
 async function showMap(geodataId, locationName) {
     const modalTitle = document.getElementById('mapModalTitle');
     const modalBody = document.getElementById('mapModalBody');
-    modalTitle.innerText = 'Ареал: ' + locationName;
-    modalBody.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-success" role="status"></div><p class="mt-2">Загрузка карты...</p></div>';
+    modalTitle.innerText = "Карта: " + locationName;
+    modalBody.innerHTML = '<div class="text-center mt-5"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Загрузка карты...</p></div>';
     const mapModal = new bootstrap.Modal(document.getElementById('mapModal'));
     mapModal.show();
     try {
-        const response = await fetch('/admin/biological/get-map-html', {
+        const response = await fetch('/admin/service/get-map-html', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ geodata_id: geodataId })
@@ -1020,65 +967,49 @@ async function showMap(geodataId, locationName) {
 }
 
 function showMapFromButton(button) {
-    const geodataId = button.getAttribute('data-geodata-id');
-    const locationName = button.getAttribute('data-location-name');
-    showMap(geodataId, locationName);
+    showMap(button.getAttribute('data-geodata-id'), button.getAttribute('data-location-name'));
 }
 
 function filterResources(tab) {
-    let inputId;
-    if (tab === 'images') inputId = 'imageSearch';
-    else if (tab === 'texts') inputId = 'textSearch';
-    else if (tab === 'geo') inputId = 'geoSearch';
-
-    const searchInput = document.getElementById(inputId);
-    if (!searchInput) return;
-    const filter = searchInput.value.toLowerCase();
+    const ids = { texts: 'textSearch', images: 'imageSearch', geo: 'geoSearch' };
+    const input = document.getElementById(ids[tab] || tab + 'Search');
+    if (!input) return;
+    const filter = input.value.toLowerCase();
     const container = document.getElementById(tab + 'Container');
     if (!container) return;
-    const cards = container.querySelectorAll('[data-features]');
-    if (filter === '') { cards.forEach(c => c.style.display = 'block'); return; }
-    cards.forEach(card => {
-        let searchable = '';
-        const titleEl = card.querySelector('h6, .fw-bold, .small');
-        if (titleEl) searchable += titleEl.innerText.toLowerCase() + ' ';
-        const fa = card.dataset.features;
-        if (fa && fa !== 'null') {
-            try { searchable += JSON.stringify(JSON.parse(fa)).toLowerCase(); }
-            catch(e) { searchable += fa.toLowerCase(); }
-        }
-        card.style.display = searchable.includes(filter) ? 'block' : 'none';
+    container.querySelectorAll('[data-features]').forEach(card => {
+        let s = '';
+        const title = card.querySelector('h6, .fw-bold');
+        if (title) s += title.innerText.toLowerCase() + ' ';
+        const f = card.dataset.features;
+        if (f && f !== 'null') { try { s += JSON.stringify(JSON.parse(f)).toLowerCase(); } catch(e) { s += f.toLowerCase(); } }
+        card.style.display = !filter || s.includes(filter) ? '' : 'none';
     });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    ['texts', 'images', 'geo'].forEach(tab => {
-        let inputId = tab === 'images' ? 'imageSearch' : tab === 'texts' ? 'textSearch' : 'geoSearch';
-        const input = document.getElementById(inputId);
-        if (input) input.addEventListener('keyup', () => filterResources(tab));
+    [['texts','textSearch'], ['images','imageSearch'], ['geo','geoSearch']].forEach(([tab, id]) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('keyup', () => filterResources(tab));
     });
 });
 
 function openEditText(btn) {
-    document.getElementById('editTextForm').action = `/admin/biological/resource/edit/text/${btn.dataset.resourceId}`;
+    document.getElementById('editTextForm').action = `/admin/service/resource/edit/text/${btn.dataset.resourceId}`;
     document.getElementById('editTextTitle').value = btn.dataset.title || '';
     document.getElementById('editTextContent').value = btn.dataset.content || '';
     new bootstrap.Modal(document.getElementById('editTextModal')).show();
 }
 
 function openEditImage(btn) {
-    document.getElementById('editImageForm').action = `/admin/biological/resource/edit/image/${btn.dataset.resourceId}`;
+    document.getElementById('editImageForm').action = `/admin/service/resource/edit/image/${btn.dataset.resourceId}`;
     document.getElementById('editImageTitle').value = btn.dataset.title || '';
     const urlInput = document.getElementById('editImageUrl');
     urlInput.value = btn.dataset.url || '';
     const preview = document.getElementById('editImagePreview');
     const previewImg = document.getElementById('editImagePreviewImg');
-    if (btn.dataset.url) {
-        previewImg.src = btn.dataset.url;
-        preview.classList.remove('d-none');
-    } else {
-        preview.classList.add('d-none');
-    }
+    if (btn.dataset.url) { previewImg.src = btn.dataset.url; preview.classList.remove('d-none'); }
+    else { preview.classList.add('d-none'); }
     new bootstrap.Modal(document.getElementById('editImageModal')).show();
 }
 
@@ -1088,28 +1019,21 @@ document.getElementById('editImageUrl').addEventListener('change', function() {
     if (this.value) { img.src = this.value; preview.classList.remove('d-none'); }
 });
 
-let editGeoMap = null;
-let editDrawnLayer = null;
-let editIsEditMode = false;
+let editGeoMap = null, editDrawnLayer = null, editIsEditMode = false;
 
 function openEditGeo(btn) {
-    const resourceId = btn.dataset.resourceId;
-    const geodataId = btn.dataset.geodataId;
-    const title = btn.dataset.title || '';
-
-    document.getElementById('editGeoForm').action = `/admin/biological/resource/edit/geo/${resourceId}`;
-    document.getElementById('editGeoTitle').value = title;
+    document.getElementById('editGeoForm').action = `/admin/service/resource/edit/geo/${btn.dataset.resourceId}`;
+    document.getElementById('editGeoTitle').value = btn.dataset.title || '';
     document.getElementById('editGeojsonHidden').value = '';
     document.getElementById('editGeoSaveBtn').disabled = true;
     document.getElementById('editGeoStatus').classList.add('d-none');
     document.getElementById('editGeoMapLoader').style.display = '';
     document.getElementById('editDrawMap').style.display = 'none';
-
     const modal = new bootstrap.Modal(document.getElementById('editGeoModal'));
     modal.show();
     document.getElementById('editGeoModal').addEventListener('shown.bs.modal', function handler() {
         this.removeEventListener('shown.bs.modal', handler);
-        initEditGeoMap(geodataId);
+        initEditGeoMap(btn.dataset.geodataId);
     });
 }
 
@@ -1118,59 +1042,34 @@ async function initEditGeoMap(geodataId) {
         editGeoMap = L.map('editDrawMap').setView([53.5, 108.0], 8);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(editGeoMap);
         try { editGeoMap.pm.setLang('ru'); } catch(e) {}
-        editGeoMap.pm.addControls({
-            drawMarker: false, drawCircle: false, drawCircleMarker: false,
-            drawPolyline: false, drawPolygon: false, drawRectangle: false, drawText: false,
-            editMode: false, dragMode: false, cutPolygon: false, removalMode: false
-        });
-        editGeoMap.on('pm:create', function(e) {
-            if (editDrawnLayer) editGeoMap.removeLayer(editDrawnLayer);
-            editDrawnLayer = e.layer;
-            setEditGeometry(e.layer.toGeoJSON().geometry);
-            resetEditDrawBtns();
-        });
-        editGeoMap.on('pm:edit', function(e) {
-            if (e.layer === editDrawnLayer) setEditGeometry(e.layer.toGeoJSON().geometry);
-        });
-        ['editDrawPoint', 'editDrawLine', 'editDrawPolygon'].forEach((id, i) => {
-            const modes = ['Marker', 'Line', 'Polygon'];
+        editGeoMap.pm.addControls({ drawMarker:false, drawCircle:false, drawCircleMarker:false,
+            drawPolyline:false, drawPolygon:false, drawRectangle:false, drawText:false,
+            editMode:false, dragMode:false, cutPolygon:false, removalMode:false });
+        editGeoMap.on('pm:create', e => { if (editDrawnLayer) editGeoMap.removeLayer(editDrawnLayer); editDrawnLayer = e.layer; setEditGeometry(e.layer.toGeoJSON().geometry); resetEditDrawBtns(); });
+        editGeoMap.on('pm:edit', e => { if (e.layer === editDrawnLayer) setEditGeometry(e.layer.toGeoJSON().geometry); });
+        ['editDrawPoint','editDrawLine','editDrawPolygon'].forEach((id,i) => {
+            const modes = ['Marker','Line','Polygon'];
             document.getElementById(id).addEventListener('click', function() {
-                editGeoMap.pm.disableDraw();
-                editGeoMap.pm.disableGlobalEditMode();
-                resetEditDrawBtns();
-                this.classList.replace('btn-outline-secondary', 'btn-primary');
-                editGeoMap.pm.enableDraw(modes[i], { snappable: true });
+                editGeoMap.pm.disableDraw(); editGeoMap.pm.disableGlobalEditMode(); resetEditDrawBtns();
+                this.classList.replace('btn-outline-secondary','btn-primary');
+                editGeoMap.pm.enableDraw(modes[i], {snappable:true});
             });
         });
         document.getElementById('editToggleEdit').addEventListener('click', function() {
-            if (editIsEditMode) {
-                editGeoMap.pm.disableGlobalEditMode();
-                editIsEditMode = false;
-                this.classList.replace('btn-success', 'btn-outline-success');
-                this.innerHTML = '<i class="bi bi-cursor"></i> Редакт. вершины';
-            } else {
-                editGeoMap.pm.enableGlobalEditMode();
-                editIsEditMode = true;
-                this.classList.replace('btn-outline-success', 'btn-success');
-                this.innerHTML = '<i class="bi bi-check"></i> Завершить правку';
-            }
+            if (editIsEditMode) { editGeoMap.pm.disableGlobalEditMode(); editIsEditMode=false; this.classList.replace('btn-success','btn-outline-success'); this.innerHTML='<i class="bi bi-cursor"></i> Редакт. вершины'; }
+            else { editGeoMap.pm.enableGlobalEditMode(); editIsEditMode=true; this.classList.replace('btn-outline-success','btn-success'); this.innerHTML='<i class="bi bi-check"></i> Завершить правку'; }
         });
     }
-
     try {
-        const resp = await fetch(`/admin/biological/resource/geo/${geodataId}/geojson`);
+        const resp = await fetch(`/admin/service/resource/geo/${geodataId}/geojson`);
         const data = await resp.json();
         document.getElementById('editGeoMapLoader').style.display = 'none';
         document.getElementById('editDrawMap').style.display = '';
         editGeoMap.invalidateSize();
         if (editDrawnLayer) { editGeoMap.removeLayer(editDrawnLayer); editDrawnLayer = null; }
-        const layer = L.geoJSON(data.geojson, {
-            style: { color: '#10b981', weight: 3, fillColor: '#34d399', fillOpacity: 0.25 }
-        }).addTo(editGeoMap);
+        const layer = L.geoJSON(data.geojson, { style:{color:'#d97706',weight:3,fillColor:'#f59e0b',fillOpacity:0.25} }).addTo(editGeoMap);
         editDrawnLayer = layer;
-        if (layer.getBounds && layer.getBounds().isValid()) {
-            editGeoMap.fitBounds(layer.getBounds(), { padding: [30, 30] });
-        }
+        if (layer.getBounds && layer.getBounds().isValid()) editGeoMap.fitBounds(layer.getBounds(), {padding:[30,30]});
         setEditGeometry(data.geojson);
     } catch(e) {
         document.getElementById('editGeoMapLoader').innerHTML = '<span class="text-danger">Ошибка загрузки геометрии</span>';
@@ -1180,152 +1079,83 @@ async function initEditGeoMap(geodataId) {
 function setEditGeometry(geo) {
     document.getElementById('editGeojsonHidden').value = JSON.stringify(geo);
     document.getElementById('editGeoSaveBtn').disabled = false;
-    const status = document.getElementById('editGeoStatus');
-    const types = { 'Point':'Точка', 'LineString':'Линия', 'Polygon':'Полигон', 'MultiPoint':'Мультиточка', 'MultiLineString':'Мультилиния', 'MultiPolygon':'Мультиполигон' };
-    status.textContent = `Геометрия: ${types[geo.type] || geo.type} — готова к сохранению`;
-    status.classList.remove('d-none');
+    const types = {Point:'Точка',LineString:'Линия',Polygon:'Полигон',MultiPoint:'Мультиточка',MultiLineString:'Мультилиния',MultiPolygon:'Мультиполигон'};
+    const s = document.getElementById('editGeoStatus');
+    s.textContent = `Геометрия: ${types[geo.type]||geo.type} — готова к сохранению`;
+    s.classList.remove('d-none');
 }
 
 function resetEditDrawBtns() {
-    ['editDrawPoint', 'editDrawLine', 'editDrawPolygon'].forEach(id => {
+    ['editDrawPoint','editDrawLine','editDrawPolygon'].forEach(id => {
         const btn = document.getElementById(id);
-        if (btn) btn.classList.replace('btn-primary', 'btn-outline-secondary');
+        if (btn) btn.classList.replace('btn-primary','btn-outline-secondary');
     });
 }
 
 document.getElementById('editGeoModal').addEventListener('hidden.bs.modal', function() {
-    if (editGeoMap) {
-        editGeoMap.pm.disableDraw();
-        editGeoMap.pm.disableGlobalEditMode();
-        editIsEditMode = false;
-        document.getElementById('editToggleEdit').classList.replace('btn-success', 'btn-outline-success');
-        document.getElementById('editToggleEdit').innerHTML = '<i class="bi bi-cursor"></i> Редакт. вершины';
-    }
+    if (editGeoMap) { editGeoMap.pm.disableDraw(); editGeoMap.pm.disableGlobalEditMode(); editIsEditMode=false; document.getElementById('editToggleEdit').classList.replace('btn-success','btn-outline-success'); document.getElementById('editToggleEdit').innerHTML='<i class="bi bi-cursor"></i> Редакт. вершины'; }
     resetEditDrawBtns();
 });
 
-// ===== Интерактивная карта добавления ареала =====
 (function() {
-    let drawMap = null;
-    let drawnLayer = null;
-    let activeDrawMode = null;
-
-    const modal = document.getElementById('addGeoModal');
-    const hiddenInput = document.getElementById('geojsonHidden');
-    const selectedInfo = document.getElementById('geoSelectedInfo');
-    const selectedType = document.getElementById('geoSelectedType');
-    const noSelection = document.getElementById('geoNoSelection');
-    const previewText = document.getElementById('geoJsonPreviewText');
-    const clearBtn = document.getElementById('clearGeoBtn');
-
-    const TYPE_LABELS = {
-        'Point': 'Точка', 'LineString': 'Линия', 'Polygon': 'Полигон',
-        'MultiPoint': 'Мультиточка', 'MultiLineString': 'Мультилиния', 'MultiPolygon': 'Мультиполигон',
-    };
-
-    function setGeometry(geojson) {
-        const jsonStr = JSON.stringify(geojson, null, 2);
-        hiddenInput.value = jsonStr;
-        previewText.textContent = jsonStr;
-        selectedType.textContent = TYPE_LABELS[geojson.type] || geojson.type;
-        selectedInfo.classList.remove('d-none');
-        noSelection.classList.add('d-none');
-        clearBtn.classList.remove('d-none');
+    let drawMap=null, drawnLayer=null, activeDrawMode=null;
+    const modal=document.getElementById('addGeoModal');
+    const hiddenInput=document.getElementById('geojsonHidden');
+    const selectedInfo=document.getElementById('geoSelectedInfo');
+    const selectedType=document.getElementById('geoSelectedType');
+    const noSelection=document.getElementById('geoNoSelection');
+    const previewText=document.getElementById('geoJsonPreviewText');
+    const clearBtn=document.getElementById('clearGeoBtn');
+    const TYPE_LABELS={Point:'Точка',LineString:'Линия',Polygon:'Полигон',MultiPoint:'Мультиточка',MultiLineString:'Мультилиния',MultiPolygon:'Мультиполигон'};
+    function setGeometry(geo) {
+        const js=JSON.stringify(geo,null,2); hiddenInput.value=js; previewText.textContent=js;
+        selectedType.textContent=TYPE_LABELS[geo.type]||geo.type; selectedInfo.classList.remove('d-none'); noSelection.classList.add('d-none'); clearBtn.classList.remove('d-none');
     }
-
     function clearGeometry() {
-        hiddenInput.value = '';
-        previewText.textContent = '';
-        selectedInfo.classList.add('d-none');
-        noSelection.classList.remove('d-none');
-        clearBtn.classList.add('d-none');
-        if (drawnLayer && drawMap) { drawMap.removeLayer(drawnLayer); drawnLayer = null; }
-        if (drawMap) { drawMap.pm.disableDraw(); activeDrawMode = null; resetDrawButtons(); }
+        hiddenInput.value=''; previewText.textContent=''; selectedInfo.classList.add('d-none'); noSelection.classList.remove('d-none'); clearBtn.classList.add('d-none');
+        if (drawnLayer && drawMap) { drawMap.removeLayer(drawnLayer); drawnLayer=null; }
+        if (drawMap) { drawMap.pm.disableDraw(); activeDrawMode=null; resetDrawButtons(); }
     }
-
-    function resetDrawButtons() {
-        ['drawPoint', 'drawLine', 'drawPolygon'].forEach(id => {
-            const btn = document.getElementById(id);
-            if (btn) btn.classList.replace('btn-primary', 'btn-outline-secondary');
-        });
-    }
-
+    function resetDrawButtons() { ['drawPoint','drawLine','drawPolygon'].forEach(id => { const btn=document.getElementById(id); if (btn) btn.classList.replace('btn-primary','btn-outline-secondary'); }); }
     function activateDraw(mode, btnId) {
         if (!drawMap) return;
         drawMap.pm.disableDraw();
-        if (activeDrawMode === mode) { activeDrawMode = null; resetDrawButtons(); return; }
-        activeDrawMode = mode;
-        resetDrawButtons();
-        const btn = document.getElementById(btnId);
-        if (btn) btn.classList.replace('btn-outline-secondary', 'btn-primary');
-        drawMap.pm.enableDraw(mode, { snappable: true, snapDistance: 20 });
+        if (activeDrawMode===mode) { activeDrawMode=null; resetDrawButtons(); return; }
+        activeDrawMode=mode; resetDrawButtons();
+        const btn=document.getElementById(btnId);
+        if (btn) btn.classList.replace('btn-outline-secondary','btn-primary');
+        drawMap.pm.enableDraw(mode, {snappable:true,snapDistance:20});
     }
-
-    document.getElementById('drawPoint').addEventListener('click', () => activateDraw('Marker', 'drawPoint'));
-    document.getElementById('drawLine').addEventListener('click', () => activateDraw('Line', 'drawLine'));
-    document.getElementById('drawPolygon').addEventListener('click', () => activateDraw('Polygon', 'drawPolygon'));
+    document.getElementById('drawPoint').addEventListener('click', ()=>activateDraw('Marker','drawPoint'));
+    document.getElementById('drawLine').addEventListener('click', ()=>activateDraw('Line','drawLine'));
+    document.getElementById('drawPolygon').addEventListener('click', ()=>activateDraw('Polygon','drawPolygon'));
     clearBtn.addEventListener('click', clearGeometry);
-
     document.getElementById('applyManualGeo').addEventListener('click', function() {
-        const raw = document.getElementById('manualGeoInput').value.trim();
-        if (!raw) return;
+        const raw=document.getElementById('manualGeoInput').value.trim(); if (!raw) return;
         try {
-            const geo = JSON.parse(raw);
-            if (!geo.type) throw new Error('Отсутствует поле type');
-            if (drawMap) {
-                if (drawnLayer) drawMap.removeLayer(drawnLayer);
-                drawnLayer = L.geoJSON(geo).addTo(drawMap);
-                if (drawnLayer.getBounds && drawnLayer.getBounds().isValid()) {
-                    drawMap.fitBounds(drawnLayer.getBounds(), { padding: [20, 20] });
-                }
-            }
+            const geo=JSON.parse(raw); if (!geo.type) throw new Error('Отсутствует поле type');
+            if (drawMap) { if (drawnLayer) drawMap.removeLayer(drawnLayer); drawnLayer=L.geoJSON(geo).addTo(drawMap); if (drawnLayer.getBounds&&drawnLayer.getBounds().isValid()) drawMap.fitBounds(drawnLayer.getBounds(),{padding:[20,20]}); }
             setGeometry(geo);
-        } catch(e) { alert('Некорректный GeoJSON: ' + e.message); }
+        } catch(e) { alert('Некорректный GeoJSON: '+e.message); }
     });
-
     document.getElementById('addGeoForm').addEventListener('submit', function(e) {
-        if (!hiddenInput.value) {
-            e.preventDefault();
-            noSelection.classList.remove('d-none');
-            noSelection.scrollIntoView({ behavior: 'smooth' });
-        }
+        if (!hiddenInput.value) { e.preventDefault(); noSelection.classList.remove('d-none'); noSelection.scrollIntoView({behavior:'smooth'}); }
     });
-
     modal.addEventListener('shown.bs.modal', function() {
         if (!drawMap) {
-            drawMap = L.map('drawMap').setView([53.5, 108.0], 8);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(drawMap);
+            drawMap=L.map('drawMap').setView([53.5,108.0],8);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(drawMap);
             try { drawMap.pm.setLang('ru'); } catch(e) {}
-            drawMap.pm.addControls({
-                drawMarker: false, drawCircle: false, drawCircleMarker: false,
-                drawPolyline: false, drawPolygon: false, drawRectangle: false, drawText: false,
-                editMode: false, dragMode: false, cutPolygon: false, removalMode: false
-            });
-            drawMap.on('pm:create', function(e) {
-                if (drawnLayer) drawMap.removeLayer(drawnLayer);
-                drawnLayer = e.layer;
-                setGeometry(e.layer.toGeoJSON().geometry);
-                activeDrawMode = null;
-                resetDrawButtons();
-            });
-            drawMap.on('pm:edit', function(e) {
-                if (e.layer === drawnLayer) setGeometry(e.layer.toGeoJSON().geometry);
-            });
-            drawMap.on('pm:remove', function(e) {
-                if (e.layer === drawnLayer) { drawnLayer = null; clearGeometry(); }
-            });
+            drawMap.pm.addControls({drawMarker:false,drawCircle:false,drawCircleMarker:false,drawPolyline:false,drawPolygon:false,drawRectangle:false,drawText:false,editMode:false,dragMode:false,cutPolygon:false,removalMode:false});
+            drawMap.on('pm:create', e => { if (drawnLayer) drawMap.removeLayer(drawnLayer); drawnLayer=e.layer; setGeometry(e.layer.toGeoJSON().geometry); activeDrawMode=null; resetDrawButtons(); });
+            drawMap.on('pm:edit', e => { if (e.layer===drawnLayer) setGeometry(e.layer.toGeoJSON().geometry); });
+            drawMap.on('pm:remove', e => { if (e.layer===drawnLayer) { drawnLayer=null; clearGeometry(); } });
         }
         drawMap.invalidateSize();
     });
-
-    modal.addEventListener('hidden.bs.modal', function() {
-        clearGeometry();
-        document.getElementById('manualGeoInput').value = '';
-        document.querySelector('#addGeoForm input[name="title"]').value = '';
-    });
+    modal.addEventListener('hidden.bs.modal', function() { clearGeometry(); document.getElementById('manualGeoInput').value=''; document.querySelector('#addGeoForm input[name="title"]').value=''; });
 })();
 
-// ===== Признаки ресурсов =====
 const FEATURE_CATALOG = {
     text: {{ text_features | tojson | safe }},
     image: {{ image_features | tojson | safe }},
@@ -1333,118 +1163,81 @@ const FEATURE_CATALOG = {
 };
 
 function openEditFeaturesFromBtn(btn) {
-    const resourceId = btn.dataset.resourceId;
-    const modality = btn.dataset.modality;
-    const title = btn.dataset.title || 'ресурс';
-    let features = {};
-    try { features = JSON.parse(btn.dataset.features || '{}') || {}; } catch(e) {}
-    openEditFeatures(resourceId, modality, title, features);
+    let features={};
+    try { features=JSON.parse(btn.dataset.features||'{}')||{}; } catch(e) {}
+    openEditFeatures(btn.dataset.resourceId, btn.dataset.modality, btn.dataset.title||'ресурс', features);
 }
 
 function openEditFeatures(resourceId, modality, title, currentFeatures) {
-    document.getElementById('editResFeatTitle').textContent = 'Признаки: ' + title;
-    const body = document.getElementById('editResFeatBody');
-    const catalog = FEATURE_CATALOG[modality] || [];
-    if (catalog.length === 0) {
-        body.innerHTML = '<p class="text-muted">Признаки для этой модальности не определены в каталоге.</p>';
-    } else {
-        body.innerHTML = catalog.map(feat => {
-            const cur = (currentFeatures || {})[feat.name] || '';
-            const label = `<label class="form-label fw-bold small text-secondary">${feat.name.toUpperCase()}</label>`;
-            if (feat.values && feat.values.length > 0) {
-                const opts = feat.values.map(v =>
-                    `<option value="${v}"${cur === v ? ' selected' : ''}>${v}</option>`
-                ).join('');
+    document.getElementById('editResFeatTitle').textContent='Признаки: '+title;
+    const body=document.getElementById('editResFeatBody');
+    const catalog=FEATURE_CATALOG[modality]||[];
+    if (catalog.length===0) { body.innerHTML='<p class="text-muted">Признаки для этой модальности не определены в каталоге.</p>'; }
+    else {
+        body.innerHTML=catalog.map(feat => {
+            const cur=(currentFeatures||{})[feat.name]||'';
+            const label=`<label class="form-label fw-bold small text-secondary">${feat.name.toUpperCase()}</label>`;
+            if (feat.values&&feat.values.length>0) {
+                const opts=feat.values.map(v=>`<option value="${v}"${cur===v?' selected':''}>${v}</option>`).join('');
                 return `<div class="mb-3">${label}<select class="form-select" data-feat-name="${feat.name}"><option value="">— не указано —</option>${opts}</select></div>`;
             } else {
-                return `<div class="mb-3">${label}<input type="text" class="form-control" data-feat-name="${feat.name}" value="${cur.replace(/"/g, '&quot;')}"></div>`;
+                return `<div class="mb-3">${label}<input type="text" class="form-control" data-feat-name="${feat.name}" value="${cur.replace(/"/g,'&quot;')}"></div>`;
             }
         }).join('');
     }
-    document.getElementById('editResFeatSaveBtn').onclick = () => saveResourceFeatures(resourceId);
+    document.getElementById('editResFeatSaveBtn').onclick=()=>saveResourceFeatures(resourceId);
     new bootstrap.Modal(document.getElementById('editResourceFeaturesModal')).show();
 }
 
 async function saveResourceFeatures(resourceId) {
-    const body = document.getElementById('editResFeatBody');
-    const fields = body.querySelectorAll('[data-feat-name]');
-    const features = {};
-    fields.forEach(f => { if (f.value) features[f.dataset.featName] = f.value; });
+    const body=document.getElementById('editResFeatBody');
+    const fields=body.querySelectorAll('[data-feat-name]');
+    const features={};
+    fields.forEach(f => { if (f.value) features[f.dataset.featName]=f.value; });
     try {
-        const resp = await fetch(`/admin/resource/${resourceId}/update_features`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ features })
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            bootstrap.Modal.getInstance(document.getElementById('editResourceFeaturesModal')).hide();
-            window.location.reload();
-        } else {
-            alert('Ошибка сохранения: ' + (data.error || 'неизвестная'));
-        }
-    } catch(e) {
-        alert('Ошибка сети: ' + e.message);
-    }
+        const resp=await fetch(`/admin/resource/${resourceId}/update_features`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({features})});
+        const data=await resp.json();
+        if (data.ok) { bootstrap.Modal.getInstance(document.getElementById('editResourceFeaturesModal')).hide(); window.location.reload(); }
+        else { alert('Ошибка сохранения: '+(data.error||'неизвестная')); }
+    } catch(e) { alert('Ошибка сети: '+e.message); }
 }
 
 async function saveProperties(objectId) {
-    const props = {};
+    const props={};
     {% for prop in available_properties %}
     {% if prop.name == 'subtypes' %}
     {
-        const chips = document.querySelectorAll('#subtypes-chips .badge');
-        const subtypesList = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
-        if (subtypesList.length > 0) props['subtypes'] = subtypesList;
+        const chips=document.querySelectorAll('#subtypes-chips .badge');
+        const list=Array.from(chips).map(c=>c.childNodes[0].textContent.trim()).filter(Boolean);
+        if (list.length>0) props['subtypes']=list;
     }
     {% else %}
-    {
-        const el = document.getElementById('prop_{{ prop.name }}');
-        if (el && el.value) props['{{ prop.name }}'] = el.value;
-    }
+    { const el=document.getElementById('prop_{{ prop.name }}'); if (el&&el.value) props['{{ prop.name }}']=el.value; }
     {% endif %}
     {% endfor %}
     try {
-        const resp = await fetch(`/admin/biological/${objectId}/set_property`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ properties: props })
-        });
-        const data = await resp.json();
-        if (data.ok) {
-            bootstrap.Modal.getInstance(document.getElementById('editPropertiesModal')).hide();
-            window.location.reload();
-        } else {
-            alert('Ошибка сохранения: ' + (data.error || 'неизвестная'));
-        }
-    } catch(e) {
-        alert('Ошибка сети: ' + e.message);
-    }
+        const resp=await fetch(`/admin/service/${objectId}/set_property`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({properties:props})});
+        const data=await resp.json();
+        if (data.ok) { bootstrap.Modal.getInstance(document.getElementById('editPropertiesModal')).hide(); window.location.reload(); }
+        else { alert('Ошибка сохранения: '+(data.error||'неизвестная')); }
+    } catch(e) { alert('Ошибка сети: '+e.message); }
 }
 
 function addSubtypeChip() {
-    const input = document.getElementById('subtypesInput');
-    const val = input.value.trim();
-    if (!val) return;
-    const container = document.getElementById('subtypes-chips');
-    const span = document.createElement('span');
-    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1';
-    span.style.fontSize = '0.85rem';
-    const text = document.createTextNode(val + ' ');
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'btn-close';
-    closeBtn.style.fontSize = '0.6rem';
-    closeBtn.onclick = function() { removeSubtypeChip(this); };
-    span.appendChild(text);
-    span.appendChild(closeBtn);
-    container.appendChild(span);
-    input.value = '';
+    const input=document.getElementById('subtypesInput');
+    const val=input.value.trim(); if (!val) return;
+    const container=document.getElementById('subtypes-chips');
+    const span=document.createElement('span');
+    span.className='badge bg-light text-dark border d-flex align-items-center gap-1';
+    span.style.fontSize='0.85rem';
+    span.appendChild(document.createTextNode(val+' '));
+    const btn=document.createElement('button');
+    btn.type='button'; btn.className='btn-close'; btn.style.fontSize='0.6rem';
+    btn.onclick=function(){removeSubtypeChip(this);};
+    span.appendChild(btn); container.appendChild(span); input.value='';
 }
 
-function removeSubtypeChip(btn) {
-    btn.closest('.badge').remove();
-}
+function removeSubtypeChip(btn) { btn.closest('.badge').remove(); }
 
 // ===== Связи: модальное окно =====
 let modalLinkSearchTimer = null;
@@ -1477,7 +1270,7 @@ async function searchObjectsModal(q) {
             </div>`
         ).join('');
         container.querySelectorAll('.link-modal-item').forEach(item => {
-            item.addEventListener('mouseenter', () => item.style.background = '#f0fdf4');
+            item.addEventListener('mouseenter', () => item.style.background = '#fffbeb');
             item.addEventListener('mouseleave', () => item.style.background = '#fff');
             item.addEventListener('click', () =>
                 selectLinkObject(item.dataset.id, item.dataset.name, item.dataset.type));

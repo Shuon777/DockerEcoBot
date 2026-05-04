@@ -25,6 +25,7 @@ from models.models import ErrorLog, BiologicalEntity, TextContent, ImageContent,
 from models.admin_models import AdminBase, TestSession
 from models.eco_assistant_models import (
     Object, ObjectType, ObjectNameSynonym, object_name_synonym_link,
+    ObjectObjectLink,
     Modality, TextValue, ImageValue, GeodataValue,
     Resource, ResourceValue, resource_object_table,
     Author, Source, ReliabilityLevel, Bibliographic, Creation,
@@ -37,6 +38,7 @@ from dotenv import load_dotenv
 # Константы типов объектов в eco_assistant.object_type
 BIO_OBJECT_TYPE_ID = 1  # «Объект флоры и фауны»
 GEO_OBJECT_TYPE_ID = 2  # «Географический объект»
+SERVICE_OBJECT_TYPE_ID = 3  # «Услуга»
 
 app = FastAPI()
 load_dotenv()
@@ -262,18 +264,17 @@ async def save_config(request: Request, data: dict = Body(...)):
 # CMS: ФЛОРА И ФАУНА (eco_assistant схема)
 # ==========================================
 
-@app.get("/biological", response_class=HTMLResponse)
-async def biological_list(
+async def _biological_list_impl(
     request: Request,
-    search: str = None,
-    filter_type: str = None,
-    filter_resources: str = None,
-    sort_by: str = "default",
-    page: int = 1,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession,
+    active_page: str,
+    forced_bio_type: str | None,
+    search: str | None,
+    filter_resources: str | None,
+    sort_by: str,
+    page: int,
 ):
-    if not request.session.get("user_id"):
-        return RedirectResponse(url="/login")
+    """Общая логика списка биологических объектов. forced_bio_type: 'flora'|'fauna'|'unclassified'|None."""
     bot_online = await is_bot_online_redis()
 
     # 1. Счётчики ресурсов по каждому объекту
@@ -294,8 +295,17 @@ async def biological_list(
         for row in counts_raw
     }
 
-    # 2. Глобальная статистика (включая разбивку Флора/Фауна)
-    stats_raw = await db.execute(sql_text("""
+    # 2. Статистика, фильтруется по forced_bio_type чтобы показывать цифры только своего раздела
+    if forced_bio_type == "flora":
+        _bio_stats_filter = "AND o.object_properties->>'Тип ОФФ' = 'Объект флоры'"
+    elif forced_bio_type == "fauna":
+        _bio_stats_filter = "AND o.object_properties->>'Тип ОФФ' = 'Объект фауны'"
+    elif forced_bio_type == "unclassified":
+        _bio_stats_filter = "AND COALESCE(o.object_properties->>'Тип ОФФ', '') = ''"
+    else:
+        _bio_stats_filter = ""
+
+    stats_raw = await db.execute(sql_text(f"""
         WITH rs AS (
             SELECT o.id, o.object_properties,
                    COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS txt,
@@ -305,7 +315,7 @@ async def biological_list(
             LEFT JOIN eco_assistant.resource_object ro ON ro.object_id = o.id
             LEFT JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
             LEFT JOIN eco_assistant.modality m ON m.id = rv.modality_id
-            WHERE o.object_type_id = :otid
+            WHERE o.object_type_id = :otid {_bio_stats_filter}
             GROUP BY o.id, o.object_properties
         )
         SELECT COUNT(*) AS total,
@@ -314,18 +324,25 @@ async def biological_list(
                COUNT(*) FILTER (WHERE geo  > 0) AS has_geo,
                COUNT(*) FILTER (WHERE txt = 0 AND img = 0 AND geo = 0) AS no_resources,
                COUNT(*) FILTER (WHERE object_properties->>'Тип ОФФ' = 'Объект флоры') AS flora_count,
-               COUNT(*) FILTER (WHERE object_properties->>'Тип ОФФ' = 'Объект фауны') AS fauna_count
+               COUNT(*) FILTER (WHERE object_properties->>'Тип ОФФ' = 'Объект фауны') AS fauna_count,
+               COUNT(*) FILTER (WHERE COALESCE(object_properties->>'Тип ОФФ', '') = '') AS unclassified_count,
+               COUNT(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM eco_assistant.object_object_link ool
+                   WHERE ool.object_id = rs.id OR ool.related_object_id = rs.id
+               )) AS has_links
         FROM rs
     """), {"otid": BIO_OBJECT_TYPE_ID})
     sr = stats_raw.first()
     stats = {
-        "total":        int(sr.total),
-        "has_text":     int(sr.has_text),
-        "has_image":    int(sr.has_image),
-        "has_geo":      int(sr.has_geo),
-        "no_resources": int(sr.no_resources),
-        "flora":        int(sr.flora_count),
-        "fauna":        int(sr.fauna_count),
+        "total":          int(sr.total),
+        "has_text":       int(sr.has_text),
+        "has_image":      int(sr.has_image),
+        "has_geo":        int(sr.has_geo),
+        "no_resources":   int(sr.no_resources),
+        "has_links":      int(sr.has_links),
+        "flora":          int(sr.flora_count),
+        "fauna":          int(sr.fauna_count),
+        "unclassified":   int(sr.unclassified_count),
     }
 
     # 3. Основной запрос
@@ -345,16 +362,24 @@ async def biological_list(
         .group_by(Object.id)
     )
 
-    # 4. Фильтры
-    if filter_type and filter_type != "all":
-        type_val = "Объект флоры" if filter_type == "flora" else "Объект фауны"
-        query = query.where(
-            func.jsonb_path_exists(
-                Object.object_properties,
-                sql_text("""'$."Тип ОФФ" ? (@ == $val)'"""),
-                func.jsonb_build_object("val", type_val),
+    # 4. Фильтры по типу (флора/фауна/неклассифицированные)
+    if forced_bio_type and forced_bio_type != "all":
+        if forced_bio_type == "unclassified":
+            query = query.where(
+                or_(
+                    ~Object.object_properties.has_key("Тип ОФФ"),
+                    Object.object_properties["Тип ОФФ"].astext == "",
+                )
             )
-        )
+        elif forced_bio_type in ("flora", "fauna"):
+            type_val = "Объект флоры" if forced_bio_type == "flora" else "Объект фауны"
+            query = query.where(
+                func.jsonb_path_exists(
+                    Object.object_properties,
+                    sql_text("""'$."Тип ОФФ" ? (@ == $val)'"""),
+                    func.jsonb_build_object("val", type_val),
+                )
+            )
 
     if filter_resources == "none":
         query = query.where(
@@ -364,6 +389,15 @@ async def biological_list(
         key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
         ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
         query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+    elif filter_resources == "has_links":
+        query = query.where(
+            select(ObjectObjectLink.object_id).where(
+                or_(
+                    ObjectObjectLink.object_id == Object.id,
+                    ObjectObjectLink.related_object_id == Object.id,
+                )
+            ).correlate(Object).exists()
+        )
 
     if search:
         matching_ids = (
@@ -411,13 +445,19 @@ async def biological_list(
             "total_resources": int(row.total_resources or 0),
         })
 
-    return templates.TemplateResponse("biological_list.html", {
+    template_map = {
+        "biological":   "biological_list.html",
+        "flora":        "flora_list.html",
+        "fauna":        "fauna_list.html",
+        "unclassified": "unclassified_list.html",
+    }
+    return templates.TemplateResponse(template_map[active_page], {
         "request": request,
-        "active_page": "biological",
+        "active_page": active_page,
         "bot_online": bot_online,
         "entities": entities,
         "search": search or "",
-        "filter_type": filter_type or "all",
+        "filter_type": forced_bio_type or "all",
         "filter_resources": filter_resources or "",
         "sort_by": sort_by,
         "stats": stats,
@@ -425,6 +465,63 @@ async def biological_list(
         "total_pages": total_pages,
         "total_items": total_items,
     })
+
+
+@app.get("/biological", response_class=HTMLResponse)
+async def biological_list(
+    request: Request,
+    search: str = None,
+    filter_type: str = None,
+    filter_resources: str = None,
+    sort_by: str = "default",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    return await _biological_list_impl(request, db, "biological", filter_type, search, filter_resources, sort_by, page)
+
+
+@app.get("/flora", response_class=HTMLResponse)
+async def flora_list(
+    request: Request,
+    search: str = None,
+    filter_resources: str = None,
+    sort_by: str = "default",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    return await _biological_list_impl(request, db, "flora", "flora", search, filter_resources, sort_by, page)
+
+
+@app.get("/fauna", response_class=HTMLResponse)
+async def fauna_list(
+    request: Request,
+    search: str = None,
+    filter_resources: str = None,
+    sort_by: str = "default",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    return await _biological_list_impl(request, db, "fauna", "fauna", search, filter_resources, sort_by, page)
+
+
+@app.get("/unclassified", response_class=HTMLResponse)
+async def unclassified_list(
+    request: Request,
+    search: str = None,
+    filter_resources: str = None,
+    sort_by: str = "default",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    return await _biological_list_impl(request, db, "unclassified", "unclassified", search, filter_resources, sort_by, page)
 
 
 @app.get("/biological/new", response_class=HTMLResponse)
@@ -617,6 +714,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
     image_features = await _get_modality_features(db, "Изображение")
     geo_features = await _get_modality_features(db, "Геоданные")
 
+    links = await _load_object_links(db, object_id)
     return templates.TemplateResponse("biological_edit.html", {
         "request": request,
         "active_page": "biological",
@@ -629,6 +727,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         "text_features": text_features,
         "image_features": image_features,
         "geo_features": geo_features,
+        "links": links,
     })
 
 
@@ -1215,7 +1314,11 @@ async def geographical_list(
                COUNT(*) FILTER (WHERE txt  > 0)    AS has_text,
                COUNT(*) FILTER (WHERE img  > 0)    AS has_image,
                COUNT(*) FILTER (WHERE geo  > 0)    AS has_geo,
-               COUNT(*) FILTER (WHERE txt = 0 AND img = 0 AND geo = 0) AS no_resources
+               COUNT(*) FILTER (WHERE txt = 0 AND img = 0 AND geo = 0) AS no_resources,
+               COUNT(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM eco_assistant.object_object_link ool
+                   WHERE ool.object_id = rs.id OR ool.related_object_id = rs.id
+               )) AS has_links
         FROM rs
     """), {"otid": GEO_OBJECT_TYPE_ID})
     sr = stats_raw.first()
@@ -1225,6 +1328,7 @@ async def geographical_list(
         "has_image":    int(sr.has_image),
         "has_geo":      int(sr.has_geo),
         "no_resources": int(sr.no_resources),
+        "has_links":    int(sr.has_links),
     }
 
     # 3. Подзапрос ресурсов (отдельно для использования в сортировке и выборке)
@@ -1264,6 +1368,15 @@ async def geographical_list(
         key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
         ids_with =[oid for oid, c in resource_counts.items() if c[key] > 0]
         query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+    elif filter_resources == "has_links":
+        query = query.where(
+            select(ObjectObjectLink.object_id).where(
+                or_(
+                    ObjectObjectLink.object_id == Object.id,
+                    ObjectObjectLink.related_object_id == Object.id,
+                )
+            ).correlate(Object).exists()
+        )
 
     if search:
         matching_ids = (
@@ -1559,6 +1672,7 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
     image_features = await _get_modality_features(db, "Изображение")
     geo_features = await _get_modality_features(db, "Геоданные")
 
+    links = await _load_object_links(db, object_id)
     return templates.TemplateResponse("geographical_edit.html", {
         "request": request,
         "active_page": "geographical",
@@ -1571,6 +1685,7 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         "text_features": text_features,
         "image_features": image_features,
         "geo_features": geo_features,
+        "links": links,
     })
 
 
@@ -1730,6 +1845,14 @@ async def _ensure_object_exists(db: AsyncSession, object_id: int):
     )).scalar()
     if not obj:
         raise HTTPException(status_code=404, detail="Достопримечательность не найдена")
+
+
+async def _ensure_service_object_exists(db: AsyncSession, object_id: int):
+    obj = (await db.execute(
+        select(Object.id).where(Object.id == object_id, Object.object_type_id == SERVICE_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Услуга не найдена")
 
 
 @app.post("/geographical/resource/delete/text/{resource_id}")
@@ -1925,6 +2048,759 @@ async def edit_geographical_geo_resource(
         )
     await db.commit()
     return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
+
+
+# ==========================================
+# CMS: УСЛУГИ (eco_assistant схема)
+# ==========================================
+
+@app.get("/service", response_class=HTMLResponse)
+async def service_list(
+    request: Request,
+    search: str = None,
+    filter_subtype: List[str] = Query(default=[]),
+    filter_resources: str = None,
+    sort_by: str = "default",
+    page: int = 1,
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+
+    counts_raw = await db.execute(sql_text("""
+        SELECT ro.object_id,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS text_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS image_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo_count
+        FROM eco_assistant.resource_object ro
+        JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
+        JOIN eco_assistant.modality m ON m.id = rv.modality_id
+        JOIN eco_assistant.object o ON o.id = ro.object_id
+        WHERE o.object_type_id = :otid
+        GROUP BY ro.object_id
+    """), {"otid": SERVICE_OBJECT_TYPE_ID})
+    resource_counts: dict[int, dict] = {
+        row.object_id: {"text": int(row.text_count), "image": int(row.image_count), "geo": int(row.geo_count)}
+        for row in counts_raw
+    }
+
+    stats_raw = await db.execute(sql_text("""
+        WITH rs AS (
+            SELECT o.id,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS txt,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS img,
+                   COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo
+            FROM eco_assistant.object o
+            LEFT JOIN eco_assistant.resource_object ro ON ro.object_id = o.id
+            LEFT JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
+            LEFT JOIN eco_assistant.modality m ON m.id = rv.modality_id
+            WHERE o.object_type_id = :otid
+            GROUP BY o.id
+        )
+        SELECT COUNT(*)                             AS total,
+               COUNT(*) FILTER (WHERE txt  > 0)    AS has_text,
+               COUNT(*) FILTER (WHERE img  > 0)    AS has_image,
+               COUNT(*) FILTER (WHERE geo  > 0)    AS has_geo,
+               COUNT(*) FILTER (WHERE txt = 0 AND img = 0 AND geo = 0) AS no_resources,
+               COUNT(*) FILTER (WHERE EXISTS (
+                   SELECT 1 FROM eco_assistant.object_object_link ool
+                   WHERE ool.object_id = rs.id OR ool.related_object_id = rs.id
+               )) AS has_links
+        FROM rs
+    """), {"otid": SERVICE_OBJECT_TYPE_ID})
+    sr = stats_raw.first()
+    stats = {
+        "total":        int(sr.total),
+        "has_text":     int(sr.has_text),
+        "has_image":    int(sr.has_image),
+        "has_geo":      int(sr.has_geo),
+        "no_resources": int(sr.no_resources),
+        "has_links":    int(sr.has_links),
+    }
+
+    total_res_sq = (
+        select(func.count(func.distinct(resource_object_table.c.resource_id)))
+        .where(resource_object_table.c.object_id == Object.id)
+        .correlate(Object)
+        .scalar_subquery()
+    )
+    query = (
+        select(Object.id, Object.db_id, Object.object_properties,
+               func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
+               total_res_sq.label("total_resources"))
+        .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
+        .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
+        .where(Object.object_type_id == SERVICE_OBJECT_TYPE_ID)
+        .group_by(Object.id)
+    )
+
+    active_subtypes = [s for s in filter_subtype if s and s != "all"]
+    for st in active_subtypes:
+        query = query.where(
+            func.jsonb_path_exists(
+                Object.object_properties,
+                sql_text("'$.subtypes[*] ? (@ == $val)'"),
+                func.jsonb_build_object("val", st),
+            )
+        )
+
+    if filter_resources == "none":
+        query = query.where(Object.id.notin_(select(resource_object_table.c.object_id).distinct()))
+    elif filter_resources in ("has_text", "has_image", "has_geo"):
+        key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
+        ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
+        query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+    elif filter_resources == "has_links":
+        query = query.where(
+            select(ObjectObjectLink.object_id).where(
+                or_(
+                    ObjectObjectLink.object_id == Object.id,
+                    ObjectObjectLink.related_object_id == Object.id,
+                )
+            ).correlate(Object).exists()
+        )
+
+    if search:
+        matching_ids = (
+            select(object_name_synonym_link.c.object_id)
+            .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id)
+            .where(ObjectNameSynonym.synonym.ilike(f"%{search}%"))
+        )
+        query = query.where(Object.id.in_(matching_ids))
+
+    if sort_by == "no_resources":
+        query = query.order_by(total_res_sq.asc(), Object.id.desc())
+    elif sort_by == "rich":
+        query = query.order_by(total_res_sq.desc(), Object.id.desc())
+    elif sort_by == "old":
+        query = query.order_by(Object.id.asc())
+    else:
+        query = query.order_by(Object.id.desc())
+
+    count_query = select(func.count()).select_from(query.order_by(None).subquery())
+    total_items = await db.scalar(count_query)
+    page_size = 50
+    total_pages = max(1, (total_items + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    query = query.limit(page_size).offset((page - 1) * page_size)
+    rows = (await db.execute(query)).all()
+
+    entities = []
+    for row in rows:
+        synonyms = [s for s in (row.synonyms or []) if s]
+        props = row.object_properties or {}
+        c = resource_counts.get(row.id, {"text": 0, "image": 0, "geo": 0})
+        entities.append({
+            "id": row.id,
+            "db_id": row.db_id,
+            "name_ru": _primary_synonym(synonyms),
+            "synonyms": synonyms,
+            "object_properties": props,
+            "subtypes": props.get("subtypes", []) if isinstance(props, dict) else [],
+            "text_count": c["text"],
+            "image_count": c["image"],
+            "geo_count": c["geo"],
+            "total_resources": int(row.total_resources or 0),
+        })
+
+    subtypes_stats = await get_property_counts(db, SERVICE_OBJECT_TYPE_ID, "subtypes")
+    subtypes_stats.sort(key=lambda x: (-x[1], x[0].lower()))
+
+    return templates.TemplateResponse("service_list.html", {
+        "request": request,
+        "active_page": "service",
+        "bot_online": bot_online,
+        "entities": entities,
+        "search": search or "",
+        "active_subtypes": active_subtypes,
+        "filter_resources": filter_resources or "",
+        "sort_by": sort_by,
+        "subtypes_stats": subtypes_stats,
+        "stats": stats,
+        "page": page,
+        "total_pages": total_pages,
+        "total_items": total_items,
+    })
+
+
+@app.get("/service/new", response_class=HTMLResponse)
+async def service_new(request: Request, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+    subtypes_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "subtypes")
+    region_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "region")
+    exact_location_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "exact_location")
+    baikal_relation_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "baikal_relation")
+    authors = (await db.execute(select(Author.name).order_by(Author.name))).scalars().all()
+    sources = (await db.execute(select(Source.name).order_by(Source.name))).scalars().all()
+    reliability_options = (await db.execute(select(ReliabilityLevel.name).order_by(ReliabilityLevel.name))).scalars().all()
+    return templates.TemplateResponse("service_form.html", {
+        "request": request,
+        "active_page": "service",
+        "bot_online": bot_online,
+        "entity": None,
+        "subtypes_options": sorted(subtypes_options, key=str.lower),
+        "region_options": sorted(region_options, key=str.lower),
+        "exact_location_options": exact_location_options[:200],
+        "baikal_relation_options": baikal_relation_options,
+        "authors": authors,
+        "sources": sources,
+        "reliability_options": reliability_options,
+    })
+
+
+@app.post("/service/save")
+async def service_save(
+    request: Request,
+    name_ru: str = Form(...),
+    subtypes: str = Form(""),
+    region: str = Form(""),
+    exact_location: str = Form(""),
+    baikal_relation: str = Form(""),
+    description: str = Form(""),
+    author: str = Form(""),
+    source: str = Form(""),
+    date: str = Form(""),
+    reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    obj = Object(
+        db_id=f"SVC_OBJ_{secrets.token_hex(6)}",
+        object_type_id=SERVICE_OBJECT_TYPE_ID,
+        object_properties=_build_object_properties(
+            _parse_subtypes(subtypes),
+            region.strip() or None,
+            exact_location.strip() or None,
+            baikal_relation.strip() or None,
+        ),
+    )
+    db.add(obj)
+    await db.flush()
+    syn = ObjectNameSynonym(synonym=name_ru, language="ru")
+    db.add(syn)
+    await db.flush()
+    await db.execute(insert(object_name_synonym_link).values(object_id=obj.id, synonym_id=syn.id))
+    if description.strip():
+        parsed_date = None
+        if date.strip():
+            try:
+                parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+            except ValueError:
+                parsed_date = None
+        res = await _create_resource_scaffold(
+            db, title=name_ru, author_name=author.strip(),
+            source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date,
+        )
+        await _attach_text_to_object(db, object_id=obj.id, resource=res, structured_data={"description": description})
+    await db.commit()
+    return RedirectResponse(url=f"/service/{obj.id}", status_code=303)
+
+
+@app.get("/service/{object_id}", response_class=HTMLResponse)
+async def service_edit(request: Request, object_id: int, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+    obj = (await db.execute(select(Object).where(Object.id == object_id))).scalar()
+    if not obj or obj.object_type_id != SERVICE_OBJECT_TYPE_ID:
+        raise HTTPException(status_code=404, detail="Услуга не найдена")
+    synonyms = (await db.execute(
+        select(ObjectNameSynonym.synonym)
+        .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
+        .where(object_name_synonym_link.c.object_id == object_id)
+    )).scalars().all()
+    entity = {
+        "id": obj.id,
+        "db_id": obj.db_id,
+        "name_ru": _primary_synonym(list(synonyms)),
+        "synonyms": list(synonyms),
+        "object_properties": obj.object_properties or {},
+        "subtypes": (obj.object_properties or {}).get("subtypes", []),
+        "feature_data": obj.object_properties or {},
+    }
+    texts_q = (
+        select(Resource.id.label("resource_id"), Resource.title, Resource.features, TextValue.structured_data)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(TextValue, TextValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Текст")
+        .order_by(Resource.id.desc())
+    )
+    texts = []
+    for row in (await db.execute(texts_q)).all():
+        sd = row.structured_data or {}
+        content = sd.get("description") if isinstance(sd, dict) else None
+        texts.append({
+            "id": row.resource_id,
+            "title": row.title or "Без заголовка",
+            "content": content,
+            "structured_data": sd if isinstance(sd, dict) and not (len(sd) == 1 and "description" in sd) else None,
+            "feature_data": row.features or {},
+        })
+    images_q = (
+        select(Resource.id.label("resource_id"), Resource.title, Resource.features, ImageValue.url, ImageValue.file_path)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(ImageValue, ImageValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Изображение")
+        .order_by(Resource.id.desc())
+    )
+    images = []
+    for row in (await db.execute(images_q)).all():
+        url = row.url or row.file_path or ""
+        images.append({
+            "data": {"id": row.resource_id, "title": row.title or "Без названия", "feature_data": row.features or {}},
+            "url": url,
+        })
+    geos_q = (
+        select(Resource.id.label("resource_id"), Resource.title, Resource.features,
+               GeodataValue.id.label("geodata_id"), GeodataValue.geometry_type)
+        .join(ResourceValue, ResourceValue.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .join(GeodataValue, GeodataValue.id == ResourceValue.value_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Геоданные")
+        .order_by(Resource.id.desc())
+    )
+    locations = []
+    for row in (await db.execute(geos_q)).all():
+        locations.append({
+            "resource_id": row.resource_id,
+            "geodata_id": row.geodata_id,
+            "name_ru": row.title or "Геометрия",
+            "type": row.geometry_type or "Геометрия",
+            "is_map": True,
+            "geo_id": row.geodata_id,
+            "map_id": row.geodata_id,
+            "feature_data": row.features or {},
+        })
+    avail_props_rows = (await db.execute(
+        select(ObjectProperty).where(ObjectProperty.object_type_id == SERVICE_OBJECT_TYPE_ID).order_by(ObjectProperty.property_name)
+    )).scalars().all()
+    available_properties = [
+        {"id": p.id, "name": p.property_name, "values": list(p.property_values or [])}
+        for p in avail_props_rows
+    ]
+    text_features = await _get_modality_features(db, "Текст")
+    image_features = await _get_modality_features(db, "Изображение")
+    geo_features = await _get_modality_features(db, "Геоданные")
+    links = await _load_object_links(db, object_id)
+    return templates.TemplateResponse("service_edit.html", {
+        "request": request,
+        "active_page": "service",
+        "bot_online": bot_online,
+        "entity": entity,
+        "texts": texts,
+        "images": images,
+        "locations": locations,
+        "available_properties": available_properties,
+        "text_features": text_features,
+        "image_features": image_features,
+        "geo_features": geo_features,
+        "links": links,
+    })
+
+
+@app.post("/service/{object_id}/add_text")
+async def service_add_text(
+    request: Request, object_id: int,
+    title: str = Form(...), content: str = Form(...),
+    author: str = Form(""), source: str = Form(""), date: str = Form(""), reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _ensure_service_object_exists(db, object_id)
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+    res = await _create_resource_scaffold(db, title=title, author_name=author.strip(),
+                                          source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date)
+    await _attach_text_to_object(db, object_id=object_id, resource=res, structured_data={"description": content})
+    await db.commit()
+    return RedirectResponse(url=f"/service/{object_id}", status_code=303)
+
+
+@app.post("/service/{object_id}/add_image")
+async def service_add_image(
+    request: Request, object_id: int,
+    title: str = Form(...), image_url: str = Form(...),
+    author: str = Form(""), source: str = Form(""), date: str = Form(""), reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _ensure_service_object_exists(db, object_id)
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+    fmt = image_url.rsplit(".", 1)[-1].lower() if "." in image_url.rsplit("/", 1)[-1] else None
+    res = await _create_resource_scaffold(db, title=title, author_name=author.strip(),
+                                          source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date)
+    await _attach_image_to_object(db, object_id=object_id, resource=res, url=image_url, file_path=None, fmt=fmt)
+    await db.commit()
+    return RedirectResponse(url=f"/service/{object_id}", status_code=303)
+
+
+@app.post("/service/{object_id}/add_geo")
+async def service_add_geo(
+    request: Request, object_id: int,
+    title: str = Form(...), geojson: str = Form(...),
+    author: str = Form(""), source: str = Form(""), date: str = Form(""), reliability: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _ensure_service_object_exists(db, object_id)
+    try:
+        parsed_geojson = json.loads(geojson)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный GeoJSON: {exc}")
+    parsed_date = None
+    if date.strip():
+        try:
+            parsed_date = datetime.strptime(date.strip(), "%Y-%m-%d").date()
+        except ValueError:
+            parsed_date = None
+    res = await _create_resource_scaffold(db, title=title, author_name=author.strip(),
+                                          source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date)
+    await _attach_geodata_to_object(db, object_id=object_id, resource=res, geojson=parsed_geojson, relation_type="местоположение услуги")
+    await db.commit()
+    return RedirectResponse(url=f"/service/{object_id}", status_code=303)
+
+
+@app.post("/service/resource/delete/text/{resource_id}")
+async def delete_service_text_resource(
+    request: Request, resource_id: int, entity_id: int = Form(...), db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
+    return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
+
+
+@app.post("/service/resource/delete/image/{resource_id}")
+async def delete_service_image_resource(
+    request: Request, resource_id: int, entity_id: int = Form(...), db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
+    return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
+
+
+@app.post("/service/resource/delete/geo/{resource_id}")
+async def delete_service_geo_resource(
+    request: Request, resource_id: int, entity_id: int = Form(...), db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await _delete_resource_with_values(db, resource_id)
+    await db.commit()
+    return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
+
+
+@app.post("/service/resource/edit/text/{resource_id}")
+async def edit_service_text_resource(
+    request: Request, resource_id: int,
+    entity_id: int = Form(...), title: str = Form(...), content: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        tv = (await db.execute(select(TextValue).where(TextValue.id == rv.value_id))).scalar()
+        if tv:
+            tv.structured_data = {"description": content}
+    await db.commit()
+    return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
+
+
+@app.post("/service/resource/edit/image/{resource_id}")
+async def edit_service_image_resource(
+    request: Request, resource_id: int,
+    entity_id: int = Form(...), title: str = Form(...), image_url: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        iv = (await db.execute(select(ImageValue).where(ImageValue.id == rv.value_id))).scalar()
+        if iv:
+            iv.url = image_url
+    await db.commit()
+    return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
+
+
+@app.post("/service/resource/edit/geo/{resource_id}")
+async def edit_service_geo_resource(
+    request: Request, resource_id: int,
+    entity_id: int = Form(...), title: str = Form(...), geojson: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    try:
+        json.loads(geojson)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Некорректный GeoJSON: {exc}")
+    res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
+    if not res:
+        raise HTTPException(status_code=404)
+    res.title = title
+    rv = (await db.execute(select(ResourceValue).where(ResourceValue.resource_id == resource_id))).scalar()
+    if rv:
+        await db.execute(
+            sql_text("UPDATE eco_assistant.geodata_value SET geometry = ST_SetSRID(ST_GeomFromGeoJSON(:gj), 4326) WHERE id = :id"),
+            {"gj": geojson, "id": rv.value_id},
+        )
+    await db.commit()
+    return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
+
+
+@app.post("/service/get-map-html")
+async def get_service_map_html(data: dict = Body(...), db: AsyncSession = Depends(get_db)):
+    geodata_id = data.get("geodata_id") or data.get("map_id")
+    if not geodata_id:
+        return {"html": "<p>Идентификатор геоданных не указан</p>"}
+    gv = (await db.execute(select(GeodataValue).where(GeodataValue.id == int(geodata_id)))).scalar()
+    if not gv:
+        return {"html": "<p>Геометрия не найдена</p>"}
+    geojson_data = await db.scalar(select(func.ST_AsGeoJSON(gv.geometry)))
+    if not geojson_data:
+        return {"html": "<p>Геометрия отсутствует</p>"}
+    geometry_geojson = json.loads(geojson_data)
+    bounds = _geojson_bounds(geometry_geojson)
+    m = folium.Map(tiles="OpenStreetMap")
+    if bounds:
+        sw, ne = bounds
+        if sw == ne:
+            buf = 0.02
+            m.fit_bounds([[sw[0] - buf, sw[1] - buf], [ne[0] + buf, ne[1] + buf]])
+        else:
+            m.fit_bounds([sw, ne], padding=(30, 30))
+    else:
+        m.location = [53.5, 108.0]
+        m.zoom_start = 9
+    folium.GeoJson(geometry_geojson, style_function=lambda f: {
+        "color": "#f59e0b", "weight": 3, "fillColor": "#fbbf24", "fillOpacity": 0.3
+    }).add_to(m)
+    return {"html": m._repr_html_()}
+
+
+@app.get("/service/resource/geo/{geodata_id}/geojson")
+async def get_service_geo_resource_geojson(geodata_id: int, db: AsyncSession = Depends(get_db)):
+    geojson_str = await db.scalar(
+        select(func.ST_AsGeoJSON(GeodataValue.geometry)).where(GeodataValue.id == geodata_id)
+    )
+    if not geojson_str:
+        raise HTTPException(status_code=404, detail="Геометрия не найдена")
+    return {"geojson": json.loads(geojson_str)}
+
+
+# ==========================================
+# CMS: СВЯЗИ МЕЖДУ ОБЪЕКТАМИ
+# ==========================================
+
+async def _load_object_links(db: AsyncSession, object_id: int) -> list:
+    """Загрузить все связи объекта (в обоих направлениях) с именами связанных объектов."""
+    _section_map = {
+        BIO_OBJECT_TYPE_ID:     "biological",
+        GEO_OBJECT_TYPE_ID:     "geographical",
+        SERVICE_OBJECT_TYPE_ID: "service",
+    }
+
+    rows = await db.execute(sql_text("""
+        SELECT
+            ool.object_id,
+            ool.related_object_id,
+            ool.relation_type,
+            ool.created_at,
+            CASE WHEN ool.object_id = :oid THEN ool.related_object_id ELSE ool.object_id END AS linked_id,
+            CASE WHEN ool.object_id = :oid THEN 'outgoing' ELSE 'incoming' END AS direction
+        FROM eco_assistant.object_object_link ool
+        WHERE ool.object_id = :oid OR ool.related_object_id = :oid
+        ORDER BY ool.created_at DESC
+    """), {"oid": object_id})
+    raw = rows.mappings().all()
+    if not raw:
+        return []
+
+    linked_ids = list({r["linked_id"] for r in raw})
+    names_rows = await db.execute(sql_text("""
+        SELECT o.id, o.object_type_id, ons.synonym, ot.name AS type_name
+        FROM eco_assistant.object o
+        JOIN eco_assistant.object_name_synonym_link onsl ON onsl.object_id = o.id
+        JOIN eco_assistant.object_name_synonym ons ON ons.id = onsl.synonym_id
+        JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
+        WHERE o.id = ANY(:ids)
+        ORDER BY o.id, LENGTH(ons.synonym) ASC
+    """), {"ids": linked_ids})
+    seen: set[int] = set()
+    names: dict[int, dict] = {}
+    for nr in names_rows.mappings().all():
+        if nr["id"] not in seen:
+            names[nr["id"]] = {
+                "name":    nr["synonym"],
+                "type":    nr["type_name"],
+                "type_id": nr["object_type_id"],
+            }
+            seen.add(nr["id"])
+
+    links = []
+    for r in raw:
+        lid  = r["linked_id"]
+        info = names.get(lid, {})
+        links.append({
+            "related_id":     lid,
+            "name":           info.get("name", f"Объект #{lid}"),
+            "object_type":    info.get("type", ""),
+            "object_section": _section_map.get(info.get("type_id"), "biological"),
+            "scientific_name": None,
+            "relation_type":  r["relation_type"],
+            "direction":      r["direction"],
+        })
+    return links
+
+
+@app.get("/object/search")
+async def object_search(q: str = "", exclude_id: int = None, db: AsyncSession = Depends(get_db)):
+    """Поиск объектов по имени для autocomplete (AJAX)."""
+    if not q or len(q) < 2:
+        return []
+    query = (
+        select(Object.id, ObjectNameSynonym.synonym, ObjectType.name.label("type_name"))
+        .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id)
+        .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id)
+        .join(ObjectType, ObjectType.id == Object.object_type_id)
+        .where(ObjectNameSynonym.synonym.ilike(f"%{q}%"))
+        .order_by(func.length(ObjectNameSynonym.synonym).asc())
+        .limit(15)
+    )
+    if exclude_id:
+        query = query.where(Object.id != exclude_id)
+    rows = (await db.execute(query)).all()
+    seen = set()
+    result = []
+    for row in rows:
+        if row.id not in seen:
+            result.append({"id": row.id, "name": row.synonym, "type": row.type_name})
+            seen.add(row.id)
+    return result
+
+
+@app.get("/object/link-types")
+async def object_link_types(db: AsyncSession = Depends(get_db)):
+    """Возвращает список уникальных типов связей из object_object_link."""
+    rows = await db.execute(sql_text(
+        "SELECT DISTINCT relation_type FROM eco_assistant.object_object_link ORDER BY relation_type"
+    ))
+    return [row.relation_type for row in rows]
+
+
+@app.post("/object/{object_id}/links/add")
+async def object_link_add(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    related_id = data.get("related_id")
+    relation_type = (data.get("relation_type") or "").strip()
+    if not related_id or not relation_type:
+        return {"ok": False, "error": "related_id и relation_type обязательны"}
+    obj_exists = (await db.execute(select(Object.id).where(Object.id == object_id))).scalar()
+    rel_exists = (await db.execute(select(Object.id).where(Object.id == related_id))).scalar()
+    if not obj_exists or not rel_exists:
+        return {"ok": False, "error": "Объект не найден"}
+    existing = (await db.execute(
+        select(ObjectObjectLink).where(
+            ObjectObjectLink.object_id == object_id,
+            ObjectObjectLink.related_object_id == related_id,
+            ObjectObjectLink.relation_type == relation_type,
+        )
+    )).scalar()
+    if existing:
+        return {"ok": False, "error": "Такая связь уже существует"}
+    link = ObjectObjectLink(object_id=object_id, related_object_id=related_id, relation_type=relation_type)
+    db.add(link)
+    await db.commit()
+    linked_name_row = (await db.execute(sql_text("""
+        SELECT ons.synonym, ot.name AS type_name
+        FROM eco_assistant.object o
+        JOIN eco_assistant.object_name_synonym_link onsl ON onsl.object_id = o.id
+        JOIN eco_assistant.object_name_synonym ons ON ons.id = onsl.synonym_id
+        JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
+        WHERE o.id = :rid
+        ORDER BY LENGTH(ons.synonym) DESC LIMIT 1
+    """), {"rid": related_id})).first()
+    return {
+        "ok": True,
+        "link": {
+            "object_id": object_id,
+            "related_object_id": related_id,
+            "relation_type": relation_type,
+            "direction": "outgoing",
+            "linked_id": related_id,
+            "linked_name": linked_name_row.synonym if linked_name_row else f"Объект #{related_id}",
+            "linked_type": linked_name_row.type_name if linked_name_row else "",
+        }
+    }
+
+
+@app.post("/object/{object_id}/links/delete")
+async def object_link_delete(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    related_id = data.get("related_id")
+    relation_type = data.get("relation_type")
+    if not related_id or not relation_type:
+        return {"ok": False, "error": "related_id и relation_type обязательны"}
+    await db.execute(
+        delete(ObjectObjectLink).where(
+            or_(
+                (ObjectObjectLink.object_id == object_id) & (ObjectObjectLink.related_object_id == related_id) & (ObjectObjectLink.relation_type == relation_type),
+                (ObjectObjectLink.object_id == related_id) & (ObjectObjectLink.related_object_id == object_id) & (ObjectObjectLink.relation_type == relation_type),
+            )
+        )
+    )
+    await db.commit()
+    return {"ok": True}
+
 
 @app.get("/testing", response_class=HTMLResponse)
 async def testing_list(request: Request, db: AsyncSession = Depends(get_db), admin_db = Depends(get_admin_db)):
@@ -2252,6 +3128,31 @@ async def geographical_set_property(
         return {"ok": False, "error": "unauthorized"}
     obj = (await db.execute(
         select(Object).where(Object.id == object_id, Object.object_type_id == GEO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404)
+    current = dict(obj.object_properties or {})
+    for k, v in (data.get("properties") or {}).items():
+        if v is None or v == "" or v == []:
+            current.pop(k, None)
+        else:
+            current[k] = v
+    obj.object_properties = current
+    await db.commit()
+    return {"ok": True}
+
+
+@app.post("/service/{object_id}/set_property")
+async def service_set_property(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    obj = (await db.execute(
+        select(Object).where(Object.id == object_id, Object.object_type_id == SERVICE_OBJECT_TYPE_ID)
     )).scalar()
     if not obj:
         raise HTTPException(status_code=404)
