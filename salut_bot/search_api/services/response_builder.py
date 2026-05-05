@@ -19,7 +19,7 @@ class ResponseBuilder:
             'resource_criteria': self._serialize_resource_criteria(search_response.resource_criteria),
             'modality_filter': search_response.modality_filter,
             'objects': self._serialize_objects(search_response.objects),
-            'resources': self._serialize_resources(search_response.resources),
+            'resources': self._serialize_resources(search_response.resources, search_response.objects),
         }
         if search_response.debug_info:
             result['debug'] = search_response.debug_info
@@ -61,7 +61,7 @@ class ResponseBuilder:
             for o in objects
         ]
 
-    def _serialize_resources(self, resources: List[ResourceResult]) -> List[Dict[str, Any]]:
+    def _serialize_resources(self, resources: List[ResourceResult], objects: List[ObjectResult]) -> List[Dict[str, Any]]:
         serialized = []
         for r in resources:
             item = {
@@ -73,6 +73,17 @@ class ResponseBuilder:
                 'modality_type': r.modality_type,
                 'features': r.features,
             }
+            map_name = None
+            for obj in objects:
+                if obj.properties.get('name'):
+                    map_name = obj.properties['name']
+                    break
+                if obj.synonyms:
+                    map_name = obj.synonyms[0]
+                    break
+            if not map_name:
+                map_name = f"map_{r.id}"
+
             if r.modality_type == ModalityType.GEODATA.value:
                 if isinstance(r.content, GeoContent):
                     item['content'] = {
@@ -84,7 +95,7 @@ class ResponseBuilder:
                         }
                     }
                 elif isinstance(r.content, dict) and 'geojson' in r.content:
-                    enriched = self._geo_service.enrich_geo_content(r.content['geojson'], f"map_{r.id}")
+                    enriched = self._geo_service.enrich_geo_content(r.content['geojson'], map_name)
                     item['content'] = {
                         'geojson': enriched.geojson,
                         'geometry_type': enriched.geometry_type,

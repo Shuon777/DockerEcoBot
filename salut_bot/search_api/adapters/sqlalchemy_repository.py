@@ -32,7 +32,17 @@ class SQLAlchemySearchRepository(SearchRepository):
                 for lang, name_list in criteria.name_synonyms.items():
                     names.extend(name_list)
                 if names:
-                    query = query.filter(Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'%{names[0]}%')))
+                    from sqlalchemy import func, case
+                    name = names[0]
+                    relevance = case(
+                        (Object.synonyms.any(ObjectNameSynonym.synonym == name), 100),
+                        (Object.synonyms.any(ObjectNameSynonym.synonym.ilike(name)), 80),
+                        (Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'{name}%')), 60),
+                        (Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'%{name}%')), 40),
+                        else_=0
+                    )
+                    query = query.filter(Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'%{name}%')))
+                    query = query.order_by(relevance.desc(), Object.id)
             if criteria.properties:
                 for key, value in criteria.properties.items():
                     if key == 'subtypes':
