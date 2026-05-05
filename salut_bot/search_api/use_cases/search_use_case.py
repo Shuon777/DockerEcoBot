@@ -22,22 +22,18 @@ class SearchUseCase:
         logger.info(f"request.object: {request.object}")
         logger.info(f"request.resource: {request.resource}")
         logger.info(f"request.modality_type: {request.modality_type}")
-        logger.info(f"request.limit: {request.limit}, offset: {request.offset}")
 
         objects: List[ObjectResult] = []
         object_ids: Optional[List[int]] = None
 
         if request.object:
             obj_start = time.time()
-            logger.info("Searching for objects with criteria")
-            logger.info(f"ObjectCriteria details: db_id={request.object.db_id}, object_type={request.object.object_type}, properties={request.object.properties}")
-            
             objects = self._repository.find_objects_by_criteria(
                 request.object, limit=request.limit, offset=request.offset
             )
             debug['objects_query_time'] = time.time() - obj_start
             object_ids = [obj.id for obj in objects] if objects else None
-            logger.info(f"Found {len(objects)} objects, object_ids: {object_ids}")
+            logger.info(f"Found {len(objects)} objects")
         else:
             logger.info("No object criteria provided, skipping object search")
 
@@ -45,19 +41,24 @@ class SearchUseCase:
         if request.object and not objects:
             debug['resources_query_time'] = 0.0
             debug['resources_skipped'] = True
-            logger.info("Skipping resource search because no objects found")
         else:
             resource_criteria = request.resource if request.resource else ResourceCriteria()
             res_start = time.time()
-            logger.info("Searching for resources...")
             resources = self._repository.find_resources_by_criteria(
-                resource_criteria, object_ids, limit=request.limit, offset=request.offset
+                resource_criteria, object_ids, limit=request.limit * 2, offset=request.offset
             )
-            debug['resources_query_time'] = time.time() - res_start
-            logger.info(f"Found {len(resources)} resources")
+            debug['resources_query_time_raw'] = time.time() - res_start
+            
+            if request.modality_type:
+                filter_start = time.time()
+                resources = [r for r in resources if r.modality_type == request.modality_type]
+                debug['resources_filter_time'] = time.time() - filter_start
+            
+            resources = resources[:request.limit]
+            debug['resources_query_time'] = debug.get('resources_query_time_raw', 0)
+            logger.info(f"Found {len(resources)} resources after modality filter")
 
         debug['total_time'] = time.time() - start_time
-        logger.info(f"SearchUseCase.execute END, total_time: {debug['total_time']:.3f}s")
 
         response = SearchResponse(
             object_criteria=request.object,

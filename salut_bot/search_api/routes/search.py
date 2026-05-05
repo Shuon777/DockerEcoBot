@@ -56,7 +56,9 @@ def search():
         clean_user_query = sys_params.get('clean_user_query', data.get('clean_user_query'))
 
         search_params = data.get('search_parameters', data)
-
+        if search_params.get('modality_type') is None:
+            search_params['modality_type'] = "Текст"
+        logger.info(f"Modality type after default: {search_params.get('modality_type')}")
         object_criteria = None
         if search_params.get('object'):
             obj = search_params['object']
@@ -87,6 +89,10 @@ def search():
                 features=features,
                 structured_data=res.get('modality', {}).get('value', {}).get('structured_data') if res.get('modality') else None,
                 taxonomy=res.get('modality', {}).get('value', {}).get('structured_data', {}).get('taxonomy') if res.get('modality') else None
+            )
+        else:
+            resource_criteria = ResourceCriteria(
+                modality_type=search_params.get('modality_type')
             )
 
         request_obj = SearchRequest(
