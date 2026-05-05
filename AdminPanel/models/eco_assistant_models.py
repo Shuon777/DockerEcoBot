@@ -514,5 +514,39 @@ class ResourceFeature(Base):
 
 
 # ============================================================================
+# 18. СПРАВОЧНИКИ ТИПОВ СВЯЗЕЙ
+# ============================================================================
+
+class ObjectObjectRelationType(Base):
+    """Типы связей между объектами."""
+    __tablename__ = 'object_object_relation_type'
+    __table_args__ = {'schema': 'eco_assistant'}
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ResourceResourceRelationType(Base):
+    """Типы связей между ресурсами."""
+    __tablename__ = 'resource_resource_relation_type'
+    __table_args__ = {'schema': 'eco_assistant'}
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ResourceObjectRelationType(Base):
+    """Типы связей между ресурсами и объектами."""
+    __tablename__ = 'resource_object_relation_type'
+    __table_args__ = {'schema': 'eco_assistant'}
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Text, nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+# ============================================================================
 # КОНЕЦ ОПРЕДЕЛЕНИЙ
 # ============================================================================
