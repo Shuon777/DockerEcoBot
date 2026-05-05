@@ -384,15 +384,16 @@
 
                 <!-- ========== Вкладка Связей ========== -->
                 <div class="tab-pane fade" id="links">
-                    <div class="d-flex justify-content-between align-items-center mb-4">
+
+                    <!-- ── Объект ↔ Объект ── -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
                         <h6 class="fw-bold mb-0" style="color:#d97706;">
-                            <i class="bi bi-diagram-3 me-1"></i> Связанные объекты ({{ links|length }})
+                            <i class="bi bi-diagram-3 me-1"></i> Объект ↔ Объект ({{ links|length }})
                         </h6>
                     </div>
 
-                    <!-- Таблица связей -->
                     {% if links %}
-                    <div class="table-responsive mb-4">
+                    <div class="table-responsive mb-3">
                         <table class="table table-sm table-hover align-middle">
                             <thead class="table-light">
                                 <tr>
@@ -403,11 +404,9 @@
                                     <th style="width:60px;"></th>
                                 </tr>
                             </thead>
-                            <tbody id="linksTableBody">
+                            <tbody>
                                 {% for lnk in links %}
-                                <tr class="link-row"
-                                    data-related-id="{{ lnk.related_id }}"
-                                    data-relation-type="{{ lnk.relation_type }}">
+                                <tr>
                                     <td>
                                         <a href="/admin/{{ lnk.object_section }}/{{ lnk.related_id }}" class="fw-bold text-decoration-none text-dark">
                                             {{ lnk.name }}
@@ -438,19 +437,117 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-center text-muted py-4 mb-4">
+                    <div class="text-center text-muted py-3 mb-3">
                         <i class="bi bi-diagram-3 fs-1 d-block mb-2 text-light"></i>
                         Связанные объекты отсутствуют.
                     </div>
                     {% endif %}
 
-                    <div class="text-center mt-2">
+                    <div class="text-center mt-2 mb-4">
                         <button type="button" class="btn fw-bold" style="background:#d97706; color:#fff; border-radius:10px;"
                                 data-bs-toggle="modal" data-bs-target="#addLinkModal">
                             <i class="bi bi-plus-lg me-1"></i> Добавить связь
                         </button>
                     </div>
-                    <div id="linkAddStatus" class="mt-2 text-center"></div>
+
+                    <hr class="my-3">
+
+                    <!-- ── Ресурс ↔ Объект (только просмотр) ── -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0" style="color:#d97706;">
+                            <i class="bi bi-file-earmark-arrow-right me-1"></i> Ресурс ↔ Объект ({{ res_obj_links|length }})
+                        </h6>
+                        <small class="text-muted fst-italic">только просмотр</small>
+                    </div>
+
+                    {% if res_obj_links %}
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Ресурс</th>
+                                    <th>Связанный объект</th>
+                                    <th>Тип связи</th>
+                                    <th>Тип объекта</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for l in res_obj_links %}
+                                <tr>
+                                    <td class="small text-muted">{{ l.resource_title or ("Ресурс #" ~ l.resource_id) }}</td>
+                                    <td class="fw-bold small">{{ l.other_object_name }}</td>
+                                    <td><span class="badge" style="background:#fef3c7; color:#92400e;">{{ l.relation_type }}</span></td>
+                                    <td><span class="badge bg-light text-secondary border">{{ l.other_object_type }}</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-3 mb-3">
+                        Нет ресурсных связей с другими объектами.
+                    </div>
+                    {% endif %}
+
+                    <hr class="my-3">
+
+                    <!-- ── Ресурс ↔ Ресурс ── -->
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0" style="color:#d97706;">
+                            <i class="bi bi-files me-1"></i> Ресурс ↔ Ресурс ({{ res_res_links|length }})
+                        </h6>
+                    </div>
+
+                    {% if res_res_links %}
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Ресурс</th>
+                                    <th>Связанный ресурс</th>
+                                    <th>Тип связи</th>
+                                    <th>Направление</th>
+                                    <th style="width:60px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for l in res_res_links %}
+                                <tr>
+                                    <td class="small">{{ l.resource_title or ("Ресурс #" ~ l.resource_id) }}</td>
+                                    <td class="small">{{ l.related_resource_title or ("Ресурс #" ~ l.related_resource_id) }}</td>
+                                    <td><span class="badge" style="background:#fef3c7; color:#92400e;">{{ l.relation_type }}</span></td>
+                                    <td>
+                                        {% if l.direction == 'outgoing' %}
+                                        <span class="text-muted small"><i class="bi bi-arrow-right text-warning"></i> исходящая</span>
+                                        {% else %}
+                                        <span class="text-muted small"><i class="bi bi-arrow-left text-info"></i> входящая</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger border-0"
+                                                title="Удалить связь"
+                                                onclick="deleteResResLink({{ entity.id }}, {{ l.resource_id }}, {{ l.related_resource_id }}, '{{ l.relation_type | replace("'", "\\'") }}', this)">
+                                            <i class="bi bi-trash3"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-3 mb-3">
+                        <i class="bi bi-files fs-1 d-block mb-2 text-light"></i>
+                        Связи между ресурсами отсутствуют.
+                    </div>
+                    {% endif %}
+
+                    <div class="text-center mt-2">
+                        <button type="button" class="btn fw-bold btn-outline-secondary" style="border-radius:10px; color:#d97706; border-color:#d97706;"
+                                data-bs-toggle="modal" data-bs-target="#addResResLinkModal">
+                            <i class="bi bi-plus-lg me-1"></i> Добавить связь ресурсов
+                        </button>
+                    </div>
                 </div>
 
             </div>
@@ -888,12 +985,12 @@
     </div>
 </div>
 
-<!-- ========== МОДАЛКА: добавить связь ========== -->
+<!-- ========== МОДАЛКА: добавить связь объект-объект ========== -->
 <div class="modal fade" id="addLinkModal" tabindex="-1">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content" style="border-radius: 20px;">
             <div class="modal-header">
-                <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-1" style="color:#d97706;"></i> Добавить связь</h5>
+                <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-1" style="color:#d97706;"></i> Добавить связь Объект ↔ Объект</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -919,16 +1016,12 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-secondary">ТИП СВЯЗИ *</label>
-                    <input type="text" id="modalLinkRelationType" class="form-control"
-                           list="modalRelationTypesList" placeholder="Выберите или введите...">
-                    <datalist id="modalRelationTypesList">
-                        <option value="основной вид"></option>
-                        <option value="место обитания"></option>
-                        <option value="место произрастания"></option>
-                        <option value="часть экспозиции"></option>
-                        <option value="услуга по теме"></option>
-                        <option value="связанный объект"></option>
-                    </datalist>
+                    <select id="modalLinkRelationType" class="form-select">
+                        <option value="">— выберите тип —</option>
+                    </select>
+                    <div class="form-text text-muted">
+                        Управление типами: <a href="/admin/link-types" target="_blank">Каталог типов связей</a>
+                    </div>
                 </div>
                 <div id="modalLinkStatus"></div>
             </div>
@@ -937,6 +1030,67 @@
                 <button type="button" id="modalAddLinkBtn" class="btn fw-bold"
                         style="background:#d97706; color:#fff;"
                         onclick="confirmAddLink({{ entity.id }})" disabled>
+                    <i class="bi bi-plus-lg me-1"></i> Добавить
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== МОДАЛКА: добавить связь ресурс-ресурс ========== -->
+<div class="modal fade" id="addResResLinkModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">
+                    <i class="bi bi-files me-1" style="color:#d97706;"></i> Добавить связь Ресурс ↔ Ресурс
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">ИСХОДНЫЙ РЕСУРС (этого объекта) *</label>
+                    <select id="rrSourceRes" class="form-select">
+                        <option value="">Загрузка...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">ЦЕЛЕВОЙ ОБЪЕКТ *</label>
+                    <input type="text" id="rrTargetObjSearch" class="form-control"
+                           placeholder="Начните вводить название объекта..." autocomplete="off">
+                    <div id="rrTargetObjResults" class="mt-2"
+                         style="max-height:180px; overflow-y:auto; border-radius:8px;"></div>
+                    <div id="rrSelectedObject" class="mt-2" style="display:none;">
+                        <div class="d-flex align-items-center gap-2 p-2 rounded"
+                             style="background:#fffbeb; border:1px solid #fde68a;">
+                            <i class="bi bi-check-circle-fill" style="color:#d97706;"></i>
+                            <span id="rrSelectedObjectName" class="fw-bold"></span>
+                            <button type="button" class="btn btn-sm btn-link text-danger ms-auto p-0"
+                                    onclick="clearRRTargetObject()">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <input type="hidden" id="rrTargetObjId">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">ЦЕЛЕВОЙ РЕСУРС *</label>
+                    <select id="rrTargetRes" class="form-select" disabled>
+                        <option value="">Сначала выберите объект...</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small fw-bold text-secondary">ТИП СВЯЗИ *</label>
+                    <select id="rrRelationType" class="form-select">
+                        <option value="">— выберите тип —</option>
+                    </select>
+                </div>
+                <div id="rrLinkStatus"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn fw-bold" style="background:#d97706; color:#fff;"
+                        onclick="confirmAddResResLink({{ entity.id }})">
                     <i class="bi bi-plus-lg me-1"></i> Добавить
                 </button>
             </div>
@@ -1239,7 +1393,7 @@ function addSubtypeChip() {
 
 function removeSubtypeChip(btn) { btn.closest('.badge').remove(); }
 
-// ===== Связи: модальное окно =====
+// ===== Объект↔Объект: модальное окно =====
 let modalLinkSearchTimer = null;
 
 document.getElementById('modalLinkSearch').addEventListener('input', function() {
@@ -1302,30 +1456,12 @@ document.getElementById('addLinkModal').addEventListener('hidden.bs.modal', func
     document.getElementById('modalLinkStatus').innerHTML = '';
 });
 
-document.addEventListener('DOMContentLoaded', async function() {
-    try {
-        const resp = await fetch('/admin/object/link-types');
-        const types = await resp.json();
-        if (types.length > 0) {
-            const datalist = document.getElementById('modalRelationTypesList');
-            const existing = Array.from(datalist.options).map(o => o.value);
-            types.forEach(t => {
-                if (!existing.includes(t)) {
-                    const opt = document.createElement('option');
-                    opt.value = t;
-                    datalist.appendChild(opt);
-                }
-            });
-        }
-    } catch(e) { /* оставляем дефолты */ }
-});
-
 async function confirmAddLink(objectId) {
     const relatedId = document.getElementById('modalLinkRelatedId').value;
-    const relationType = document.getElementById('modalLinkRelationType').value.trim();
+    const relationType = document.getElementById('modalLinkRelationType').value;
     const status = document.getElementById('modalLinkStatus');
     if (!relatedId) { status.innerHTML = '<span class="text-danger small">Выберите объект.</span>'; return; }
-    if (!relationType) { status.innerHTML = '<span class="text-danger small">Укажите тип связи.</span>'; return; }
+    if (!relationType) { status.innerHTML = '<span class="text-danger small">Выберите тип связи.</span>'; return; }
     try {
         const resp = await fetch(`/admin/object/${objectId}/links/add`, {
             method: 'POST',
@@ -1351,5 +1487,150 @@ async function deleteLink(objectId, relatedId, relationType, btn) {
         else { alert('Ошибка: ' + (data.error || 'неизвестная')); }
     } catch(e) { alert('Ошибка сети: ' + e.message); }
 }
+
+// ===== Ресурс↔Ресурс: модальное окно =====
+let rrObjSearchTimer = null;
+
+document.getElementById('rrTargetObjSearch').addEventListener('input', function() {
+    clearTimeout(rrObjSearchTimer);
+    const q = this.value.trim();
+    if (q.length < 2) { document.getElementById('rrTargetObjResults').innerHTML = ''; return; }
+    rrObjSearchTimer = setTimeout(() => searchRRObjModal(q), 300);
+});
+
+async function searchRRObjModal(q) {
+    try {
+        const resp = await fetch(`/admin/object/search?q=${encodeURIComponent(q)}`);
+        const items = await resp.json();
+        const container = document.getElementById('rrTargetObjResults');
+        if (!items.length) {
+            container.innerHTML = '<div class="text-muted small p-2">Ничего не найдено.</div>';
+            return;
+        }
+        container.innerHTML = items.map(r =>
+            `<div class="px-3 py-2 border rounded mb-1 rr-obj-item"
+                  style="cursor:pointer; background:#fff;"
+                  data-id="${r.id}" data-name="${r.name.replace(/"/g,'&quot;')}">
+                <span class="fw-bold">${r.name}</span>
+                <span class="badge bg-light text-secondary border ms-2">${r.type}</span>
+            </div>`
+        ).join('');
+        container.querySelectorAll('.rr-obj-item').forEach(item => {
+            item.addEventListener('mouseenter', () => item.style.background = '#fffbeb');
+            item.addEventListener('mouseleave', () => item.style.background = '#fff');
+            item.addEventListener('click', () => selectRRTargetObject(item.dataset.id, item.dataset.name));
+        });
+    } catch(e) { console.error(e); }
+}
+
+async function selectRRTargetObject(id, name) {
+    document.getElementById('rrTargetObjId').value = id;
+    document.getElementById('rrSelectedObjectName').textContent = name;
+    document.getElementById('rrSelectedObject').style.display = 'block';
+    document.getElementById('rrTargetObjSearch').value = '';
+    document.getElementById('rrTargetObjResults').innerHTML = '';
+    try {
+        const resp = await fetch(`/admin/object/${id}/resource-list`);
+        const resources = await resp.json();
+        const sel = document.getElementById('rrTargetRes');
+        sel.innerHTML = resources.length
+            ? '<option value="">— выберите ресурс —</option>' +
+              resources.map(r => `<option value="${r.id}">${r.title || 'Ресурс #' + r.id}</option>`).join('')
+            : '<option value="">Нет ресурсов у этого объекта</option>';
+        sel.disabled = false;
+    } catch(e) {
+        document.getElementById('rrTargetRes').innerHTML = '<option value="">Ошибка загрузки</option>';
+    }
+}
+
+function clearRRTargetObject() {
+    document.getElementById('rrTargetObjId').value = '';
+    document.getElementById('rrSelectedObject').style.display = 'none';
+    document.getElementById('rrTargetObjSearch').value = '';
+    document.getElementById('rrTargetObjResults').innerHTML = '';
+    document.getElementById('rrTargetRes').innerHTML = '<option value="">Сначала выберите объект...</option>';
+    document.getElementById('rrTargetRes').disabled = true;
+}
+
+document.getElementById('addResResLinkModal').addEventListener('show.bs.modal', async function() {
+    try {
+        const resp = await fetch(`/admin/object/{{ entity.id }}/resource-list`);
+        const resources = await resp.json();
+        const sel = document.getElementById('rrSourceRes');
+        sel.innerHTML = resources.length
+            ? '<option value="">— выберите ресурс —</option>' +
+              resources.map(r => `<option value="${r.id}">${r.title || 'Ресурс #' + r.id}</option>`).join('')
+            : '<option value="">Нет ресурсов у этого объекта</option>';
+    } catch(e) {
+        document.getElementById('rrSourceRes').innerHTML = '<option value="">Ошибка загрузки</option>';
+    }
+    clearRRTargetObject();
+    document.getElementById('rrLinkStatus').innerHTML = '';
+});
+
+document.getElementById('addResResLinkModal').addEventListener('hidden.bs.modal', function() {
+    clearRRTargetObject();
+    document.getElementById('rrSourceRes').innerHTML = '<option value="">Загрузка...</option>';
+    document.getElementById('rrRelationType').value = '';
+    document.getElementById('rrLinkStatus').innerHTML = '';
+});
+
+async function confirmAddResResLink(objectId) {
+    const sourceRes = document.getElementById('rrSourceRes').value;
+    const targetRes = document.getElementById('rrTargetRes').value;
+    const relationType = document.getElementById('rrRelationType').value;
+    const status = document.getElementById('rrLinkStatus');
+    if (!sourceRes) { status.innerHTML = '<span class="text-danger small">Выберите исходный ресурс.</span>'; return; }
+    if (!targetRes) { status.innerHTML = '<span class="text-danger small">Выберите целевой ресурс.</span>'; return; }
+    if (!relationType) { status.innerHTML = '<span class="text-danger small">Выберите тип связи.</span>'; return; }
+    try {
+        const resp = await fetch(`/admin/object/${objectId}/res-res-links/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                resource_id: parseInt(sourceRes),
+                related_resource_id: parseInt(targetRes),
+                relation_type: relationType,
+            })
+        });
+        const data = await resp.json();
+        if (data.ok) { window.location.reload(); }
+        else { status.innerHTML = `<span class="text-danger small">Ошибка: ${data.error || 'неизвестная'}</span>`; }
+    } catch(e) { status.innerHTML = `<span class="text-danger small">Ошибка сети: ${e.message}</span>`; }
+}
+
+async function deleteResResLink(objectId, resourceId, relatedResourceId, relationType, btn) {
+    if (!confirm(`Удалить связь «${relationType}»?`)) return;
+    try {
+        const resp = await fetch(`/admin/object/${objectId}/res-res-links/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                resource_id: resourceId,
+                related_resource_id: relatedResourceId,
+                relation_type: relationType,
+            })
+        });
+        const data = await resp.json();
+        if (data.ok) { btn.closest('tr').remove(); }
+        else { alert('Ошибка: ' + (data.error || 'неизвестная')); }
+    } catch(e) { alert('Ошибка сети: ' + e.message); }
+}
+
+// ===== Загрузка типов связей из каталогов =====
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const [r1, r2] = await Promise.all([
+            fetch('/admin/object/link-types').then(r => r.json()),
+            fetch('/admin/object/res-res-link-types').then(r => r.json()),
+        ]);
+        document.getElementById('modalLinkRelationType').innerHTML =
+            '<option value="">— выберите тип —</option>' +
+            r1.map(t => `<option value="${t}">${t}</option>`).join('');
+        document.getElementById('rrRelationType').innerHTML =
+            '<option value="">— выберите тип —</option>' +
+            r2.map(t => `<option value="${t}">${t}</option>`).join('');
+    } catch(e) { /* ignore */ }
+});
 </script>
 {% endblock %}

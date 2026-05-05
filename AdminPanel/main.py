@@ -25,12 +25,13 @@ from models.models import ErrorLog, BiologicalEntity, TextContent, ImageContent,
 from models.admin_models import AdminBase, TestSession
 from models.eco_assistant_models import (
     Object, ObjectType, ObjectNameSynonym, object_name_synonym_link,
-    ObjectObjectLink,
+    ObjectObjectLink, ResourceResourceLink,
     Modality, TextValue, ImageValue, GeodataValue,
     Resource, ResourceValue, resource_object_table,
     Author, Source, ReliabilityLevel, Bibliographic, Creation,
     ResourceStatic, SupportMetadata,
     ObjectProperty, ResourceFeature,
+    ObjectObjectRelationType, ResourceResourceRelationType, ResourceObjectRelationType,
 )
 from heartbeat import BotHeartbeat
 from dotenv import load_dotenv
@@ -729,6 +730,8 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
     geo_features = await _get_modality_features(db, "Геоданные")
 
     links = await _load_object_links(db, object_id)
+    res_obj_links = await _load_res_obj_links(db, object_id)
+    res_res_links = await _load_res_res_links(db, object_id)
     return templates.TemplateResponse("biological_edit.html", {
         "request": request,
         "active_page": "biological",
@@ -742,6 +745,8 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         "image_features": image_features,
         "geo_features": geo_features,
         "links": links,
+        "res_obj_links": res_obj_links,
+        "res_res_links": res_res_links,
     })
 
 
@@ -1700,6 +1705,8 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
     geo_features = await _get_modality_features(db, "Геоданные")
 
     links = await _load_object_links(db, object_id)
+    res_obj_links = await _load_res_obj_links(db, object_id)
+    res_res_links = await _load_res_res_links(db, object_id)
     return templates.TemplateResponse("geographical_edit.html", {
         "request": request,
         "active_page": "geographical",
@@ -1713,6 +1720,8 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         "image_features": image_features,
         "geo_features": geo_features,
         "links": links,
+        "res_obj_links": res_obj_links,
+        "res_res_links": res_res_links,
     })
 
 
@@ -2434,6 +2443,8 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
     image_features = await _get_modality_features(db, "Изображение")
     geo_features = await _get_modality_features(db, "Геоданные")
     links = await _load_object_links(db, object_id)
+    res_obj_links = await _load_res_obj_links(db, object_id)
+    res_res_links = await _load_res_res_links(db, object_id)
     return templates.TemplateResponse("service_edit.html", {
         "request": request,
         "active_page": "service",
@@ -2447,6 +2458,8 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
         "image_features": image_features,
         "geo_features": geo_features,
         "links": links,
+        "res_obj_links": res_obj_links,
+        "res_res_links": res_res_links,
     })
 
 
@@ -2730,6 +2743,56 @@ async def _load_object_links(db: AsyncSession, object_id: int) -> list:
     return links
 
 
+async def _load_res_obj_links(db: AsyncSession, object_id: int) -> list:
+    """Ресурсы этого объекта, привязанные также и к другим объектам."""
+    rows = await db.execute(sql_text("""
+        SELECT DISTINCT ON (rot.resource_id, rot.object_id)
+            rot.resource_id,
+            r.title AS resource_title,
+            rot.object_id AS other_object_id,
+            rot.relation_type,
+            ons.synonym AS other_object_name,
+            ot.name AS other_object_type
+        FROM eco_assistant.resource_object rot
+        JOIN eco_assistant.resource r ON r.id = rot.resource_id
+        JOIN eco_assistant.object o ON o.id = rot.object_id
+        JOIN eco_assistant.object_name_synonym_link onsl ON onsl.object_id = o.id
+        JOIN eco_assistant.object_name_synonym ons ON ons.id = onsl.synonym_id
+        JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
+        WHERE rot.resource_id IN (
+            SELECT resource_id FROM eco_assistant.resource_object WHERE object_id = :oid
+        )
+        AND rot.object_id != :oid
+        ORDER BY rot.resource_id, rot.object_id, LENGTH(ons.synonym) DESC
+    """), {"oid": object_id})
+    return [dict(r) for r in rows.mappings().all()]
+
+
+async def _load_res_res_links(db: AsyncSession, object_id: int) -> list:
+    """Связи ресурс-ресурс, затрагивающие ресурсы данного объекта."""
+    rows = await db.execute(sql_text("""
+        WITH obj_res AS (
+            SELECT resource_id FROM eco_assistant.resource_object WHERE object_id = :oid
+        )
+        SELECT DISTINCT ON (rrl.resource_id, rrl.related_resource_id, rrl.relation_type)
+            rrl.resource_id,
+            r1.title AS resource_title,
+            rrl.related_resource_id,
+            r2.title AS related_resource_title,
+            rrl.relation_type,
+            rrl.created_at,
+            CASE WHEN rrl.resource_id IN (SELECT resource_id FROM obj_res)
+                 THEN 'outgoing' ELSE 'incoming' END AS direction
+        FROM eco_assistant.resource_resource_link rrl
+        JOIN eco_assistant.resource r1 ON r1.id = rrl.resource_id
+        JOIN eco_assistant.resource r2 ON r2.id = rrl.related_resource_id
+        WHERE rrl.resource_id IN (SELECT resource_id FROM obj_res)
+           OR rrl.related_resource_id IN (SELECT resource_id FROM obj_res)
+        ORDER BY rrl.resource_id, rrl.related_resource_id, rrl.relation_type, rrl.created_at DESC
+    """), {"oid": object_id})
+    return [dict(r) for r in rows.mappings().all()]
+
+
 @app.get("/object/search")
 async def object_search(q: str = "", exclude_id: int = None, db: AsyncSession = Depends(get_db)):
     """Поиск объектов по имени для autocomplete (AJAX)."""
@@ -2758,11 +2821,33 @@ async def object_search(q: str = "", exclude_id: int = None, db: AsyncSession = 
 
 @app.get("/object/link-types")
 async def object_link_types(db: AsyncSession = Depends(get_db)):
-    """Возвращает список уникальных типов связей из object_object_link."""
-    rows = await db.execute(sql_text(
-        "SELECT DISTINCT relation_type FROM eco_assistant.object_object_link ORDER BY relation_type"
-    ))
-    return [row.relation_type for row in rows]
+    """Типы связей объект-объект из каталога object_object_relation_type."""
+    rows = (await db.execute(
+        select(ObjectObjectRelationType.name).order_by(ObjectObjectRelationType.name)
+    )).scalars().all()
+    return list(rows)
+
+
+@app.get("/object/res-res-link-types")
+async def res_res_link_types(db: AsyncSession = Depends(get_db)):
+    """Типы связей ресурс-ресурс из каталога resource_resource_relation_type."""
+    rows = (await db.execute(
+        select(ResourceResourceRelationType.name).order_by(ResourceResourceRelationType.name)
+    )).scalars().all()
+    return list(rows)
+
+
+@app.get("/object/{object_id}/resource-list")
+async def object_resource_list(object_id: int, db: AsyncSession = Depends(get_db)):
+    """Возвращает ресурсы объекта для выбора в модальных окнах."""
+    rows = await db.execute(sql_text("""
+        SELECT DISTINCT r.id, r.title
+        FROM eco_assistant.resource r
+        JOIN eco_assistant.resource_object rot ON rot.resource_id = r.id
+        WHERE rot.object_id = :oid
+        ORDER BY r.title
+    """), {"oid": object_id})
+    return [{"id": r.id, "title": r.title} for r in rows]
 
 
 @app.post("/object/{object_id}/links/add")
@@ -2835,6 +2920,80 @@ async def object_link_delete(
             or_(
                 (ObjectObjectLink.object_id == object_id) & (ObjectObjectLink.related_object_id == related_id) & (ObjectObjectLink.relation_type == relation_type),
                 (ObjectObjectLink.object_id == related_id) & (ObjectObjectLink.related_object_id == object_id) & (ObjectObjectLink.relation_type == relation_type),
+            )
+        )
+    )
+    await db.commit()
+    return {"ok": True}
+
+
+@app.post("/object/{object_id}/res-res-links/add")
+async def res_res_link_add(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    resource_id = data.get("resource_id")
+    related_resource_id = data.get("related_resource_id")
+    relation_type = (data.get("relation_type") or "").strip()
+    if not resource_id or not related_resource_id or not relation_type:
+        return {"ok": False, "error": "resource_id, related_resource_id и relation_type обязательны"}
+    existing = (await db.execute(
+        select(ResourceResourceLink).where(
+            ResourceResourceLink.resource_id == resource_id,
+            ResourceResourceLink.related_resource_id == related_resource_id,
+            ResourceResourceLink.relation_type == relation_type,
+        )
+    )).scalar()
+    if existing:
+        return {"ok": False, "error": "Такая связь уже существует"}
+    db.add(ResourceResourceLink(
+        resource_id=resource_id,
+        related_resource_id=related_resource_id,
+        relation_type=relation_type,
+    ))
+    await db.commit()
+    r1 = (await db.execute(select(Resource.title).where(Resource.id == resource_id))).scalar()
+    r2 = (await db.execute(select(Resource.title).where(Resource.id == related_resource_id))).scalar()
+    return {
+        "ok": True,
+        "link": {
+            "resource_id": resource_id,
+            "resource_title": r1 or f"Ресурс #{resource_id}",
+            "related_resource_id": related_resource_id,
+            "related_resource_title": r2 or f"Ресурс #{related_resource_id}",
+            "relation_type": relation_type,
+            "direction": "outgoing",
+        }
+    }
+
+
+@app.post("/object/{object_id}/res-res-links/delete")
+async def res_res_link_delete(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    resource_id = data.get("resource_id")
+    related_resource_id = data.get("related_resource_id")
+    relation_type = data.get("relation_type")
+    if not resource_id or not related_resource_id or not relation_type:
+        return {"ok": False, "error": "Обязательные параметры не указаны"}
+    await db.execute(
+        delete(ResourceResourceLink).where(
+            or_(
+                (ResourceResourceLink.resource_id == resource_id) &
+                (ResourceResourceLink.related_resource_id == related_resource_id) &
+                (ResourceResourceLink.relation_type == relation_type),
+                (ResourceResourceLink.resource_id == related_resource_id) &
+                (ResourceResourceLink.related_resource_id == resource_id) &
+                (ResourceResourceLink.relation_type == relation_type),
             )
         )
     )
@@ -3227,6 +3386,97 @@ async def resource_update_features(
     res.features = new_features
     await db.commit()
     return {"ok": True}
+
+
+# ==========================================
+# CMS: КАТАЛОГИ ТИПОВ СВЯЗЕЙ
+# ==========================================
+
+@app.get("/link-types", response_class=HTMLResponse)
+async def link_types_page(request: Request, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    bot_online = await is_bot_online_redis()
+    obj_obj_types = (await db.execute(
+        select(ObjectObjectRelationType).order_by(ObjectObjectRelationType.name)
+    )).scalars().all()
+    res_res_types = (await db.execute(
+        select(ResourceResourceRelationType).order_by(ResourceResourceRelationType.name)
+    )).scalars().all()
+    res_obj_types = (await db.execute(
+        select(ResourceObjectRelationType).order_by(ResourceObjectRelationType.name)
+    )).scalars().all()
+    return templates.TemplateResponse("link_types_list.html", {
+        "request": request,
+        "active_page": "link_types",
+        "bot_online": bot_online,
+        "obj_obj_types": obj_obj_types,
+        "res_res_types": res_res_types,
+        "res_obj_types": res_obj_types,
+    })
+
+
+@app.post("/link-types/obj-obj/new")
+async def obj_obj_type_new(request: Request, name: str = Form(...), db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    db.add(ObjectObjectRelationType(name=name.strip()))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+    return RedirectResponse(url="/link-types", status_code=303)
+
+
+@app.post("/link-types/obj-obj/{type_id}/delete")
+async def obj_obj_type_delete(request: Request, type_id: int, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await db.execute(delete(ObjectObjectRelationType).where(ObjectObjectRelationType.id == type_id))
+    await db.commit()
+    return RedirectResponse(url="/link-types", status_code=303)
+
+
+@app.post("/link-types/res-res/new")
+async def res_res_type_new(request: Request, name: str = Form(...), db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    db.add(ResourceResourceRelationType(name=name.strip()))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+    return RedirectResponse(url="/link-types", status_code=303)
+
+
+@app.post("/link-types/res-res/{type_id}/delete")
+async def res_res_type_delete(request: Request, type_id: int, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await db.execute(delete(ResourceResourceRelationType).where(ResourceResourceRelationType.id == type_id))
+    await db.commit()
+    return RedirectResponse(url="/link-types", status_code=303)
+
+
+@app.post("/link-types/res-obj/new")
+async def res_obj_type_new(request: Request, name: str = Form(...), db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    db.add(ResourceObjectRelationType(name=name.strip()))
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+    return RedirectResponse(url="/link-types", status_code=303)
+
+
+@app.post("/link-types/res-obj/{type_id}/delete")
+async def res_obj_type_delete(request: Request, type_id: int, db: AsyncSession = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse(url="/login")
+    await db.execute(delete(ResourceObjectRelationType).where(ResourceObjectRelationType.id == type_id))
+    await db.commit()
+    return RedirectResponse(url="/link-types", status_code=303)
 
 
 if __name__ == "__main__":
