@@ -234,16 +234,17 @@ class ImportResourcesUseCase:
         self._current_resource_title = None
         return resource_id
 
-    def _get_or_create_modality_by_type(self, modality_type: str) -> Modality:
+    def _get_or_create_modality_by_type(self, modality_type: str) -> int:
         if modality_type in ("Текст", "Text"):
-            return self.modality_repo.get_or_create_modality('Текст', 'text_value')
+            modality = self.modality_repo.get_or_create_modality('Текст', 'text_value')
         elif modality_type in ("Изображение", "Image"):
-            return self.modality_repo.get_or_create_modality('Изображение', 'image_value')
+            modality = self.modality_repo.get_or_create_modality('Изображение', 'image_value')
         elif modality_type in ("Геоданные", "Картографическая информация"):
-            return self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
+            modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
         else:
-            return self.modality_repo.get_or_create_modality(modality_type, 'text_value')
-
+            modality = self.modality_repo.get_or_create_modality(modality_type, 'text_value')
+        return modality.id
+    
     def _process_modality(self, resource_id: int, modality_type: str, modality_value: Dict[str, Any]) -> None:
         if modality_type in ("Текст", "Text"):
             modality = self.modality_repo.get_or_create_modality('Текст', 'text_value')
@@ -284,7 +285,7 @@ class ImportResourcesUseCase:
             else:
                 self._add_missing_geometry(geodb_id)
                 self.modality_repo.link_resource_value(resource_id, modality.id, None)
-
+                
     def _build_features_json(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {}
         for feature in features:
