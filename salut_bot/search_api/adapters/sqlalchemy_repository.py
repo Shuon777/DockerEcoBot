@@ -111,18 +111,26 @@ class SQLAlchemySearchRepository(SearchRepository):
             resources = query.limit(limit).offset(offset).all()
             result = []
             for r in resources:
-                rv = r.resource_values[0] if r.resource_values else None
+                matching_rv = None
+                if criteria.modality_type:
+                    for rv in r.resource_values:
+                        if rv.modality and rv.modality.modality_type == criteria.modality_type:
+                            matching_rv = rv
+                            break
+                if not matching_rv and r.resource_values:
+                    matching_rv = r.resource_values[0]
+                
                 content = None
-                if rv and rv.modality:
-                    mt = rv.modality.modality_type
-                    if mt == 'Текст' and rv.value_id:
-                        tv = session.query(TextValue).get(rv.value_id)
+                if matching_rv and matching_rv.modality:
+                    mt = matching_rv.modality.modality_type
+                    if mt == 'Текст' and matching_rv.value_id:
+                        tv = session.query(TextValue).get(matching_rv.value_id)
                         content = {'structured_data': tv.structured_data} if tv else None
-                    elif mt == 'Изображение' and rv.value_id:
-                        iv = session.query(ImageValue).get(rv.value_id)
+                    elif mt == 'Изображение' and matching_rv.value_id:
+                        iv = session.query(ImageValue).get(matching_rv.value_id)
                         content = {'url': iv.url, 'file_path': iv.file_path, 'format': iv.format} if iv else None
-                    elif mt == 'Геоданные' and rv.value_id:
-                        gv = session.query(GeodataValue).get(rv.value_id)
+                    elif mt == 'Геоданные' and matching_rv.value_id:
+                        gv = session.query(GeodataValue).get(matching_rv.value_id)
                         if gv:
                             from geoalchemy2.shape import to_shape
                             geom = to_shape(gv.geometry)
@@ -136,12 +144,20 @@ class SQLAlchemySearchRepository(SearchRepository):
                     if r.resource_static.bibliographic.source:
                         source_name = r.resource_static.bibliographic.source.name
                 
+                modality_type = None
+                if matching_rv and matching_rv.modality:
+                    modality_type = matching_rv.modality.modality_type
+                
                 result.append(ResourceResult(
                     id=r.id, title=r.title, uri=r.uri,
                     author=author_name,
                     source=source_name,
-                    modality_type=rv.modality.modality_type if rv and rv.modality else None,
+                    modality_type=modality_type,
                     content=content,
                     features=r.features
                 ))
+            
+            if criteria.modality_type:
+                result = [r for r in result if r.modality_type == criteria.modality_type]
+            
             return result
