@@ -118,6 +118,8 @@
                         onchange="applyFilters()">
                     <option value="default"      {% if sort_by == 'default'      %}selected{% endif %}>↓ Новые</option>
                     <option value="old"          {% if sort_by == 'old'          %}selected{% endif %}>↑ Старые</option>
+                    <option value="name_asc"     {% if sort_by == 'name_asc'     %}selected{% endif %}>А→Я Название</option>
+                    <option value="name_desc"    {% if sort_by == 'name_desc'    %}selected{% endif %}>Я→А Название</option>
                     <option value="no_resources" {% if sort_by == 'no_resources' %}selected{% endif %}>⚠ Пустые</option>
                     <option value="rich"         {% if sort_by == 'rich'         %}selected{% endif %}>★ Богатые</option>
                 </select>
