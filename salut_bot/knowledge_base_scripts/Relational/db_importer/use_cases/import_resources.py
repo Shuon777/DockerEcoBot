@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from ..domain.entities import (
+    Modality,
     Resource,
     SupportMetadata,
     BibliographicData,
