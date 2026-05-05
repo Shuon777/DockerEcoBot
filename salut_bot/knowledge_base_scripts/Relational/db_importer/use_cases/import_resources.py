@@ -48,17 +48,20 @@ class ImportResourcesUseCase:
     object_object_relation_type_repo: ObjectObjectRelationTypeRepository
     resource_object_relation_type_repo: ResourceObjectRelationTypeRepository
     missing_geometry_file: Path = Path(__file__).parent.parent.parent / 'missing_geometry.json'
+
+    _logger = logging.getLogger(__name__)
     _current_resource_text_id: Optional[str] = None
+    _current_resource_title: Optional[str] = None
 
     def __post_init__(self):
         self._current_resource_text_id = None
-    _logger = logging.getLogger(__name__)
+        self._current_resource_title = None
 
     def execute(self, resources_data: List[Dict[str, Any]], incremental: bool = False) -> Dict[str, int]:
         self._reset_missing_geometry_file()
         result = {'success': 0, 'skipped': 0, 'errors': 0}
         resource_relations_to_process = []
-        object_relations_to_process = []  # For resource-object relations
+        object_relations_to_process = []
 
         for i, resource_data in enumerate(resources_data, 1):
             try:
@@ -75,24 +78,20 @@ class ImportResourcesUseCase:
                 if resource_id:
                     result['success'] += 1
                     
-                    # Process resource-resource relations
                     for relation in resource_data.get('resource_relations', []):
                         related_id = relation.get('id')
                         relation_type = relation.get('type')
                         if related_id and relation_type:
-                            # Add relation type to dictionary if not exists
                             try:
                                 self.resource_resource_relation_type_repo.get_or_create(relation_type)
                             except Exception as e:
                                 self._logger.warning(f"Failed to add resource-resource relation type '{relation_type}': {e}")
                             resource_relations_to_process.append((resource_id, related_id, relation_type))
                     
-                    # Process resource-object relations
                     for relation in resource_data.get('object_relations', []):
                         object_db_id = relation.get('db_id')
                         relation_type = relation.get('type')
                         if object_db_id and relation_type:
-                            # Add relation type to dictionary if not exists
                             try:
                                 self.resource_object_relation_type_repo.get_or_create(relation_type)
                             except Exception as e:
@@ -105,7 +104,6 @@ class ImportResourcesUseCase:
                 self._logger.error(f"Error importing resource {i}: {e}", exc_info=True)
                 result['errors'] += 1
 
-        # Process resource-resource links
         for resource_id, related_id, relation_type in resource_relations_to_process:
             try:
                 related_resource_id = self.resource_repo.find_resource_by_text_id(related_id)
@@ -117,7 +115,6 @@ class ImportResourcesUseCase:
             except Exception as e:
                 self._logger.error(f"Error linking resources: {e}", exc_info=True)
         
-        # Process resource-object links
         for resource_id, object_db_id, relation_type in object_relations_to_process:
             try:
                 obj = self.object_repo.find_by_db_id_only(object_db_id)
@@ -140,15 +137,15 @@ class ImportResourcesUseCase:
         except Exception as e:
             self._logger.error(f"Failed to reset missing_geometry.json: {e}")
 
-    def _add_missing_geometry(self, geodb_id: str) -> None:
+    def _add_missing_geometry(self, resource_title: str) -> None:
         try:
             existing_data = []
             if self.missing_geometry_file.exists():
                 with open(self.missing_geometry_file, 'r', encoding='utf-8') as f:
                     existing_data = json.load(f)
 
-            if geodb_id not in existing_data:
-                existing_data.append(geodb_id)
+            if resource_title not in existing_data:
+                existing_data.append(resource_title)
                 with open(self.missing_geometry_file, 'w', encoding='utf-8') as f:
                     json.dump(existing_data, f, ensure_ascii=False, indent=2)
         except Exception as e:
@@ -160,6 +157,7 @@ class ImportResourcesUseCase:
         text_id = resource_data.get('identificator', {}).get('id')
         
         self._current_resource_text_id = text_id
+        self._current_resource_title = title
 
         bibliographic_data = resource_data.get('bibliographic', {})
         author = bibliographic_data.get('author')
@@ -232,18 +230,18 @@ class ImportResourcesUseCase:
                 self.feature_repo.add_or_update_feature(modality_id, feat_name, values)
         
         self._current_resource_text_id = None
+        self._current_resource_title = None
         return resource_id
 
-    def _get_or_create_modality_by_type(self, modality_type: str) -> int:
+    def _get_or_create_modality_by_type(self, modality_type: str) -> Modality:
         if modality_type in ("Текст", "Text"):
-            modality = self.modality_repo.get_or_create_modality('Текст', 'text_value')
+            return self.modality_repo.get_or_create_modality('Текст', 'text_value')
         elif modality_type in ("Изображение", "Image"):
-            modality = self.modality_repo.get_or_create_modality('Изображение', 'image_value')
+            return self.modality_repo.get_or_create_modality('Изображение', 'image_value')
         elif modality_type in ("Геоданные", "Картографическая информация"):
-            modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
+            return self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
         else:
-            modality = self.modality_repo.get_or_create_modality(modality_type, 'text_value')
-        return modality.id
+            return self.modality_repo.get_or_create_modality(modality_type, 'text_value')
 
     def _process_modality(self, resource_id: int, modality_type: str, modality_value: Dict[str, Any]) -> None:
         if modality_type in ("Текст", "Text"):
@@ -267,8 +265,8 @@ class ImportResourcesUseCase:
             modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
             
             if not modality_value or not modality_value.get('geodb_id'):
-                missing_id = self._current_resource_text_id or f"resource_{resource_id}"
-                self._add_missing_geometry(missing_id)
+                missing_title = self._current_resource_title or f"Resource_{resource_id}"
+                self._add_missing_geometry(missing_title)
                 self.modality_repo.link_resource_value(resource_id, modality.id, None)
                 return
             
@@ -285,7 +283,7 @@ class ImportResourcesUseCase:
             else:
                 self._add_missing_geometry(geodb_id)
                 self.modality_repo.link_resource_value(resource_id, modality.id, None)
-                        
+
     def _build_features_json(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {}
         for feature in features:
