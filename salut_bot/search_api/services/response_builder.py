@@ -1,3 +1,4 @@
+# search_api/services/response_builder.py
 from typing import Dict, Any, List, Optional
 
 from ..domain.entities import ObjectResult, ResourceResult, SearchResponse
@@ -82,8 +83,8 @@ class ResponseBuilder:
                             'interactive': r.content.map_links.interactive,
                         }
                     }
-                else:
-                    enriched = self._geo_service.enrich_geo_content(r.content, f"map_{r.id}")
+                elif isinstance(r.content, dict) and 'geojson' in r.content:
+                    enriched = self._geo_service.enrich_geo_content(r.content['geojson'], f"map_{r.id}")
                     item['content'] = {
                         'geojson': enriched.geojson,
                         'geometry_type': enriched.geometry_type,
@@ -92,6 +93,8 @@ class ResponseBuilder:
                             'interactive': enriched.map_links.interactive,
                         }
                     }
+                else:
+                    item['content'] = r.content
             else:
                 item['content'] = r.content
             serialized.append(item)

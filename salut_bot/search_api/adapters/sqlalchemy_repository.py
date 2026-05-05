@@ -1,14 +1,13 @@
 import logging
 from typing import List, Optional
 from sqlalchemy.orm import joinedload
-from sqlalchemy import func,literal
+from sqlalchemy import or_
 from sqlalchemy.dialects import postgresql
 from ..domain.entities import ObjectResult, ResourceResult, ObjectCriteria, ResourceCriteria
 from .search_repository import SearchRepository
 from ..infrastructure.orm.object_models import Object, ObjectNameSynonym, ObjectType
 from ..infrastructure.orm.resource_models import Resource, Bibliographic, Author, Source, ResourceStatic
 from ..infrastructure.orm.modality_models import Modality, TextValue, ImageValue, GeodataValue, ResourceValue
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                 for lang, name_list in criteria.name_synonyms.items():
                     names.extend(name_list)
                 if names:
-                    query = query.filter(Object.synonyms.any(ObjectNameSynonym.synonym.in_(names)))
+                    query = query.filter(Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'%{names[0]}%')))
             if criteria.properties:
                 for key, value in criteria.properties.items():
                     if key == 'subtypes':
@@ -42,26 +41,22 @@ class SQLAlchemySearchRepository(SearchRepository):
                         elif isinstance(value, list):
                             for item in value:
                                 query = query.filter(Object.object_properties[key].op('?')(item))
-                        else:
-                            query = query.filter(Object.object_properties[key].as_string() == str(value))
                     else:
                         if isinstance(value, str):
-                            query = query.filter(Object.object_properties[key].as_string() == value)
+                            query = query.filter(Object.object_properties[key].as_string().ilike(f'%{value}%'))
                         elif isinstance(value, list):
                             for item in value:
-                                query = query.filter(Object.object_properties[key].as_string() == item)
+                                query = query.filter(Object.object_properties[key].as_string().ilike(f'%{item}%'))
                         elif isinstance(value, bool):
                             query = query.filter(Object.object_properties[key].as_boolean() == value)
                         elif isinstance(value, (int, float)):
                             query = query.filter(Object.object_properties[key].as_float() == value)
                         else:
-                            query = query.filter(Object.object_properties[key].as_string() == str(value))
+                            query = query.filter(Object.object_properties[key].as_string().ilike(f'%{str(value)}%'))
             
             query = query.limit(limit).offset(offset)
-            
             compiled = query.statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
             logger.info(f"Executing query: {compiled}")
-            
             objects = query.all()
             
             return [

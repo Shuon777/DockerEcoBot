@@ -36,7 +36,7 @@ def _get_use_case():
     return SearchAndBuildUseCase(search_use_case, response_builder, cache)
 
 
-@search_bp.route('/search', methods=['POST'])
+@search_bp.route('/search', methods=['POST'], strict_slashes=False)
 def search():
     logger.info("Search endpoint called")
     try:
