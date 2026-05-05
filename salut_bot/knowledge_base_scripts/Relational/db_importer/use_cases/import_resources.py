@@ -48,7 +48,10 @@ class ImportResourcesUseCase:
     object_object_relation_type_repo: ObjectObjectRelationTypeRepository
     resource_object_relation_type_repo: ResourceObjectRelationTypeRepository
     missing_geometry_file: Path = Path(__file__).parent.parent.parent / 'missing_geometry.json'
+    _current_resource_text_id: Optional[str] = None
 
+    def __post_init__(self):
+        self._current_resource_text_id = None
     _logger = logging.getLogger(__name__)
 
     def execute(self, resources_data: List[Dict[str, Any]], incremental: bool = False) -> Dict[str, int]:
@@ -155,6 +158,8 @@ class ImportResourcesUseCase:
         title = resource_data.get('title')
         uri = resource_data.get('identificator', {}).get('uri')
         text_id = resource_data.get('identificator', {}).get('id')
+        
+        self._current_resource_text_id = text_id
 
         bibliographic_data = resource_data.get('bibliographic', {})
         author = bibliographic_data.get('author')
@@ -225,7 +230,8 @@ class ImportResourcesUseCase:
             extracted = self._extract_features(features)
             for feat_name, values in extracted:
                 self.feature_repo.add_or_update_feature(modality_id, feat_name, values)
-
+        
+        self._current_resource_text_id = None
         return resource_id
 
     def _get_or_create_modality_by_type(self, modality_type: str) -> int:
@@ -242,7 +248,7 @@ class ImportResourcesUseCase:
     def _process_modality(self, resource_id: int, modality_type: str, modality_value: Dict[str, Any]) -> None:
         if modality_type in ("Текст", "Text"):
             modality = self.modality_repo.get_or_create_modality('Текст', 'text_value')
-            structured_data = modality_value.get('structured_data', {})
+            structured_data = modality_value.get('structured_data', {}) if modality_value else {}
             text_value = TextValue(structured_data=structured_data)
             value_id = self.modality_repo.save_text_value(text_value)
             self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
@@ -250,31 +256,36 @@ class ImportResourcesUseCase:
         elif modality_type in ("Изображение", "Image"):
             modality = self.modality_repo.get_or_create_modality('Изображение', 'image_value')
             image_value = ImageValue(
-                url=modality_value.get('url'),
-                file_path=modality_value.get('file_path'),
-                format=modality_value.get('format')
+                url=modality_value.get('url') if modality_value else None,
+                file_path=modality_value.get('file_path') if modality_value else None,
+                format=modality_value.get('format') if modality_value else None
             )
             value_id = self.modality_repo.save_image_value(image_value)
             self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
 
         elif modality_type in ("Геоданные", "Картографическая информация"):
             modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
+            
+            if not modality_value or not modality_value.get('geodb_id'):
+                missing_id = self._current_resource_text_id or f"resource_{resource_id}"
+                self._add_missing_geometry(missing_id)
+                self.modality_repo.link_resource_value(resource_id, modality.id, None)
+                return
+            
             geodb_id = modality_value.get('geodb_id')
-            if geodb_id:
-                geometry_data = self.geodata_provider.get_geometry(geodb_id)
-                if geometry_data:
-                    geometry, normalized_type = geometry_data
-                    geodata_value = GeodataValue(
-                        geometry=geometry,
-                        geometry_type=normalized_type
-                    )
-                    value_id = self.modality_repo.save_geodata_value(geodata_value)
-                    self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
-                else:
-                    self._add_missing_geometry(geodb_id)
+            geometry_data = self.geodata_provider.get_geometry(geodb_id)
+            if geometry_data:
+                geometry, normalized_type = geometry_data
+                geodata_value = GeodataValue(
+                    geometry=geometry,
+                    geometry_type=normalized_type
+                )
+                value_id = self.modality_repo.save_geodata_value(geodata_value)
+                self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
             else:
-                self._logger.warning("Geodata modality without geodb_id")
-
+                self._add_missing_geometry(geodb_id)
+                self.modality_repo.link_resource_value(resource_id, modality.id, None)
+                        
     def _build_features_json(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {}
         for feature in features:
