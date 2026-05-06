@@ -78,10 +78,10 @@ services:
   # ─────────────────────────── TELEGRAM BOT ─────────────────────────────
 
   core-api:
-    build: ./EcoBotProject/TelegramBot
+    build: ./EcoBotProject/DialogService
     restart: always
-    env_file: ./EcoBotProject/TelegramBot/.env
-    command: python core_api.py
+    env_file: ./EcoBotProject/DialogService/.env
+    command: python api.py
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
@@ -93,13 +93,13 @@ services:
     networks: [ecobot_net]
 
   telegram:
-    build: ./EcoBotProject/TelegramBot
+    build: ./EcoBotProject/DialogService
     restart: always
-    env_file: ./EcoBotProject/TelegramBot/.env
+    env_file: ./EcoBotProject/DialogService/.env
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
-    command: python bot.py
+    command: python main.py
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
