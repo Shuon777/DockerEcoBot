@@ -1,3 +1,5 @@
+# main.py
+
 import sys
 import argparse
 import json
@@ -43,7 +45,6 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
     property_repo = PostgresObjectPropertyRepository(client)
     feature_repo = PostgresResourceFeatureRepository(client)
     
-    # New relation type repositories
     resource_resource_relation_type_repo = PostgresResourceResourceRelationTypeRepository(client)
     object_object_relation_type_repo = PostgresObjectObjectRelationTypeRepository(client)
     resource_object_relation_type_repo = PostgresResourceObjectRelationTypeRepository(client)
@@ -71,7 +72,8 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
         feature_repo=feature_repo,
         resource_resource_relation_type_repo=resource_resource_relation_type_repo,
         object_object_relation_type_repo=object_object_relation_type_repo,
-        resource_object_relation_type_repo=resource_object_relation_type_repo
+        resource_object_relation_type_repo=resource_object_relation_type_repo,
+        client=client
     )
     
     return client, import_objects, import_resources
@@ -95,6 +97,8 @@ def main() -> None:
     parser.add_argument('--geodb-file', default=str(base_dir / 'geodb.json'), help='Path to geodb.json')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
     parser.add_argument('--error-log', default='import_errors.log', help='File to log errors')
+    parser.add_argument('--ensure-geometries', action='store_true', 
+                       help='Auto-create geometry resources for geo objects without geometry')
     args = parser.parse_args()
 
     setup_logging(verbose=args.verbose, error_log=args.error_log)
@@ -149,7 +153,12 @@ def main() -> None:
                 print(f"Check {args.error_log} for details", file=sys.stderr)
         else:
             print(f"Warning: Resources file not found: {resources_path}")
-
+            
+        if args.ensure_geometries:
+            print("Ensuring geometries for geo objects...")
+            geom_result = import_resources.ensure_geometries_for_geo_objects()
+            print(f"Geometries created: {geom_result['created']}, errors: {geom_result['errors']}")
+        
     except Exception as e:
         print(f"Fatal error: {e}", file=sys.stderr)
         sys.exit(1)

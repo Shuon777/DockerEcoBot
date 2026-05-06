@@ -83,9 +83,13 @@ class PostgresClient(DatabaseClient):
         return self._cur.fetchone()
     
     def fetchall(self, sql: str, params: Optional[tuple] = None) -> List[tuple]:
-        """Fetch all rows."""
-        self.execute(sql, params)
-        return self._cur.fetchall()
+        if not self._cur:
+            raise RuntimeError("Not connected to database")
+        try:
+            self._cur.execute(sql, params)
+            return self._cur.fetchall()
+        except Exception as e:
+            raise RuntimeError(f"SQL execution error: {e}") from e
     
     def commit(self) -> None:
         """Commit transaction."""

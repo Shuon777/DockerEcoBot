@@ -82,6 +82,13 @@ class PostgresResourceRepository(ResourceRepository):
             (resource_id, related_resource_id, relation_type)
         )
         self._client.commit()
+        
+    def find_by_text_id(self, text_id: str) -> Optional[int]:
+        row = self._client.fetchone(
+            "SELECT id FROM eco_assistant.resource WHERE text_id = %s",
+            (text_id,)
+        )
+        return row[0] if row else None
 
 
 class PostgresObjectRepository(ObjectRepository):
