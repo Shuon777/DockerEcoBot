@@ -481,10 +481,10 @@
           "raw": "{\n  \"place_name\": \"село баргузин\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"near\"\n}"
         },
         "url": {
-          "raw": "http://localhost/search/place/objects",
+          "raw": "http://localhost/search/search/place/objects",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", "place", "objects"]
+          "path": ["search","search", "place", "objects"]
         }
       }
     },
@@ -711,10 +711,10 @@
           "raw": "{\n  \"place_name\": \"Иркутск\",\n  \"subtypes\": [\"Памятники\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"inside\"\n}"
         },
         "url": {
-          "raw": "http://localhost/search/place/objects",
+          "raw": "http://localhost/search/search/place/objects",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", "place", "objects"]
+          "path": ["search", "search", "place", "objects"]
         }
       }
     },
@@ -803,7 +803,7 @@
           "raw": "{\n  \"place_name\": \"озеро байкал\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 1.0,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"both\"\n}"
         },
         "url": {
-          "raw": "http://localhost/search/place/objects",
+          "raw": "http://localhost/search/search/place/objects",
           "protocol": "http",
           "host": ["localhost"],
           "path": ["search", "place", "objects"]
