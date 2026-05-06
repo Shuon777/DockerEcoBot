@@ -390,6 +390,105 @@
       }
     },
     {
+      "name": "TC-07: Поиск достопримечательностей около села Баргузин (геопоиск с группировкой по геометрии)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has correct structure\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('objects');",
+              "    pm.expect(jsonData).to.have.property('total_objects');",
+              "    pm.expect(jsonData).to.have.property('used_geometry');",
+              "    pm.expect(jsonData).to.have.property('place_name');",
+              "});",
+              "",
+              "pm.test(\"Place name is 'село баргузин'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.place_name).to.equal('село баргузин');",
+              "});",
+              "",
+              "pm.test(\"At least 5 objects found\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(5);",
+              "    pm.expect(jsonData.total_objects).to.be.at.least(5);",
+              "});",
+              "",
+              "pm.test(\"All objects have synonyms (display names)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        pm.expect(obj.synonyms).to.be.an('array');",
+              "        pm.expect(obj.synonyms.length).to.be.at.least(1);",
+              "        var displayName = obj.synonyms[0];",
+              "        pm.expect(displayName).to.be.a('string');",
+              "        pm.expect(displayName.length).to.be.greaterThan(0);",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"All objects have map links\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        pm.expect(obj.properties).to.have.property('static_map');",
+              "        pm.expect(obj.properties).to.have.property('interactive_map');",
+              "        pm.expect(obj.properties.static_map).to.include('/maps/');",
+              "        pm.expect(obj.properties.interactive_map).to.include('/maps/webapp_');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"Used geometry is valid (Point or Polygon)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var geom = jsonData.used_geometry;",
+              "    pm.expect(geom.type).to.be.oneOf(['Point', 'Polygon', 'MultiPolygon']);",
+              "    if (geom.type === 'Point') {",
+              "        pm.expect(geom.coordinates.length).to.equal(2);",
+              "        pm.expect(geom.coordinates[0]).to.be.within(100, 115);",
+              "        pm.expect(geom.coordinates[1]).to.be.within(50, 60);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Object with db_id OBJ_372c977dfbdf has correct synonym\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var targetObj = jsonData.objects.find(function(obj) {",
+              "        return obj.db_id === 'OBJ_372c977dfbdf';",
+              "    });",
+              "    if (targetObj) {",
+              "        pm.expect(targetObj.synonyms).to.include('озеро арангатуй');",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(25000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"place_name\": \"село баргузин\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/place/objects",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "place", "objects"]
+        }
+      }
+    },
+    {
       "name": "TC-25: Покажи байкальский музей на карте (поиск по синониму с геоданными)",
       "event": [
         {

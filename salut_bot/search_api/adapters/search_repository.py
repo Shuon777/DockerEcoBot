@@ -1,14 +1,18 @@
 # search_api/adapters/search_repository.py
 from abc import ABC, abstractmethod
-from typing import List, Optional
-from ..domain.entities import ObjectResult, ResourceResult, ObjectCriteria, ResourceCriteria
-
+from typing import Any, Dict, List, Optional, Tuple
 
 class SearchRepository(ABC):
     @abstractmethod
-    def find_objects_by_criteria(self, criteria: ObjectCriteria, limit: int = 20, offset: int = 0) -> List[ObjectResult]:
-        pass
-
+    def find_objects_by_criteria(self, criteria, limit=20, offset=0): pass
     @abstractmethod
-    def find_resources_by_criteria(self, criteria: ResourceCriteria, object_ids: Optional[List[int]] = None, limit: int = 50, offset: int = 0) -> List[ResourceResult]:
-        pass
+    def find_resources_by_criteria(self, criteria, object_ids=None, limit=50, offset=0): pass
+    @abstractmethod
+    def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]: pass
+    @abstractmethod
+    def get_geometry_type_for_place(self, place_name: str) -> Optional[str]: pass
+    @abstractmethod
+    def find_objects_with_geometry_by_subtypes(
+        self, geometry_geojson: Dict[str, Any], subtypes: List[str],
+        buffer_radius_km: float, limit: int, offset: int
+    ) -> Tuple[List[Any], List[Any]]: pass

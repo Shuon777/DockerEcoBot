@@ -1,7 +1,8 @@
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+import json
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_
+from sqlalchemy import text
 from sqlalchemy.dialects import postgresql
 from ..domain.entities import ObjectResult, ResourceResult, ObjectCriteria, ResourceCriteria
 from .search_repository import SearchRepository
@@ -161,3 +162,178 @@ class SQLAlchemySearchRepository(SearchRepository):
                 result = [r for r in result if r.modality_type == criteria.modality_type]
             
             return result
+    def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]:
+        session = self._session_factory()
+        with session:
+            name_variants = [place_name, place_name.replace('ё', 'е'), place_name.replace(' ', '-')]
+            regex_patterns = []
+            for name in name_variants:
+                pattern = r'\y' + name.replace(' ', r'[ -]?').replace('-', r'[ -]?') + r'\y'
+                regex_patterns.append(pattern)
+            sql = text("""
+                SELECT ST_AsGeoJSON(gv.geometry)::json as geojson
+                FROM eco_assistant.object o
+                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                WHERE (o.db_id ~* ANY(:patterns) OR ons.synonym ~* ANY(:patterns))
+                AND m.modality_type = 'Геоданные'
+                LIMIT 1
+            """)
+            result = session.execute(sql, {'patterns': regex_patterns}).first()
+            return result.geojson if result else None
+        
+    def get_geometry_type_for_place(self, place_name: str) -> Optional[str]:
+        session = self._session_factory()
+        with session:
+            sql = text("""
+                SELECT gv.geometry_type
+                FROM eco_assistant.object o
+                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                WHERE (o.db_id ILIKE :name
+                    OR o.db_id ILIKE CONCAT('%', :name, '%')
+                    OR ons.synonym ILIKE :name)
+                AND m.modality_type = 'Геоданные'
+                LIMIT 1
+            """)
+            result = session.execute(sql, {'name': place_name}).first()
+            return result.geometry_type if result else None
+
+    def find_objects_by_geometry_with_subtypes(
+        self, geometry_geojson: Dict[str, Any], subtypes: List[str],
+        buffer_radius_km: float, modality_type: Optional[str],
+        limit: int, offset: int
+    ) -> Tuple[List[Any], List[Any]]:
+        session = self._session_factory()
+        with session:
+            geom_json_str = json.dumps(geometry_geojson)
+            buffer_meters = buffer_radius_km * 1000.0
+
+            sql_objects = text("""
+                WITH input_geom AS (
+                    SELECT ST_GeomFromGeoJSON(:geom, 4326) AS geom
+                )
+                SELECT DISTINCT o.id, o.db_id, o.object_properties, ot.name as object_type
+                FROM eco_assistant.object o
+                JOIN eco_assistant.object_type ot ON o.object_type_id = ot.id
+                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                CROSS JOIN input_geom ig
+                WHERE m.modality_type = 'Геоданные'
+                  AND ST_DWithin(gv.geometry, ig.geom, :buffer_meters)
+                  AND (
+                      o.object_properties->>'subtypes' LIKE :subtype_pattern
+                      OR o.object_properties->'subtypes' ? :subtype
+                  )
+                ORDER BY o.id
+                LIMIT :limit OFFSET :offset
+            """)
+
+            subtype = subtypes[0] if subtypes else ''
+            subtype_pattern = f'%{subtype}%'
+            params = {
+                'geom': geom_json_str,
+                'buffer_meters': buffer_meters,
+                'subtype': subtype,
+                'subtype_pattern': subtype_pattern,
+                'limit': limit,
+                'offset': offset
+            }
+            object_rows = session.execute(sql_objects, params).fetchall()
+            object_ids = [row.id for row in object_rows]
+            objects = []
+            for row in object_rows:
+                obj = Object()
+                obj.id = row.id
+                obj.db_id = row.db_id
+                obj.object_properties = row.object_properties
+                obj.object_type = ObjectType(name=row.object_type)
+                objects.append(obj)
+
+            resources = []
+            if modality_type and object_ids:
+                sql_resources = text("""
+                    SELECT DISTINCT r.id, r.title, r.uri, r.features
+                    FROM eco_assistant.resource r
+                    JOIN eco_assistant.resource_object ro ON r.id = ro.resource_id
+                    JOIN eco_assistant.resource_value rv ON r.id = rv.resource_id
+                    JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                    WHERE ro.object_id = ANY(:object_ids)
+                      AND m.modality_type = :modality_type
+                    LIMIT :limit OFFSET :offset
+                """)
+                res_rows = session.execute(sql_resources, {
+                    'object_ids': object_ids,
+                    'modality_type': modality_type,
+                    'limit': limit,
+                    'offset': offset
+                }).fetchall()
+                for row in res_rows:
+                    res = Resource()
+                    res.id = row.id
+                    res.title = row.title
+                    res.uri = row.uri
+                    res.features = row.features
+                    resources.append(res)
+
+            logger.info(f"Found {len(objects)} objects, {len(resources)} resources")
+            return objects, resources
+
+    def find_objects_with_geometry_by_subtypes(
+    self, geometry_geojson: Dict[str, Any], subtypes: List[str],
+    buffer_radius_km: float, limit: int, offset: int
+) -> Tuple[List[Any], List[Any]]:
+        session = self._session_factory()
+        with session:
+            geom_json_str = json.dumps(geometry_geojson)
+            buffer_meters = buffer_radius_km * 1000.0
+            sql = text("""
+                WITH input_geom AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326) AS geom)
+                SELECT o.id, o.db_id, o.object_properties, ot.name as object_type,
+                    ST_AsGeoJSON(gv.geometry)::json as geometry_geojson,
+                    ST_GeometryType(gv.geometry) as geom_type,
+                    ST_Distance(gv.geometry, ig.geom) as distance,
+                    array_agg(DISTINCT ons.synonym) FILTER (WHERE ons.synonym IS NOT NULL) as synonyms
+                FROM eco_assistant.object o
+                JOIN eco_assistant.object_type ot ON o.object_type_id = ot.id
+                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                CROSS JOIN input_geom ig
+                WHERE m.modality_type = 'Геоданные'
+                AND ST_DWithin(gv.geometry, ig.geom, :buffer)
+                AND (o.object_properties->>'subtypes' = ANY(:subtypes)
+                    OR o.object_properties->'subtypes' ?| :subtypes)
+                GROUP BY o.id, ot.name, gv.geometry, ig.geom
+                ORDER BY distance
+                LIMIT :limit OFFSET :offset
+            """)
+            rows = session.execute(sql, {
+                'geom': geom_json_str, 'buffer': buffer_meters,
+                'subtypes': subtypes, 'limit': limit, 'offset': offset
+            }).fetchall()
+            from ..infrastructure.orm.object_models import Object, ObjectType, ObjectNameSynonym
+            objects = []
+            for r in rows:
+                obj = Object()
+                obj.id = r.id
+                obj.db_id = r.db_id
+                obj.object_properties = r.object_properties
+                obj.object_type = ObjectType(name=r.object_type)
+                obj._geometry_geojson = r.geometry_geojson
+                obj.synonyms = [ObjectNameSynonym(synonym=s) for s in (r.synonyms or [])]
+                objects.append(obj)
+            return objects, []
