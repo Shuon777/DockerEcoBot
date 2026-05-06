@@ -52,28 +52,28 @@ services:
     env_file: ./EcoBotProject/GigaChatAPI/.env
     networks: [ecobot_net]
 
-  rasa-actions:
-    build:
-      context: ./EcoBotProject/RasaProject
-      dockerfile: Dockerfile.actions
-    restart: always
-    env_file: ./EcoBotProject/RasaProject/.env
-    depends_on:
-      - backend
-      - gigachat
-    networks: [ecobot_net]
+  # rasa-actions:
+  #   build:
+  #     context: ./EcoBotProject/RasaProject
+  #     dockerfile: Dockerfile.actions
+  #   restart: always
+  #   env_file: ./EcoBotProject/RasaProject/.env
+  #   depends_on:
+  #     - backend
+  #     - gigachat
+  #   networks: [ecobot_net]
 
-  rasa:
-    build:
-      context: ./EcoBotProject/RasaProject
-      dockerfile: Dockerfile
-    restart: always
-    env_file: ./EcoBotProject/RasaProject/.env
-    volumes:
-      - ./EcoBotProject/RasaProject/models:/app/models
-    depends_on:
-      - rasa-actions
-    networks: [ecobot_net]
+  # rasa:
+  #   build:
+  #     context: ./EcoBotProject/RasaProject
+  #     dockerfile: Dockerfile
+  #   restart: always
+  #   env_file: ./EcoBotProject/RasaProject/.env
+  #   volumes:
+  #     - ./EcoBotProject/RasaProject/models:/app/models
+  #   depends_on:
+  #     - rasa-actions
+  #   networks: [ecobot_net]
 
   # ─────────────────────────── TELEGRAM BOT ─────────────────────────────
 
@@ -108,7 +108,6 @@ services:
     depends_on:
       - redis
       - backend
-      - rasa
       - gigachat
       - core-api
     networks: [ecobot_net]
