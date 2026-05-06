@@ -45,10 +45,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Сколько музеев?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Музеи\"\n      }\n    }\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -112,10 +112,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Расскажи о музеях в Бодайбо\",\n    \"use_llm_answer\": false,\n    \"limit\": 10,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Музеи\",\n        \"exact_location\": \"город Бодайбо, Иркутская область, Россия\"\n      }\n    },\n    \"resource\": {\n      \"modality\": {\n        \"type\": \"Текст\"\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -181,10 +181,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие научные учреждения есть около Байкала?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Наука\"\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -252,10 +252,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие заповедники есть на Байкале?\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Заповедники\"\n      }\n    }\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -323,10 +323,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие заказники есть на Байкале?\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Заказники\"\n      }\n    }\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -382,10 +382,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Сколько достопримечательностей в Листвянке?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Достопримечательности\",\n        \"exact_location\": \"Листвянка\"\n      }\n    }\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -562,10 +562,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Покажи байкальский музей на карте\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"name_synonyms\": {\n        \"ru_names\": [\"байкальский музей\"]\n      },\n      \"properties\": {\n        \"subtypes\": \"Музеи\"\n      }\n    },\n    \"modality_type\": \"Геоданные\"\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -635,10 +635,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Кто является старшим экскурсоводом в Байкальском музее СО РАН?\",\n    \"use_llm_answer\": false,\n    \"limit\": 5,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"modality_type\": \"Текст\",\n    \"resource\": {}\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     },
@@ -870,10 +870,10 @@
           "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Расскажи о нерпе\",\n    \"use_llm_answer\": false,\n    \"limit\": 10,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"name_synonyms\": {\n        \"ru_names\": [\"нерпа\", \"байкальская нерпа\"]\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
         },
         "url": {
-          "raw": "http://localhost/search/",
+          "raw": "http://localhost/search/search/",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", ""]
+          "path": ["search", "search"]
         }
       }
     }

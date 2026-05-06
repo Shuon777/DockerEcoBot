@@ -1,15 +1,15 @@
-# search_api/services/llm_answer_generator.py
-from typing import Dict, Any, List
+import logging
+from typing import List, Dict, Any
 from langchain_core.prompts import ChatPromptTemplate
 from ..domain.entities import ObjectResult, ResourceResult
+from ..domain.ports import VectorSearchPort
 from .llm_integration import get_llm
-import logging
 
 logger = logging.getLogger(__name__)
 
-
 class LLMAnswerGenerator:
-    def __init__(self):
+    def __init__(self, vector_search: VectorSearchPort = None):
+        self._vector_search = vector_search
         self._llm = None
 
     def _get_llm(self):
@@ -17,24 +17,22 @@ class LLMAnswerGenerator:
             self._llm = get_llm()
         return self._llm
 
-    def generate(self, question: str, objects: List[ObjectResult], resources: List[ResourceResult]) -> Dict[str, Any]:
+    def generate(self, question: str, objects: List[ObjectResult],
+                 resources: List[ResourceResult]) -> Dict[str, Any]:
         context = self._build_context(objects, resources)
+        use_vector = (self._vector_search is not None and
+                      not resources and
+                      question and
+                      any(r.modality_type == 'Текст' for r in resources) is False)
+
+        if use_vector:
+            vector_docs = self._vector_search.search(question, 'biological_entity', 10)
+            if vector_docs:
+                context = self._build_vector_context(vector_docs)
+
         llm = self._get_llm()
         prompt = ChatPromptTemplate.from_messages([
-            ("system", (
-                "Ты эксперт по Байкальской природной территории. "
-                "Используй твою базу знаний для точных ответов на вопросы пользователя.\n\n"
-                "Особые указания:\n"
-                "- На вопросы 'сколько' - подсчитай количество соответствующих записей в базе знаний\n"
-                "Например, на вопрос 'Сколько музеев?' при информации 'Всего найдено записей: 98 (в контекст включено топ-5 по релевантности)', нужно ответить около 98 музеев и затем описание каждого музея из топ записей\n"
-                "- Будь информативным и лаконичным\n"
-                "- Начинай ответ с прямого ответа на запрос пользователя, отвечай ТОЛЬКО на него\n"
-                "- При запросе 'Какие другие достопримечательности есть?' нужно описать месторождения из твоей базы и другие достопримечательности которые ты знаешь!\n"
-                "- Даже при неполной информации предоставь доступные детали\n\n"
-                "Твоя база знаний:\n{context}\n\n"
-                "Вопрос: {question}\n\n"
-                "Ответ:"
-            ))
+            ("system", self._system_prompt()),
         ])
         try:
             chain = prompt | llm
@@ -43,34 +41,52 @@ class LLMAnswerGenerator:
             finish_reason = None
             if hasattr(response, 'response_metadata'):
                 finish_reason = response.response_metadata.get('finish_reason')
-            if not finish_reason and hasattr(response, 'additional_kwargs'):
+            elif hasattr(response, 'additional_kwargs'):
                 finish_reason = response.additional_kwargs.get('finish_reason')
-            is_success = bool(content)
-            if finish_reason == 'blacklist':
-                is_success = False
             return {
                 "content": content,
                 "finish_reason": finish_reason,
-                "success": is_success
+                "success": bool(content)
             }
         except Exception as e:
             logger.error(f"LLM generation error: {e}")
             return {
-                "content": "Извините, не удалось сгенерировать ответ на основе доступной информации.",
+                "content": "Извините, не удалось сгенерировать ответ.",
                 "finish_reason": "error",
                 "success": False
             }
 
-    def _build_context(self, objects: List[ObjectResult], resources: List[ResourceResult]) -> str:
-        context_parts = []
+    def _system_prompt(self) -> str:
+        return (
+            "Ты эксперт по Байкальской природной территории. "
+            "Используй базу знаний для точных ответов.\n\n"
+            "Особые указания:\n"
+            "- На вопросы 'сколько' подсчитай количество записей в базе\n"
+            "- Будь информативным и лаконичным\n"
+            "- Начинай ответ с прямого ответа на запрос\n"
+            "- Даже при неполной информации предоставь доступные детали\n\n"
+            "База знаний:\n{context}\n\n"
+            "Вопрос: {question}\n\nОтвет:"
+        )
+
+    def _build_context(self, objects: List[ObjectResult],
+                       resources: List[ResourceResult]) -> str:
+        parts = []
         if objects:
-            context_parts.append(f"Найдено объектов: {len(objects)}")
-            for obj in objects[:10]:
-                props_str = str(obj.properties)[:200] if obj.properties else "{}"
-                context_parts.append(f"- Объект: {obj.object_type} '{obj.db_id}': свойства: {props_str}")
+            parts.append(f"Найдено объектов: {len(objects)}")
+            for o in objects[:5]:
+                parts.append(f"- {o.object_type} '{o.db_id}': {str(o.properties)[:200]}")
         if resources:
-            context_parts.append(f"Найдено ресурсов: {len(resources)}")
-            for res in resources[:10]:
-                content_preview = str(res.content)[:200] if res.content else "Нет данных"
-                context_parts.append(f"- Ресурс: {res.title} (тип: {res.modality_type}): {content_preview}")
-        return "\n".join(context_parts) if context_parts else "Нет релевантной информации."
+            parts.append(f"Найдено ресурсов: {len(resources)}")
+            for r in resources[:5]:
+                content_preview = str(r.content)[:200] if r.content else "Нет данных"
+                parts.append(f"- {r.title} ({r.modality_type}): {content_preview}")
+        return "\n".join(parts) if parts else "Нет релевантной информации."
+
+    def _build_vector_context(self, docs: List[Dict[str, Any]]) -> str:
+        parts = [f"Найдено по векторному поиску: {len(docs)}"]
+        for i, d in enumerate(docs[:10], 1):
+            name = d.get('object_name', 'Документ')
+            content = d.get('content', '')[:500]
+            parts.append(f"{i}. {name}:\n{content}")
+        return "\n\n".join(parts)
