@@ -809,6 +809,73 @@
           "path": ["search", "place", "objects"]
         }
       }
+    },
+    {
+      "name": "TC-29: Расскажи о нерпе (поиск текстовых ресурсов по названию животного)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Modality filter is 'Текст'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.modality_filter).to.equal(\"Текст\");",
+              "});",
+              "",
+              "pm.test(\"Response contains at least 1 object with name 'нерпа'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
+              "    var hasNerpa = jsonData.objects.some(function(obj) {",
+              "        return obj.db_id.toLowerCase().includes('нерп') ||",
+              "               (obj.synonyms && obj.synonyms.some(function(s) {",
+              "                   return s.toLowerCase().includes('нерп');",
+              "               }));",
+              "    });",
+              "    pm.expect(hasNerpa).to.be.true;",
+              "});",
+              "",
+              "pm.test(\"Response contains at least 1 resource\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.resources.length).to.be.at.least(1);",
+              "});",
+              "",
+              "pm.test(\"All resources have modality_type 'Текст'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.resources.forEach(function(resource) {",
+              "        pm.expect(resource.modality_type).to.equal(\"Текст\");",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(10000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Расскажи о нерпе\",\n    \"use_llm_answer\": false,\n    \"limit\": 10,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"name_synonyms\": {\n        \"ru_names\": [\"нерпа\", \"байкальская нерпа\"]\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", ""]
+        }
+      }
     }
   ]
 }
