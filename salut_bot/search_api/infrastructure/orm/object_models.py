@@ -16,6 +16,13 @@ class ObjectType(Base):
     name = Column(String, unique=True, nullable=False)
     schema = Column(JSON, default={})
 
+class ObjectNameSynonym(Base):
+    __tablename__ = 'object_name_synonym'
+    __table_args__ = {'schema': 'eco_assistant'}
+    id = Column(Integer, primary_key=True)
+    synonym = Column(String, nullable=False)
+    language = Column(String(10), default='ru')
+
 class Object(Base):
     __tablename__ = 'object'
     __table_args__ = {'schema': 'eco_assistant'}
@@ -25,10 +32,3 @@ class Object(Base):
     object_properties = Column(JSON, default={})
     object_type = relationship('ObjectType')
     synonyms = relationship('ObjectNameSynonym', secondary=object_synonym_link)
-
-class ObjectNameSynonym(Base):
-    __tablename__ = 'object_name_synonym'
-    __table_args__ = {'schema': 'eco_assistant'}
-    id = Column(Integer, primary_key=True)
-    synonym = Column(String, nullable=False)
-    language = Column(String(10), default='ru')

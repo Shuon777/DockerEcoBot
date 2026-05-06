@@ -17,14 +17,14 @@ logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 logging.getLogger('werkzeug').setLevel(logging.INFO)
 
-from .routes.search import search_bp
+from .routes import all_blueprints
 from .config import SearchConfig
 from .domain.entities import SearchRequest, SearchResponse, ObjectCriteria, ResourceCriteria
 from .use_cases import SearchUseCase, SearchAndBuildUseCase
 from .adapters.sqlalchemy_repository import SQLAlchemySearchRepository
 
 __all__ = [
-    'search_bp',
+    'all_blueprints',
     'SearchConfig',
     'SearchRequest',
     'SearchResponse',
