@@ -72,9 +72,18 @@ class PlaceSearchUseCase:
         geometry = self._repository.find_place_geometry(place_name)
         if not geometry:
             return PlaceSearchResponse(objects=[], resources=[], used_geometry={}, total_objects=0)
+        
+        geom_type = geometry.get('type', 'Point')
+        effective_search_type = search_type
 
+        if search_type == "inside" and geom_type != 'Polygon' and geom_type != 'MultiPolygon':
+                logger.warning(
+                    f"Place '{place_name}' has {geom_type} geometry, "
+                    f"changing search_type from 'inside' to 'near' with buffer={buffer_radius_km}km"
+                )
+                effective_search_type = "near"
         objects, _ = self._repository.find_objects_with_geometry_by_subtypes(
-            geometry, subtypes, buffer_radius_km, limit, offset, search_type
+            geometry, subtypes, buffer_radius_km, limit, offset, effective_search_type
         )
         
         # остальной код метода без изменений
