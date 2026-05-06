@@ -291,13 +291,22 @@ class SQLAlchemySearchRepository(SearchRepository):
 
     def find_objects_with_geometry_by_subtypes(
     self, geometry_geojson: Dict[str, Any], subtypes: List[str],
-    buffer_radius_km: float, limit: int, offset: int
+    buffer_radius_km: float, limit: int, offset: int,
+    search_type: str = "near"
 ) -> Tuple[List[Any], List[Any]]:
         session = self._session_factory()
         with session:
             geom_json_str = json.dumps(geometry_geojson)
             buffer_meters = buffer_radius_km * 1000.0
-            sql = text("""
+
+            if search_type == "inside":
+                spatial_cond = "ST_Within(gv.geometry, ig.geom)"
+            elif search_type == "near":
+                spatial_cond = "ST_DWithin(gv.geometry, ig.geom, :buffer)"
+            else:
+                spatial_cond = "(ST_Within(gv.geometry, ig.geom) OR ST_DWithin(gv.geometry, ig.geom, :buffer))"
+
+            sql = text(f"""
                 WITH input_geom AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326) AS geom)
                 SELECT o.id, o.db_id, o.object_properties, ot.name as object_type,
                     ST_AsGeoJSON(gv.geometry)::json as geometry_geojson,
@@ -314,18 +323,24 @@ class SQLAlchemySearchRepository(SearchRepository):
                 LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
                 CROSS JOIN input_geom ig
                 WHERE m.modality_type = 'Геоданные'
-                AND ST_DWithin(gv.geometry, ig.geom, :buffer)
+                AND {spatial_cond}
                 AND (o.object_properties->>'subtypes' = ANY(:subtypes)
                     OR o.object_properties->'subtypes' ?| :subtypes)
                 GROUP BY o.id, ot.name, gv.geometry, ig.geom
                 ORDER BY distance
                 LIMIT :limit OFFSET :offset
             """)
+            
             rows = session.execute(sql, {
-                'geom': geom_json_str, 'buffer': buffer_meters,
-                'subtypes': subtypes, 'limit': limit, 'offset': offset
+                'geom': geom_json_str,
+                'buffer': buffer_meters,
+                'subtypes': subtypes,
+                'limit': limit,
+                'offset': offset
             }).fetchall()
+            
             from ..infrastructure.orm.object_models import Object, ObjectType, ObjectNameSynonym
+            
             objects = []
             for r in rows:
                 obj = Object()
@@ -336,4 +351,5 @@ class SQLAlchemySearchRepository(SearchRepository):
                 obj._geometry_geojson = r.geometry_geojson
                 obj.synonyms = [ObjectNameSynonym(synonym=s) for s in (r.synonyms or [])]
                 objects.append(obj)
+            
             return objects, []

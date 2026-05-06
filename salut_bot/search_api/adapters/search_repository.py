@@ -14,5 +14,6 @@ class SearchRepository(ABC):
     @abstractmethod
     def find_objects_with_geometry_by_subtypes(
         self, geometry_geojson: Dict[str, Any], subtypes: List[str],
-        buffer_radius_km: float, limit: int, offset: int
+        buffer_radius_km: float, limit: int, offset: int,
+        search_type: str = "near"
     ) -> Tuple[List[Any], List[Any]]: pass

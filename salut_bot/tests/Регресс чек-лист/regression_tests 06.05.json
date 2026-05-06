@@ -478,7 +478,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"place_name\": \"село баргузин\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0\n}"
+          "raw": "{\n  \"place_name\": \"село баргузин\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"near\"\n}"
         },
         "url": {
           "raw": "http://localhost/search/place/objects",
@@ -566,6 +566,247 @@
           "protocol": "http",
           "host": ["localhost"],
           "path": ["search", ""]
+        }
+      }
+    },
+    {
+      "name": "TC-26: Векторный поиск - старшие экскурсоводы Байкальского музея",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Modality filter is 'Текст'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.modality_filter).to.equal(\"Текст\");",
+              "});",
+              "",
+              "pm.test(\"Response contains at least 1 resource from vector search\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.resources.length).to.be.at.least(1);",
+              "});",
+              "",
+              "pm.test(\"Found resource contains Клименко Ксения Николаевна\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var content = jsonData.resources[0].content;",
+              "    var contentStr = JSON.stringify(content);",
+              "    pm.expect(contentStr).to.include(\"Клименко Ксения Николаевна\");",
+              "});",
+              "",
+              "pm.test(\"Found resource contains Нижегородцева Анна Владимировна\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var contentStr = JSON.stringify(jsonData.resources[0].content);",
+              "    pm.expect(contentStr).to.include(\"Нижегородцева Анна Владимировна\");",
+              "});",
+              "",
+              "pm.test(\"Found resource contains Байкальский музей\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var contentStr = JSON.stringify(jsonData.resources[0].content);",
+              "    pm.expect(contentStr.toLowerCase()).to.include(\"байкальский музей\");",
+              "});",
+              "",
+              "pm.test(\"Resource content contains info about экскурсоводы\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var contentStr = JSON.stringify(jsonData.resources[0].content).toLowerCase();",
+              "    pm.expect(contentStr).to.include(\"экскурсовод\");",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable for vector search\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(8000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Кто является старшим экскурсоводом в Байкальском музее СО РАН?\",\n    \"use_llm_answer\": false,\n    \"limit\": 5,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"modality_type\": \"Текст\",\n    \"resource\": {}\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", ""]
+        }
+      }
+    },
+    {
+      "name": "TC-27: Поиск объектов ВНУТРИ геометрии Иркутска (памятники)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has correct structure\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('objects');",
+              "    pm.expect(jsonData).to.have.property('total_objects');",
+              "    pm.expect(jsonData).to.have.property('used_geometry');",
+              "    pm.expect(jsonData).to.have.property('place_name');",
+              "});",
+              "",
+              "pm.test(\"Place name is 'Иркутск'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.place_name).to.equal('Иркутск');",
+              "});",
+              "",
+              "pm.test(\"At least 1 object found with subtype 'Памятники'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        pm.expect(subtypes).to.include('Памятники');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"All objects have map links\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        pm.expect(obj.properties).to.have.property('static_map');",
+              "        pm.expect(obj.properties).to.have.property('interactive_map');",
+              "        pm.expect(obj.properties.static_map).to.include('/maps/');",
+              "        pm.expect(obj.properties.interactive_map).to.include('/maps/webapp_');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"Used geometry type is appropriate for city\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var geom = jsonData.used_geometry;",
+              "    pm.expect(geom.type).to.be.oneOf(['Polygon', 'MultiPolygon', 'Point']);",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(25000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"place_name\": \"Иркутск\",\n  \"subtypes\": [\"Памятники\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"inside\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/place/objects",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "place", "objects"]
+        }
+      }
+    },
+    {
+      "name": "TC-28: Поиск объектов ВНУТРИ И ОКОЛО геометрии (озеро Байкал)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has correct structure\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('objects');",
+              "    pm.expect(jsonData).to.have.property('total_objects');",
+              "    pm.expect(jsonData).to.have.property('used_geometry');",
+              "    pm.expect(jsonData).to.have.property('place_name');",
+              "});",
+              "",
+              "pm.test(\"Place name is 'озеро байкал'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.place_name).to.equal('озеро байкал');",
+              "});",
+              "",
+              "pm.test(\"At least 5 objects found (both inside and near)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(5);",
+              "    pm.expect(jsonData.total_objects).to.be.at.least(5);",
+              "});",
+              "",
+              "pm.test(\"All objects have subtype 'Достопримечательности'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        pm.expect(subtypes).to.include('Достопримечательности');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"All objects have synonyms (display names)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        pm.expect(obj.synonyms).to.be.an('array');",
+              "        pm.expect(obj.synonyms.length).to.be.at.least(1);",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"All objects have map links\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        pm.expect(obj.properties).to.have.property('static_map');",
+              "        pm.expect(obj.properties).to.have.property('interactive_map');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"Used geometry is Polygon or MultiPolygon (lake)\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var geom = jsonData.used_geometry;",
+              "    pm.expect(geom.type).to.be.oneOf(['Polygon', 'MultiPolygon']);",
+              "});",
+              "",
+              "pm.test(\"Buffer radius 1km applied correctly\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.total_objects).to.be.above(0);",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(30000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"place_name\": \"озеро байкал\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 1.0,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"both\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/place/objects",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "place", "objects"]
         }
       }
     }

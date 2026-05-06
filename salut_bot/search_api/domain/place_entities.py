@@ -21,6 +21,7 @@ class PlaceObjectsQuery:
     buffer_radius_km: float
     limit: int
     offset: int
+    search_type: str = "near"
 
 @dataclass
 class PlaceSearchResponse:

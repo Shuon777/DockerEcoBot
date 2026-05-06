@@ -24,6 +24,7 @@ def search_objects_near_place():
     buffer_radius_km = data.get('buffer_radius_km', 10.0)
     limit = data.get('limit', 20)
     offset = data.get('offset', 0)
+    search_type = data.get('search_type', 'near')
 
     config = current_app.config.get('SEARCH_CONFIG')
     geo_service = GeoMapService(config.maps_dir, config.domain)
@@ -31,7 +32,7 @@ def search_objects_near_place():
     result = use_case.execute(
         place_name=place_name, subtypes=subtypes,
         modality_type=modality_type, buffer_radius_km=buffer_radius_km,
-        limit=limit, offset=offset
+        limit=limit, offset=offset, search_type=search_type
     )
 
     return jsonify({

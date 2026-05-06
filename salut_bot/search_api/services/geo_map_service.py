@@ -17,6 +17,7 @@ class GeoMapService:
         self.maps_dir = maps_dir
         self.domain = domain
         os.makedirs(maps_dir, exist_ok=True)
+        ctx.user_agent = "YourAppName/1.0 (your-email@example.com)"
 
     def generate_static_map(self, geojson: Dict[str, Any], name: str) -> str:
         geom = shape(geojson)
@@ -72,7 +73,13 @@ class GeoMapService:
         geom = shape(geojson)
         centroid = geom.centroid
         m = folium.Map(location=[centroid.y, centroid.x], zoom_start=9,
-                    tiles='OpenStreetMap', attributionControl=False)
+                    tiles='OpenStreetMap', attributionControl=True, 
+        tiles_kwds={
+            'headers': {
+                'Referer': self.domain,
+                'User-Agent': 'YourAppName/1.0'
+            }
+        })
         folium.GeoJson(mapping(geom), tooltip=name, name=name).add_to(m)
         filename = f"webapp_{name}.html"
         filepath = os.path.join(self.maps_dir, filename)

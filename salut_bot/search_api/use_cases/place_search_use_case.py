@@ -64,18 +64,20 @@ class PlaceSearchUseCase:
         return any('\u0400' <= char <= '\u04FF' for char in text)
 
     def execute(
-        self, place_name: str, subtypes: List[str], modality_type: Optional[str] = None,
-        buffer_radius_km: float = 10.0, limit: int = 20, offset: int = 0
-    ) -> PlaceSearchResponse:
-        logger.info(f"Place search: {place_name}")
+    self, place_name: str, subtypes: List[str], modality_type: Optional[str] = None,
+    buffer_radius_km: float = 10.0, limit: int = 20, offset: int = 0,
+    search_type: str = "near"
+) -> PlaceSearchResponse:
+        logger.info(f"Place search: {place_name}, search_type={search_type}")
         geometry = self._repository.find_place_geometry(place_name)
         if not geometry:
             return PlaceSearchResponse(objects=[], resources=[], used_geometry={}, total_objects=0)
 
         objects, _ = self._repository.find_objects_with_geometry_by_subtypes(
-            geometry, subtypes, buffer_radius_km, limit, offset
+            geometry, subtypes, buffer_radius_km, limit, offset, search_type
         )
-
+        
+        # остальной код метода без изменений
         obj_results = []
         grouped = {}
         for obj in objects:
