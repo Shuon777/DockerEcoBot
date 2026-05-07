@@ -13,6 +13,10 @@ logger.propagate = True
 @dataclass
 class SearchUseCase:
     _repository: SearchRepository
+    _vector_search = None
+
+    def set_vector_search(self, vector_search):
+        self._vector_search = vector_search
 
     def execute(self, request: SearchRequest) -> SearchResponse:
         start_time = time.time()
@@ -57,6 +61,39 @@ class SearchUseCase:
             resources = resources[:request.limit]
             debug['resources_query_time'] = debug.get('resources_query_time_raw', 0)
             logger.info(f"Found {len(resources)} resources after modality filter")
+
+        if (request.modality_type == "Текст" and not resources and 
+            self._vector_search and request.user_query):
+            logger.info("No text resources found, activating vector search fallback")
+            vector_docs = self._vector_search.search(
+                query=request.user_query,
+                object_type=request.object.object_type if request.object else "all",
+                limit=request.limit * 2
+            )
+            logger.info(f"Vector search returned {len(vector_docs)} documents")
+            vector_resources = []
+            for idx, doc in enumerate(vector_docs):
+                content_obj = {
+                    'structured_data': {
+                        'content': doc.get('content', ''),
+                        'source': doc.get('source', 'vector_search'),
+                        'similarity': doc.get('similarity', 0)
+                    }
+                }
+                vector_resources.append(ResourceResult(
+                    id=-idx - 1,
+                    title=doc.get('object_name', 'Результат векторного поиска'),
+                    uri=None,
+                    author=None,
+                    source='векторный поиск',
+                    modality_type='Текст',
+                    content=content_obj,
+                    features={'similarity': doc.get('similarity', 0), 'search_type': 'vector'}
+                ))
+            resources = vector_resources[:request.limit]
+            debug['vector_search_used'] = True
+            debug['vector_results_count'] = len(vector_docs)
+            logger.info(f"Vector search provided {len(resources)} resources")
 
         debug['total_time'] = time.time() - start_time
 

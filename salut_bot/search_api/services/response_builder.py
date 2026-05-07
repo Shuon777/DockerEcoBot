@@ -1,6 +1,8 @@
 # search_api/services/response_builder.py
 from typing import Dict, Any, List, Optional
 
+from search_api.domain.ports import VectorSearchPort
+
 from ..domain.entities import ObjectResult, ResourceResult, SearchResponse
 from ..domain.value_objects import ModalityType, GeoContent
 from .geo_map_service import GeoMapService
@@ -13,7 +15,7 @@ class ResponseBuilder:
         self._llm_generator = llm_generator
 
     def build(self, search_response: SearchResponse, user_query: Optional[str] = None,
-              use_llm: bool = False) -> Dict[str, Any]:
+              use_llm: bool = False, vector_search=None) -> Dict[str, Any]:
         result = {
             'object_criteria': self._serialize_object_criteria(search_response.object_criteria),
             'resource_criteria': self._serialize_resource_criteria(search_response.resource_criteria),
@@ -23,9 +25,13 @@ class ResponseBuilder:
         }
         if search_response.debug_info:
             result['debug'] = search_response.debug_info
-        if use_llm and user_query and search_response.resources:
-            llm_answer = self._llm_generator.generate(user_query, search_response.objects, search_response.resources)
+
+        if use_llm and user_query:
+            llm_answer = self._llm_generator.generate(
+                user_query, search_response.objects, search_response.resources
+            )
             result['llm_answer'] = llm_answer
+
         return result
 
     def _serialize_object_criteria(self, criteria) -> Optional[Dict[str, Any]]:

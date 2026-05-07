@@ -7,6 +7,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from knowledge_base_scripts.Relational.db_importer.adapters.database_client import DatabaseClient
+
 from ..domain.entities import (
     Modality,
     Resource,
@@ -48,6 +50,7 @@ class ImportResourcesUseCase:
     resource_resource_relation_type_repo: ResourceResourceRelationTypeRepository
     object_object_relation_type_repo: ObjectObjectRelationTypeRepository
     resource_object_relation_type_repo: ResourceObjectRelationTypeRepository
+    client: DatabaseClient
     missing_geometry_file: Path = Path(__file__).parent.parent.parent / 'missing_geometry.json'
 
     _logger = logging.getLogger(__name__)
@@ -243,6 +246,10 @@ class ImportResourcesUseCase:
             modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
         else:
             modality = self.modality_repo.get_or_create_modality(modality_type, 'text_value')
+        
+        if modality.id is None:
+            raise RuntimeError(f"Failed to get or create modality for type: {modality_type}")
+        
         return modality.id
     
     def _process_modality(self, resource_id: int, modality_type: str, modality_value: Dict[str, Any]) -> None:
@@ -251,7 +258,8 @@ class ImportResourcesUseCase:
             structured_data = modality_value.get('structured_data', {}) if modality_value else {}
             text_value = TextValue(structured_data=structured_data)
             value_id = self.modality_repo.save_text_value(text_value)
-            self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
+            if modality.id is not None:
+                self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
 
         elif modality_type in ("Изображение", "Image"):
             modality = self.modality_repo.get_or_create_modality('Изображение', 'image_value')
@@ -261,7 +269,8 @@ class ImportResourcesUseCase:
                 format=modality_value.get('format') if modality_value else None
             )
             value_id = self.modality_repo.save_image_value(image_value)
-            self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
+            if modality.id is not None:
+                self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
 
         elif modality_type in ("Геоданные", "Картографическая информация"):
             modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
@@ -269,7 +278,8 @@ class ImportResourcesUseCase:
             if not modality_value or not modality_value.get('geodb_id'):
                 missing_title = self._current_resource_title or f"Resource_{resource_id}"
                 self._add_missing_geometry(missing_title)
-                self.modality_repo.link_resource_value(resource_id, modality.id, None)
+                if modality.id is not None:
+                    self.modality_repo.link_resource_value(resource_id, modality.id, None)
                 return
             
             geodb_id = modality_value.get('geodb_id')
@@ -281,10 +291,12 @@ class ImportResourcesUseCase:
                     geometry_type=normalized_type
                 )
                 value_id = self.modality_repo.save_geodata_value(geodata_value)
-                self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
+                if modality.id is not None:
+                    self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
             else:
                 self._add_missing_geometry(geodb_id)
-                self.modality_repo.link_resource_value(resource_id, modality.id, None)
+                if modality.id is not None:
+                    self.modality_repo.link_resource_value(resource_id, modality.id, None)
                 
     def _build_features_json(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         result = {}
@@ -334,3 +346,153 @@ class ImportResourcesUseCase:
             extract(name, value, 1)
 
         return result
+    
+    def ensure_geometries_for_geo_objects(self) -> Dict[str, int]:
+        result = {'created': 0, 'skipped': 0, 'errors': 0}
+        
+        geo_objects = self._find_geo_objects_without_geometry()
+        self._logger.info(f"Found {len(geo_objects)} geo objects without geometry")
+        
+        all_geometries = self.geodata_provider.get_all_geometries()
+        self._logger.info(f"Found {len(all_geometries)} geometries in geodb")
+        
+        for geo_obj in geo_objects:
+            obj_name = self._get_object_primary_name(geo_obj['id'])
+            if not obj_name:
+                self._logger.debug(f"No primary name for object {geo_obj['id']}")
+                result['skipped'] += 1
+                continue
+            
+            matching_geom = self._find_matching_geometry(obj_name, all_geometries)
+            if not matching_geom:
+                self._logger.debug(f"No matching geometry for {obj_name}")
+                result['skipped'] += 1
+                continue
+            
+            try:
+                resource_id = self._create_geometry_resource(
+                    geo_obj['id'], obj_name, matching_geom
+                )
+                if resource_id:
+                    result['created'] += 1
+                    self._logger.info(f"Created geometry for {obj_name}")
+            except Exception as e:
+                self._logger.error(f"Failed to create geometry for {obj_name}: {e}")
+                result['errors'] += 1
+        
+        return result
+    
+    def _find_geo_objects_without_geometry(self) -> List[Dict[str, Any]]:
+        sql = """
+            SELECT DISTINCT o.id, o.db_id, o.object_properties
+            FROM eco_assistant.object o
+            JOIN eco_assistant.object_type ot ON o.object_type_id = ot.id
+            WHERE ot.name = 'Географический объект'
+            AND o.id NOT IN (
+                SELECT DISTINCT ro.object_id
+                FROM eco_assistant.resource_object ro
+                JOIN eco_assistant.resource r ON ro.resource_id = r.id
+                JOIN eco_assistant.resource_value rv ON r.id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                WHERE m.modality_type = 'Геоданные'
+            )
+        """
+        rows = self.client.fetchall(sql)
+        return [{'id': row[0], 'db_id': row[1], 'properties': row[2]} for row in rows]
+
+    def _get_object_primary_name(self, object_id: int) -> Optional[str]:
+        sql = """
+            SELECT ons.synonym
+            FROM eco_assistant.object_name_synonym ons
+            JOIN eco_assistant.object_name_synonym_link onsl ON ons.id = onsl.synonym_id
+            WHERE onsl.object_id = %s
+            ORDER BY CASE 
+                WHEN ons.language = 'ru' AND ons.synonym = (
+                    SELECT o.object_properties->>'primary_name' 
+                    FROM eco_assistant.object o WHERE o.id = %s
+                ) THEN 1
+                WHEN ons.language = 'ru' THEN 2
+                ELSE 3
+            END
+            LIMIT 1
+        """
+        row = self.client.fetchone(sql, (object_id, object_id))
+        return row[0] if row else None
+    
+    def _find_matching_geometry(
+    self, obj_name: str, geometries: List[Tuple[str, Dict, str]]
+) -> Optional[Tuple[str, Dict, str]]:
+        obj_name_lower = obj_name.lower().strip()
+        exact_matches = []
+        
+        for key, geometry, geom_type in geometries:
+            key_lower = key.lower()
+            if key_lower == obj_name_lower:
+                exact_matches.append((key, geometry, geom_type))
+        
+        if exact_matches:
+            return exact_matches[0]
+        
+        for key, geometry, geom_type in geometries:
+            key_lower = key.lower()
+            if obj_name_lower in key_lower or key_lower in obj_name_lower:
+                return (key, geometry, geom_type)
+        
+        return None
+    
+    def _create_geometry_resource(
+    self, object_id: int, obj_name: str, geometry_data: Tuple[str, Dict, str]
+) -> Optional[int]:
+        geodb_id, geometry, geom_type = geometry_data
+        text_id = f"auto_geom_{geodb_id}"
+        
+        existing_resource_id = self.resource_repo.find_by_text_id(text_id)
+        if existing_resource_id:
+            self.resource_repo.link_resource_to_object(existing_resource_id, object_id, 'geometry')
+            self._logger.debug(f"Already exists: {text_id}, linked to object {object_id}")
+            return existing_resource_id
+        
+        modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
+        
+        bibliographic = BibliographicData()
+        bibliographic_id = self.bibliographic_repo.get_or_create(bibliographic)
+        
+        creation = CreationData(
+            creation_type='auto_generated',
+            creation_tool='geometry_enricher',
+            creation_params={'source': 'geodb', 'geodb_id': geodb_id}
+        )
+        creation_id = self.creation_repo.get_or_create(creation)
+        
+        resource_static = ResourceStatic(
+            static_id=text_id,
+            bibliographic_id=bibliographic_id,
+            creation_id=creation_id
+        )
+        resource_static_id = self.resource_static_repo.get_or_create(resource_static)
+        
+        metadata = SupportMetadata(parameters={
+            'auto_generated': True,
+            'source': 'geodb',
+            'geodb_id': geodb_id,
+            'object_name': obj_name
+        })
+        metadata_id = self.metadata_repo.get_or_create(metadata)
+        
+        resource = Resource(
+            title=f"Геометрия: {obj_name}",
+            uri=None,
+            features={'source': 'auto_generated', 'geodb_id': geodb_id},
+            text_id=text_id,
+            resource_static_id=resource_static_id,
+            support_metadata_id=metadata_id
+        )
+        resource_id = self.resource_repo.save_resource(resource)
+        
+        geodata_value = GeodataValue(geometry=geometry, geometry_type=geom_type)
+        value_id = self.modality_repo.save_geodata_value(geodata_value)
+        self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
+        
+        self.resource_repo.link_resource_to_object(resource_id, object_id, 'geometry')
+        
+        return resource_id

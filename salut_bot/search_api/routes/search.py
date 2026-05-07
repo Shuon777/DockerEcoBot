@@ -17,23 +17,25 @@ def _get_use_case():
     config = current_app.config.get('SEARCH_CONFIG')
     if not config:
         config = SearchConfig.from_env()
-    
+
     cache = current_app.config.get('SEARCH_REDIS')
     if not cache:
         cache = RedisCache(config.redis_host, config.redis_port, config.redis_db)
-    
+
     init_db(config)
     session_factory = get_session
     repository = SQLAlchemySearchRepository(session_factory)
-    
-    logger.error(f"=== REPOSITORY TYPE: {type(repository).__name__} ===")
-    logger.error(f"=== REPOSITORY MODULE: {repository.__class__.__module__} ===")
-    
+
+    from ..adapters.vector_search_adapter import VectorSearchAdapter
+    vector_search = VectorSearchAdapter(config.embedding_model_path, config.faiss_index_path)
+
     search_use_case = SearchUseCase(repository)
+    search_use_case.set_vector_search(vector_search)
+    
     geo_service = GeoMapService(config.maps_dir, config.domain)
-    llm_generator = LLMAnswerGenerator()
+    llm_generator = LLMAnswerGenerator(vector_search)
     response_builder = ResponseBuilder(geo_service, llm_generator)
-    return SearchAndBuildUseCase(search_use_case, response_builder, cache)
+    return SearchAndBuildUseCase(search_use_case, response_builder, cache, vector_search)
 
 
 @search_bp.route('/search', methods=['POST'], strict_slashes=False)

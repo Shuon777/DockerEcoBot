@@ -40,6 +40,10 @@ class ResourceRepository(ABC):
     @abstractmethod
     def link_resource_to_resource(self, resource_id: int, related_resource_id: int, relation_type: str) -> None:
         pass
+    
+    @abstractmethod
+    def find_by_text_id(self, text_id: str) -> Optional[int]:
+        pass
 
 
 class ObjectRepository(ABC):
@@ -157,7 +161,10 @@ class SchemaRepository(ABC):
 class GeodataProvider(ABC):
     @abstractmethod
     def get_geometry(self, geodb_id: str) -> Optional[Tuple[Dict[str, Any], str]]:
-        """Returns (geometry_dict, geometry_type) or None"""
+        pass
+    
+    @abstractmethod
+    def get_all_geometries(self) -> List[Tuple[str, Dict[str, Any], str]]:
         pass
     
 class ObjectPropertyRepository(ABC):

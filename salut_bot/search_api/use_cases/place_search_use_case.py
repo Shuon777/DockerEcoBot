@@ -48,7 +48,7 @@ class PlaceSearchUseCase:
         if synonyms:
             return synonyms[0].capitalize()
         
-        subtypes = props.get('subtypes', [])
+        subtypes = props.get('Подтип объекта', [])
         if subtypes and self._is_cyrillic(subtypes[0]):
             return subtypes[0].capitalize()
         
