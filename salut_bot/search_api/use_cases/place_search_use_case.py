@@ -60,14 +60,11 @@ class PlaceSearchUseCase:
             return False
         return any('\u0400' <= char <= '\u04FF' for char in text)
 
-    def _is_cyrillic(self, text: str) -> bool:
-        return any('\u0400' <= char <= '\u04FF' for char in text)
-
     def execute(
-    self, place_name: str, subtypes: List[str], modality_type: Optional[str] = None,
-    buffer_radius_km: float = 10.0, limit: int = 20, offset: int = 0,
-    search_type: str = "near"
-) -> PlaceSearchResponse:
+        self, place_name: str, subtypes: List[str], modality_type: Optional[str] = None,
+        buffer_radius_km: float = 10.0, limit: int = 20, offset: int = 0,
+        search_type: str = "near"
+    ) -> PlaceSearchResponse:
         logger.info(f"Place search: {place_name}, search_type={search_type}")
         geometry = self._repository.find_place_geometry(place_name)
         if not geometry:
@@ -75,28 +72,24 @@ class PlaceSearchUseCase:
         
         geom_type = geometry.get('type', 'Point')
         effective_search_type = search_type
-
-        if search_type == "inside" and geom_type != 'Polygon' and geom_type != 'MultiPolygon':
-                logger.warning(
-                    f"Place '{place_name}' has {geom_type} geometry, "
-                    f"changing search_type from 'inside' to 'near' with buffer={buffer_radius_km}km"
-                )
-                effective_search_type = "near"
+        if search_type == "inside" and geom_type not in ('Polygon', 'MultiPolygon'):
+            logger.warning(f"Place '{place_name}' has {geom_type} geometry, changing search_type to 'near'")
+            effective_search_type = "near"
+            
         objects, _ = self._repository.find_objects_with_geometry_by_subtypes(
             geometry, subtypes, buffer_radius_km, limit, offset, effective_search_type
         )
         
-        # остальной код метода без изменений
         obj_results = []
         grouped = {}
         for obj in objects:
             geojson = getattr(obj, '_geometry_geojson', None)
             if not geojson:
                 continue
-            geojson_key = json.dumps(geojson, sort_keys=True)
-            if geojson_key not in grouped:
-                grouped[geojson_key] = {"geojson": geojson, "objects": []}
-            grouped[geojson_key]["objects"].append(obj)
+            key = json.dumps(geojson, sort_keys=True)
+            if key not in grouped:
+                grouped[key] = {"geojson": geojson, "objects": []}
+            grouped[key]["objects"].append(obj)
 
         map_objects = []
         for group in grouped.values():
@@ -115,10 +108,7 @@ class PlaceSearchUseCase:
                 synonyms_list = []
                 if hasattr(o, 'synonyms'):
                     for syn in o.synonyms:
-                        if hasattr(syn, 'synonym'):
-                            synonyms_list.append(syn.synonym)
-                        else:
-                            synonyms_list.append(str(syn))
+                        synonyms_list.append(syn.synonym if hasattr(syn, 'synonym') else str(syn))
                 obj_type_name = o.object_type.name if o.object_type else 'Unknown'
                 obj_results.append(ObjectResult(
                     id=o.id, db_id=o.db_id, object_type=obj_type_name,
@@ -127,11 +117,27 @@ class PlaceSearchUseCase:
 
         map_name = f"place_{place_name.replace(' ', '_')}"
         map_result = self._geo_service.draw_custom_geometries(map_objects, map_name)
-        for obj in obj_results:
-            obj.properties['static_map'] = map_result.get('static_map')
-            obj.properties['interactive_map'] = map_result.get('interactive_map')
+        
+        geo_resource = ResourceResult(
+            id=-1,
+            title=f"Карта объектов: {place_name}",
+            uri=None,
+            author=None,
+            source=None,
+            modality_type="Геоданные",
+            content={
+                "map_links": {
+                    "static": map_result.get("static_map"),
+                    "interactive": map_result.get("interactive_map")
+                }
+            },
+            features=None,
+            resource_type="Динамически вычисляемый"
+        )
 
         return PlaceSearchResponse(
-            objects=obj_results, resources=[],
-            used_geometry=geometry, total_objects=len(obj_results)
+            objects=obj_results,
+            resources=[geo_resource],
+            used_geometry=geometry,
+            total_objects=len(obj_results)
         )
