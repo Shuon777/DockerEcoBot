@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "EcoAssistant Search API - Музеи и Научные учреждения",
+    "name": "EcoAssistant Search API - Музеи и Научные учреждения (русские ключи)",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -20,11 +20,11 @@
               "    pm.expect(jsonData.objects.length).to.be.at.least(7);",
               "});",
               "",
-              "pm.test(\"All objects have subtypes containing 'Музеи'\", function () {",
+              "pm.test(\"All objects have 'Подтип объекта' containing 'Музеи'\", function () {",
               "    var jsonData = pm.response.json();",
               "    jsonData.objects.forEach(function(obj) {",
-              "        pm.expect(obj.properties).to.have.property('subtypes');",
-              "        var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        pm.expect(obj.properties).to.have.property('Подтип объекта');",
+              "        var subtypes = Array.isArray(obj.properties['Подтип объекта']) ? obj.properties['Подтип объекта'] : [obj.properties['Подтип объекта']];",
               "        pm.expect(subtypes).to.include('Музеи');",
               "    });",
               "});"
@@ -42,7 +42,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Сколько музеев?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Музеи\"\n      }\n    }\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Сколько музеев?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"Подтип объекта\": \"Музеи\"\n      }\n    }\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -73,9 +73,9 @@
               "pm.test(\"Object has correct properties\", function () {",
               "    var jsonData = pm.response.json();",
               "    var props = jsonData.objects[0].properties;",
-              "    pm.expect(props.exact_location).to.equal(\"город Бодайбо, Иркутская область, Россия\");",
-              "    pm.expect(props.subtypes).to.include(\"Музеи\");",
-              "    pm.expect(props.subtypes).to.include(\"Достопримечательности\");",
+              "    pm.expect(props['Детальное расположение']).to.equal(\"город Бодайбо, Иркутская область, Россия\");",
+              "    pm.expect(props['Подтип объекта']).to.include(\"Музеи\");",
+              "    pm.expect(props['Подтип объекта']).to.include(\"Достопримечательности\");",
               "});",
               "",
               "pm.test(\"Response contains at least 1 resource\", function () {",
@@ -109,7 +109,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Расскажи о музеях в Бодайбо\",\n    \"use_llm_answer\": false,\n    \"limit\": 10,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Музеи\",\n        \"exact_location\": \"город Бодайбо, Иркутская область, Россия\"\n      }\n    },\n    \"resource\": {\n      \"modality\": {\n        \"type\": \"Текст\"\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Расскажи о музеях в Бодайбо\",\n    \"use_llm_answer\": false,\n    \"limit\": 10,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"Подтип объекта\": \"Музеи\",\n        \"Детальное расположение\": \"город Бодайбо, Иркутская область, Россия\"\n      }\n    },\n    \"resource\": {\n      \"modality\": {\n        \"type\": \"Текст\"\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -130,12 +130,12 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response contains objects with subtype 'Наука'\", function () {",
+              "pm.test(\"Response contains objects with 'Подтип объекта' containing 'Наука'\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
               "    jsonData.objects.forEach(function(obj) {",
-              "        if (obj.properties && obj.properties.subtypes) {",
-              "            var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        if (obj.properties && obj.properties['Подтип объекта']) {",
+              "            var subtypes = Array.isArray(obj.properties['Подтип объекта']) ? obj.properties['Подтип объекта'] : [obj.properties['Подтип объекта']];",
               "            pm.expect(subtypes).to.include(\"Наука\");",
               "        }",
               "    });",
@@ -144,7 +144,7 @@
               "pm.test(\"Objects have 'Байкал' in location or name\", function () {",
               "    var jsonData = pm.response.json();",
               "    var hasBaikal = jsonData.objects.some(function(obj) {",
-              "        var location = obj.properties && obj.properties.exact_location ? obj.properties.exact_location : '';",
+              "        var location = obj.properties && obj.properties['Детальное расположение'] ? obj.properties['Детальное расположение'] : '';",
               "        var name = obj.properties && obj.properties.name ? obj.properties.name : '';",
               "        var combined = (location + ' ' + name).toLowerCase();",
               "        return combined.includes('байкал');",
@@ -178,7 +178,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие научные учреждения есть около Байкала?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Наука\"\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие научные учреждения есть около Байкала?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"Подтип объекта\": \"Наука\"\n      }\n    },\n    \"modality_type\": \"Текст\"\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -204,11 +204,11 @@
               "    pm.expect(jsonData.modality_filter).to.equal(\"Текст\");",
               "});",
               "",
-              "pm.test(\"Response contains at least 1 object with subtype 'Заповедники'\", function () {",
+              "pm.test(\"Response contains at least 1 object with 'Подтип объекта' containing 'Заповедники'\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
               "    var hasZapovedniki = jsonData.objects.some(function(obj) {",
-              "        var subtypes = obj.properties.subtypes;",
+              "        var subtypes = obj.properties['Подтип объекта'];",
               "        if (!subtypes) return false;",
               "        subtypes = Array.isArray(subtypes) ? subtypes : [subtypes];",
               "        return subtypes.includes(\"Заповедники\");",
@@ -249,7 +249,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие заповедники есть на Байкале?\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Заповедники\"\n      }\n    }\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие заповедники есть на Байкале?\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"Подтип объекта\": \"Заповедники\"\n      }\n    }\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -275,11 +275,11 @@
               "    pm.expect(jsonData.modality_filter).to.equal(\"Текст\");",
               "});",
               "",
-              "pm.test(\"Response contains at least 1 object with subtype 'Заказники'\", function () {",
+              "pm.test(\"Response contains at least 1 object with 'Подтип объекта' containing 'Заказники'\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
               "    var hasZakazniki = jsonData.objects.some(function(obj) {",
-              "        var subtypes = obj.properties.subtypes;",
+              "        var subtypes = obj.properties['Подтип объекта'];",
               "        if (!subtypes) return false;",
               "        subtypes = Array.isArray(subtypes) ? subtypes : [subtypes];",
               "        return subtypes.includes(\"Заказники\");",
@@ -320,7 +320,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие заказники есть на Байкале?\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Заказники\"\n      }\n    }\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Какие заказники есть на Байкале?\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"Подтип объекта\": \"Заказники\"\n      }\n    }\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -349,15 +349,15 @@
               "pm.test(\"All objects have location containing 'Листвянка'\", function () {",
               "    var jsonData = pm.response.json();",
               "    jsonData.objects.forEach(function(obj) {",
-              "        var location = obj.properties.exact_location || '';",
+              "        var location = obj.properties['Детальное расположение'] || '';",
               "        pm.expect(location.toLowerCase()).to.include('листвянка');",
               "    });",
               "});",
               "",
-              "pm.test(\"All objects have subtype 'Достопримечательности'\", function () {",
+              "pm.test(\"All objects have 'Подтип объекта' containing 'Достопримечательности'\", function () {",
               "    var jsonData = pm.response.json();",
               "    jsonData.objects.forEach(function(obj) {",
-              "        var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        var subtypes = Array.isArray(obj.properties['Подтип объекта']) ? obj.properties['Подтип объекта'] : [obj.properties['Подтип объекта']];",
               "        pm.expect(subtypes).to.include('Достопримечательности');",
               "    });",
               "});",
@@ -379,7 +379,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Сколько достопримечательностей в Листвянке?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"subtypes\": \"Достопримечательности\",\n        \"exact_location\": \"Листвянка\"\n      }\n    }\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Сколько достопримечательностей в Листвянке?\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"properties\": {\n        \"Подтип объекта\": \"Достопримечательности\",\n        \"Детальное расположение\": \"Листвянка\"\n      }\n    }\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -478,13 +478,13 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"place_name\": \"село баргузин\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"near\"\n}"
+          "raw": "{\n  \"place_name\": \"село баргузин\",\n  \"Подтип объекта\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"near\"\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/place/objects",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search","search", "place", "objects"]
+          "path": ["search", "search", "place", "objects"]
         }
       }
     },
@@ -499,12 +499,12 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response contains objects with subtype 'Музеи'\", function () {",
+              "pm.test(\"Response contains objects with 'Подтип объекта' containing 'Музеи'\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
               "    jsonData.objects.forEach(function(obj) {",
-              "        if (obj.properties && obj.properties.subtypes) {",
-              "            var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        if (obj.properties && obj.properties['Подтип объекта']) {",
+              "            var subtypes = Array.isArray(obj.properties['Подтип объекта']) ? obj.properties['Подтип объекта'] : [obj.properties['Подтип объекта']];",
               "            pm.expect(subtypes).to.include(\"Музеи\");",
               "        }",
               "    });",
@@ -559,7 +559,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Покажи байкальский музей на карте\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"name_synonyms\": {\n        \"ru_names\": [\"байкальский музей\"]\n      },\n      \"properties\": {\n        \"subtypes\": \"Музеи\"\n      }\n    },\n    \"modality_type\": \"Геоданные\"\n  }\n}"
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Покажи байкальский музей на карте\",\n    \"use_llm_answer\": false,\n    \"limit\": 6,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"name_synonyms\": {\n        \"ru_names\": [\"байкальский музей\"]\n      },\n      \"properties\": {\n        \"Подтип объекта\": \"Музеи\"\n      }\n    },\n    \"modality_type\": \"Геоданные\"\n  }\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/",
@@ -666,11 +666,11 @@
               "    pm.expect(jsonData.place_name).to.equal('Иркутск');",
               "});",
               "",
-              "pm.test(\"At least 1 object found with subtype 'Памятники'\", function () {",
+              "pm.test(\"At least 1 object found with 'Подтип объекта' containing 'Памятники'\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
               "    jsonData.objects.forEach(function(obj) {",
-              "        var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        var subtypes = Array.isArray(obj.properties['Подтип объекта']) ? obj.properties['Подтип объекта'] : [obj.properties['Подтип объекта']];",
               "        pm.expect(subtypes).to.include('Памятники');",
               "    });",
               "});",
@@ -708,7 +708,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"place_name\": \"Иркутск\",\n  \"subtypes\": [\"Памятники\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"inside\"\n}"
+          "raw": "{\n  \"place_name\": \"Иркутск\",\n  \"Подтип объекта\": [\"Памятники\"],\n  \"buffer_radius_km\": 10.0,\n  \"limit\": 30,\n  \"offset\": 0,\n  \"search_type\": \"inside\"\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/place/objects",
@@ -748,10 +748,10 @@
               "    pm.expect(jsonData.total_objects).to.be.at.least(5);",
               "});",
               "",
-              "pm.test(\"All objects have subtype 'Достопримечательности'\", function () {",
+              "pm.test(\"All objects have 'Подтип объекта' containing 'Достопримечательности'\", function () {",
               "    var jsonData = pm.response.json();",
               "    jsonData.objects.forEach(function(obj) {",
-              "        var subtypes = Array.isArray(obj.properties.subtypes) ? obj.properties.subtypes : [obj.properties.subtypes];",
+              "        var subtypes = Array.isArray(obj.properties['Подтип объекта']) ? obj.properties['Подтип объекта'] : [obj.properties['Подтип объекта']];",
               "        pm.expect(subtypes).to.include('Достопримечательности');",
               "    });",
               "});",
@@ -800,13 +800,13 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"place_name\": \"озеро байкал\",\n  \"subtypes\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 1.0,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"both\"\n}"
+          "raw": "{\n  \"place_name\": \"озеро байкал\",\n  \"Подтип объекта\": [\"Достопримечательности\"],\n  \"buffer_radius_km\": 1.0,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"both\"\n}"
         },
         "url": {
           "raw": "http://localhost/search/search/place/objects",
           "protocol": "http",
           "host": ["localhost"],
-          "path": ["search", "place", "objects"]
+          "path": ["search", "search", "place", "objects"]
         }
       }
     },
