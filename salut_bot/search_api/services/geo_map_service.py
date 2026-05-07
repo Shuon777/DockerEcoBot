@@ -60,14 +60,18 @@ class GeoMapService:
         plt.close(fig)
         return f"{self.domain}/maps/{filename}", None
     
-    def _add_basemap(self, ax) -> None:
-        try:
-            ctx.add_basemap(ax, source=ctx.providers.OpenStreetMap.Mapnik)
-        except Exception:
+    def _add_basemap(self, ax: plt.Axes) -> None:
+        for source in [
+            ctx.providers.Esri.WorldImagery,
+            ctx.providers.CartoDB.Positron,
+            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}",
+            ctx.providers.OpenStreetMap.Mapnik,
+        ]:
             try:
-                ctx.add_basemap(ax, source=ctx.providers.CartoDB.Positron)
+                ctx.add_basemap(ax, source=source)
+                return
             except Exception:
-                pass
+                continue
 
     def generate_interactive_map(self, geojson: Dict[str, Any], name: str) -> str:
         geom = shape(geojson)
