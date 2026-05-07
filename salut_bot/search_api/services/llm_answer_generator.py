@@ -34,6 +34,8 @@ class LLMAnswerGenerator:
         prompt = ChatPromptTemplate.from_messages([
             ("system", self._system_prompt()),
         ])
+        full_prompt = self._system_prompt().format(question=question, context=context)
+        logger.info(f"COMPLETE PROMPT:\n{full_prompt}")
         try:
             chain = prompt | llm
             response = chain.invoke({"question": question, "context": context})
@@ -60,11 +62,14 @@ class LLMAnswerGenerator:
         return (
             "Ты эксперт по Байкальской природной территории. "
             "Используй базу знаний для точных ответов.\n\n"
-            "Особые указания:\n"
-            "- На вопросы 'сколько' подсчитай количество записей в базе\n"
+            "### ВАЖНО ###\n"
+            "- На вопросы 'сколько' подсчитай количество объектов или ресурсов выданных из базы\n"
             "- Будь информативным и лаконичным\n"
             "- Начинай ответ с прямого ответа на запрос\n"
-            "- Даже при неполной информации предоставь доступные детали\n\n"
+            "- Даже при неполной информации предоставь доступные детали\n"
+            "- Будь информативным и лаконичным"
+            "- Даже при неполной информации предоставь доступные детали"
+            "- Не давай ссылки на localhost и карты в целом\n\n"
             "База знаний:\n{context}\n\n"
             "Вопрос: {question}\n\nОтвет:"
         )
