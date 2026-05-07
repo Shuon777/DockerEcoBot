@@ -31,7 +31,7 @@ class SearchConfig:
             redis_port=int(os.getenv('REDIS_PORT', '6379')),
             redis_db=int(os.getenv('REDIS_DB', '1')),
             maps_dir=os.getenv('MAPS_DIR', '/app/maps'),
-            domain=os.getenv('DOMAIN', 'http://localhost:5555'),
+            domain=os.getenv('DOMAIN', 'http://localhost'),
             embedding_model_path=os.getenv('EMBEDDING_MODEL_PATH', str(BASE_DIR / 'embedding_models' / 'bge-m3')),
             faiss_index_path=os.getenv('FAISS_INDEX_PATH', str(BASE_DIR / 'knowledge_base_scripts' / 'Vector' / 'faiss_index'))
         )
