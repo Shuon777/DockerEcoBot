@@ -40,19 +40,19 @@ class BiologyWorker:
     def _detect_attributes_by_triggers(self, query: str) -> Dict[str, str]:
         q = query.lower()
         attrs = {}
-        if any(w in q for w in ["зим"]): attrs["season"] = "Зима"
-        elif any(w in q for w in ["весн"]): attrs["season"] = "Весна"
-        elif any(w in q for w in ["летом", "летн"]): attrs["season"] = "Лето"
-        elif any(w in q for w in ["осен"]): attrs["season"] = "Осень"
-        if any(w in q for w in ["цветущ", "цветет", "расцвел"]): attrs["flowering"] = "Да"
-        if any(w in q for w in ["шишк"]): attrs["fruits_present"] = "Шишка"
-        elif any(w in q for w in ["ягод"]): attrs["fruits_present"] = "Ягода"
-        elif any(w in q for w in ["плод"]): attrs["fruits_present"] = "Плод"
-        if any(w in q for w in ["болот"]): attrs["habitat"] = "Болото"
-        elif any(w in q for w in ["берег", "побереж"]): attrs["habitat"] = "Побережье"
-        elif any(w in q for w in ["степ"]): attrs["habitat"] = "Степь"
-        elif any(w in q for w in ["гор", "скал"]): attrs["habitat"] = "Горы"
-        elif any(w in q for w in ["лес"]): attrs["habitat"] = "Лес"
+        if any(w in q for w in ["зим"]): attrs["Время года"] = "Зима"
+        elif any(w in q for w in ["весн"]): attrs["Время года"] = "Весна"
+        elif any(w in q for w in ["летом", "летн"]): attrs["Время года"] = "Лето"
+        elif any(w in q for w in ["осен"]): attrs["Время года"] = "Осень"
+        if any(w in q for w in ["цветущ", "цветет", "расцвел"]): attrs["Цветение"] = "Да"
+        if any(w in q for w in ["шишк"]): attrs["Наличие плодов"] = "Шишка"
+        elif any(w in q for w in ["ягод"]): attrs["Наличие плодов"] = "Ягода"
+        elif any(w in q for w in ["плод"]): attrs["Наличие плодов"] = "Плод"
+        if any(w in q for w in ["болот"]): attrs["Среда обитания"] = "Болото"
+        elif any(w in q for w in ["берег", "побереж"]): attrs["Среда обитания"] = "Побережье"
+        elif any(w in q for w in ["степ"]): attrs["Среда обитания"] = "Степь"
+        elif any(w in q for w in ["гор", "скал"]): attrs["Среда обитания"] = "Горы"
+        elif any(w in q for w in ["лес"]): attrs["Среда обитания"] = "Лес"
         return attrs
 
     async def analyze(self, query: str) -> tuple[BiologyAnalysis, str]:

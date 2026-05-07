@@ -79,7 +79,7 @@ async def handle_get_picture(
         
         features = {}
         # Переносим атрибуты в features
-        for key in ["season", "habitat", "fruits_present", "flowering"]:
+        for key in ["Время года", "Среда обитания", "Наличие плодов", "Цветение"]:
             if attributes.get(key):
                 features[key] = attributes[key]
 
@@ -119,23 +119,23 @@ async def handle_get_picture(
                 fallback_tasks = []
                 options_meta = []
 
-                if "season" in attributes:
-                    tf = features.copy(); tf.pop("season")
+                if "Время года" in attributes:
+                    tf = features.copy(); tf.pop("Время года")
                     fallback_tasks.append(check_simplified_search(session, object_nom, tf, debug_mode))
                     options_meta.append({"text": "❄️ Без сезона", "callback_data": f"fallback:no_season:{object_nom}"})
-                
-                if "habitat" in attributes:
-                    tf = features.copy(); tf.pop("habitat")
+
+                if "Среда обитания" in attributes:
+                    tf = features.copy(); tf.pop("Среда обитания")
                     fallback_tasks.append(check_simplified_search(session, object_nom, tf, debug_mode))
                     options_meta.append({"text": "🌲 Без места", "callback_data": f"fallback:no_habitat:{object_nom}"})
 
-                if "fruits_present" in attributes:
-                    tf = features.copy(); tf.pop("fruits_present")
+                if "Наличие плодов" in attributes:
+                    tf = features.copy(); tf.pop("Наличие плодов")
                     fallback_tasks.append(check_simplified_search(session, object_nom, tf, debug_mode))
                     options_meta.append({"text": "🌰 Без плода", "callback_data": f"fallback:no_fruits:{object_nom}"})
-                
-                if "flowering" in attributes:
-                    tf = features.copy(); tf.pop("flowering")
+
+                if "Цветение" in attributes:
+                    tf = features.copy(); tf.pop("Цветение")
                     fallback_tasks.append(check_simplified_search(session, object_nom, tf, debug_mode))
                     options_meta.append({"text": "🌸 Не цветущий", "callback_data": f"fallback:no_flowering:{object_nom}"})
 

@@ -162,7 +162,8 @@ async function sendMessage(overrideText = null, isCallback = false) {
             const data = await response.json();
             renderClassification(data.slots || data);
             if (data.search_request) renderSearchRequest(data.search_request);
-            if (data.search) await renderSearchResults(data.search, data.slots?.modality);
+            if (data.search) renderSearchDebug(data.search);
+            if (data.result) await renderResult(data.result);
             if (data.error) appendMessage('bot', `❌ ${data.error}`);
         } catch (e) {
             console.error("Ошибка classify+search:", e);
@@ -415,17 +416,11 @@ function appendMapLink(sender, url) {
     chat.scrollTop = chat.scrollHeight;
 }
 
-async function renderSearchResults(searchData, modalityFilter = null) {
+function renderSearchDebug(searchData) {
     const chat = document.getElementById('chat-window');
     const allResources = searchData.resources || [];
     const objects = searchData.objects || [];
 
-    // Фильтруем по модальности из слотов классификатора
-    const resources = modalityFilter
-        ? allResources.filter(r => r.modality_type === modalityFilter)
-        : allResources;
-
-    // Заголовок с разворачиваемым сырым JSON
     const rawId = `search-raw-${Date.now()}`;
     const rawJson = JSON.stringify(searchData, null, 2)
         .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -433,73 +428,45 @@ async function renderSearchResults(searchData, modalityFilter = null) {
         .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
         .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
         .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
-    const filterLabel = modalityFilter
-        ? `<span style="color:#a78bfa"> [${modalityFilter}]</span>`
-        : '';
-    const countLabel = modalityFilter && resources.length !== allResources.length
-        ? `<span style="color:#60a5fa">(объектов: ${objects.length}, ресурсов: ${resources.length} из ${allResources.length})</span>`
-        : `<span style="color:#60a5fa">(объектов: ${objects.length}, ресурсов: ${resources.length})</span>`;
+    const countLabel = `<span style="color:#60a5fa">(объектов: ${objects.length}, ресурсов: ${allResources.length})</span>`;
 
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message system-message';
     headerDiv.innerHTML = `
         <div class="debug-header" style="cursor:pointer;user-select:none" onclick="document.getElementById('${rawId}').classList.toggle('d-none')">
-            <i class="bi bi-database"></i> Search Results${filterLabel}
+            <i class="bi bi-database"></i> Search Results
             ${countLabel}
             <i class="bi bi-chevron-down ms-1" style="font-size:0.75rem;opacity:0.6"></i>
         </div>
         <pre id="${rawId}" class="debug-block d-none">${rawJson}</pre>`;
     chat.appendChild(headerDiv);
+    chat.scrollTop = chat.scrollHeight;
+}
 
-    if (resources.length === 0) {
-        appendMessage('bot', '🔍 Ресурсов по запросу не найдено.');
-        chat.scrollTop = chat.scrollHeight;
-        return;
+async function renderResult(result) {
+    if (!result) return;
+
+    const urlsToCheck = [
+        ...(result.images || []),
+        result.map?.static,
+        result.map?.interactive,
+    ].filter(Boolean);
+    const deadOrigins = await resolveDeadHosts(urlsToCheck);
+
+    if (result.answer) appendMessage('bot', result.answer);
+
+    if (result.images && result.images.length > 0) {
+        for (const url of result.images) {
+            appendImage('bot', fixUrl(url, deadOrigins));
+        }
     }
 
-    // Собираем все URL для проверки хостов
-    const allUrls = [];
-    resources.forEach(r => {
-        const c = r.content;
-        if (r.modality_type === 'Изображение') {
-            allUrls.push(typeof c === 'string' ? c : (c?.url || c?.file_path));
-        } else if (r.modality_type === 'Геоданные') {
-            allUrls.push(c?.map_links?.static);
-            allUrls.push(c?.map_links?.interactive);
-        }
-    });
-    const deadOrigins = await resolveDeadHosts(allUrls.filter(Boolean));
+    if (result.map) {
+        if (result.map.static) appendImage('bot', fixUrl(result.map.static, deadOrigins));
+        if (result.map.interactive) appendMapLink('bot', fixUrl(result.map.interactive, deadOrigins));
+    }
 
-    resources.forEach(r => {
-        const type = r.modality_type;
-        const content = r.content;
-
-        if (type === 'Текст') {
-            let text = '';
-            if (typeof content === 'string') {
-                text = content;
-            } else if (content && typeof content === 'object') {
-                text = content.text || content.description || JSON.stringify(content);
-            }
-            if (text) appendMessage('bot', text);
-
-        } else if (type === 'Изображение') {
-            let url = null;
-            if (typeof content === 'string') {
-                url = content;
-            } else if (content && typeof content === 'object') {
-                url = content.url || content.file_path;
-            }
-            if (url) appendImage('bot', fixUrl(url, deadOrigins));
-
-        } else if (type === 'Геоданные') {
-            const staticMap = content?.map_links?.static;
-            const interactiveMap = content?.map_links?.interactive;
-            if (staticMap) appendImage('bot', fixUrl(staticMap, deadOrigins));
-            if (interactiveMap) appendMapLink('bot', fixUrl(interactiveMap, deadOrigins));
-        }
-    });
-
+    const chat = document.getElementById('chat-window');
     chat.scrollTop = chat.scrollHeight;
 }
 
