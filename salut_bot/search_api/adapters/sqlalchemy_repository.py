@@ -91,6 +91,16 @@ class SQLAlchemySearchRepository(SearchRepository):
                 Author, Bibliographic.author_id == Author.id
             ).outerjoin(
                 Source, Bibliographic.source_id == Source.id
+            ).outerjoin(
+                ResourceValue, Resource.id == ResourceValue.resource_id
+            ).outerjoin(
+                Modality, ResourceValue.modality_id == Modality.id
+            ).outerjoin(
+                TextValue, (ResourceValue.value_id == TextValue.id) & (Modality.modality_type == 'Текст')
+            ).outerjoin(
+                ImageValue, (ResourceValue.value_id == ImageValue.id) & (Modality.modality_type == 'Изображение')
+            ).outerjoin(
+                GeodataValue, (ResourceValue.value_id == GeodataValue.id) & (Modality.modality_type == 'Геоданные')
             )
             
             if object_ids:
@@ -104,12 +114,27 @@ class SQLAlchemySearchRepository(SearchRepository):
             if criteria.source:
                 query = query.filter(Source.name.ilike(f"%{criteria.source}%"))
             if criteria.modality_type:
-                query = query.filter(Resource.resource_values.any(Modality.modality_type == criteria.modality_type))
+                query = query.filter(Modality.modality_type == criteria.modality_type)
             if criteria.features:
                 for key, val in criteria.features.items():
                     query = query.filter(Resource.features[key].as_string() == str(val))
             
+            # ========== СОРТИРОВКА ПО ДЛИНЕ STRUCTURED_DATA ==========
+            if criteria.modality_type == "Текст" or criteria.modality_type is None:
+                from sqlalchemy import text
+                query = query.order_by(
+                    text("""
+                        length(
+                            COALESCE(text_value.structured_data::text, '')
+                        ) DESC NULLS LAST
+                    """)
+                )
+            else:
+                query = query.order_by(Resource.id)
+            # =========================================================
+            
             resources = query.limit(limit).offset(offset).all()
+            
             result = []
             for r in resources:
                 matching_rv = None
@@ -162,6 +187,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                 result = [r for r in result if r.modality_type == criteria.modality_type]
             
             return result
+    
     def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]:
         session = self._session_factory()
         with session:

@@ -111,18 +111,18 @@ class PostgresSearchRepository(SearchRepository):
             with conn.cursor() as cur:
                 sql = """
                     SELECT DISTINCT r.id, r.title, r.uri,
-                           a.name as author,
-                           s.name as source,
-                           m.modality_type,
-                           r.features,
-                           CASE 
-                               WHEN m.modality_type = 'Текст' THEN 
-                                   jsonb_build_object('structured_data', tv.structured_data)
-                               WHEN m.modality_type = 'Изображение' THEN 
-                                   jsonb_build_object('url', iv.url, 'file_path', iv.file_path, 'format', iv.format)
-                               WHEN m.modality_type = 'Геоданные' THEN 
-                                   jsonb_build_object('geojson', ST_AsGeoJSON(gv.geometry), 'type', gv.geometry_type)
-                           END as content
+                        a.name as author,
+                        s.name as source,
+                        m.modality_type,
+                        r.features,
+                        CASE 
+                            WHEN m.modality_type = 'Текст' THEN 
+                                jsonb_build_object('structured_data', tv.structured_data)
+                            WHEN m.modality_type = 'Изображение' THEN 
+                                jsonb_build_object('url', iv.url, 'file_path', iv.file_path, 'format', iv.format)
+                            WHEN m.modality_type = 'Геоданные' THEN 
+                                jsonb_build_object('geojson', ST_AsGeoJSON(gv.geometry), 'type', gv.geometry_type)
+                        END as content
                     FROM eco_assistant.resource r
                     JOIN eco_assistant.resource_static rs ON r.resource_static_id = rs.id
                     JOIN eco_assistant.bibliographic b ON rs.bibliographic_id = b.id
@@ -176,9 +176,22 @@ class PostgresSearchRepository(SearchRepository):
                         sql += " AND tv.structured_data->'taxonomy'->>%s = %s"
                         params.extend([key, value])
                 
+                # ========== СОРТИРОВКА ПО ДЛИНЕ STRUCTURED_DATA ==========
+                if criteria.modality_type == "Текст" or criteria.modality_type is None:
+                    sql += """
+                        ORDER BY (
+                            length(COALESCE(tv.structured_data::text, ''))
+                        ) DESC NULLS LAST
+                    """
+                else:
+                    sql += " ORDER BY r.id"
+                # ========================================================
+                
                 sql += f" LIMIT {limit} OFFSET {offset}"
+                
                 cur.execute(sql, params)
                 rows = cur.fetchall()
+                
                 return [
                     ResourceResult(
                         id=r['id'],
