@@ -5,12 +5,14 @@ from ..use_cases.place_search_use_case import PlaceSearchUseCase
 from ..adapters.sqlalchemy_repository import SQLAlchemySearchRepository
 from ..infrastructure.database import get_session
 from ..services.geo_map_service import GeoMapService
+from ..domain.value_objects import ModalityType
 
 place_search_bp = Blueprint('place_search', __name__, url_prefix='/search')
 logger = logging.getLogger(__name__)
 
 def _get_repository():
     return SQLAlchemySearchRepository(get_session)
+
 
 @place_search_bp.route('/place/objects', methods=['POST'])
 def search_objects_near_place():
@@ -27,6 +29,10 @@ def search_objects_near_place():
     search_type = data.get('search_type', 'near')
 
     config = current_app.config.get('SEARCH_CONFIG')
+    if not config:
+        from ..config import SearchConfig
+        config = SearchConfig.from_env()
+
     geo_service = GeoMapService(config.maps_dir, config.domain)
     use_case = PlaceSearchUseCase(_get_repository(), geo_service)
     result = use_case.execute(
@@ -35,13 +41,41 @@ def search_objects_near_place():
         limit=limit, offset=offset, search_type=search_type
     )
 
-    return jsonify({
+    objects_serialized = [{
+        'id': o.id,
+        'db_id': o.db_id,
+        'type': o.object_type,
+        'properties': o.properties,
+        'synonyms': o.synonyms
+    } for o in result.objects]
+
+    resources_serialized = []
+    for r in result.resources:
+        item = {
+            'id': r.id,
+            'title': r.title,
+            'uri': r.uri,
+            'author': r.author,
+            'source': r.source,
+            'modality_type': r.modality_type,
+            'features': r.features,
+            'resource_type': r.resource_type,
+        }
+        if r.modality_type == ModalityType.GEODATA.value:
+            item['content'] = r.content
+        else:
+            item['content'] = r.content
+        resources_serialized.append(item)
+
+    response_data = {
         'place_name': place_name,
         'used_geometry': result.used_geometry,
         'total_objects': result.total_objects,
-        'objects': [{
-            'id': o.id, 'db_id': o.db_id, 'type': o.object_type,
-            'properties': o.properties, 'synonyms': o.synonyms
-        } for o in result.objects],
-        'resources': [{'id': r.id, 'title': r.title, 'uri': r.uri} for r in result.resources]
-    }), 200
+        'objects': objects_serialized,
+        'resources': resources_serialized
+    }
+
+    if hasattr(result, 'total_resources'):
+        response_data['total_resources'] = result.total_resources
+
+    return jsonify(response_data), 200

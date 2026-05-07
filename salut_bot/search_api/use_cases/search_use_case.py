@@ -1,3 +1,4 @@
+# search_api/use_cases/search_use_case.py
 import time
 import logging
 from dataclasses import dataclass
@@ -53,6 +54,10 @@ class SearchUseCase:
             )
             debug['resources_query_time_raw'] = time.time() - res_start
             
+            # Mark database resources as "Статический"
+            for r in resources:
+                r.resource_type = "Статический"
+            
             if request.modality_type:
                 filter_start = time.time()
                 resources = [r for r in resources if r.modality_type == request.modality_type]
@@ -88,7 +93,8 @@ class SearchUseCase:
                     source='векторный поиск',
                     modality_type='Текст',
                     content=content_obj,
-                    features={'similarity': doc.get('similarity', 0), 'search_type': 'vector'}
+                    features={'similarity': doc.get('similarity', 0), 'search_type': 'vector'},
+                    resource_type="Статический"
                 ))
             resources = vector_resources[:request.limit]
             debug['vector_search_used'] = True

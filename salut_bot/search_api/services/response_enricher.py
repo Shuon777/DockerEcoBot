@@ -1,3 +1,4 @@
+# search_api/services/response_enricher.py
 from typing import List
 from ..domain.entities import ResourceResult
 from ..domain.value_objects import ModalityType, GeoContent
@@ -37,5 +38,6 @@ class ResponseEnricher:
             source=resource.source,
             modality_type=resource.modality_type,
             content=geo_content,
-            features=resource.features
+            features=resource.features,
+            resource_type=resource.resource_type
         )

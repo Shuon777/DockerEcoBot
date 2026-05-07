@@ -1,3 +1,4 @@
+# search_api/domain/entities.py
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 
@@ -75,6 +76,7 @@ class ResourceResult:
     modality_type: Optional[str]
     content: Any
     features: Optional[Dict[str, Any]] = None
+    resource_type: str = "Статический"
 
 
 @dataclass

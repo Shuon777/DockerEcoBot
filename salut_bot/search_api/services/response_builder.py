@@ -1,12 +1,14 @@
 # search_api/services/response_builder.py
+import hashlib
+import logging
 from typing import Dict, Any, List, Optional
-
-from search_api.domain.ports import VectorSearchPort
 
 from ..domain.entities import ObjectResult, ResourceResult, SearchResponse
 from ..domain.value_objects import ModalityType, GeoContent
 from .geo_map_service import GeoMapService
 from .llm_answer_generator import LLMAnswerGenerator
+
+logger = logging.getLogger(__name__)
 
 
 class ResponseBuilder:
@@ -16,6 +18,21 @@ class ResponseBuilder:
 
     def build(self, search_response: SearchResponse, user_query: Optional[str] = None,
               use_llm: bool = False, vector_search=None) -> Dict[str, Any]:
+        """
+        Формирует итоговый ответ.
+        Для геоданных (modality_filter == 'Геоданные') заменяет все отдельные ресурсы
+        одной общей картой, собранной из геометрий всех георесурсов.
+        """
+        # Обрабатываем только если запрос ограничен геоданными и есть хотя бы один георесурс
+        if search_response.modality_filter == ModalityType.GEODATA.value:
+            geo_resources = [r for r in search_response.resources
+                             if r.modality_type == ModalityType.GEODATA.value]
+            if geo_resources:
+                combined_resource = self._build_combined_map_resource(geo_resources)
+                # Оставляем в ответе только общую карту (других ресурсов с геоданными не будет)
+                search_response.resources = [combined_resource]
+
+        # Сериализация
         result = {
             'object_criteria': self._serialize_object_criteria(search_response.object_criteria),
             'resource_criteria': self._serialize_resource_criteria(search_response.resource_criteria),
@@ -25,14 +42,98 @@ class ResponseBuilder:
         }
         if search_response.debug_info:
             result['debug'] = search_response.debug_info
-
         if use_llm and user_query:
             llm_answer = self._llm_generator.generate(
                 user_query, search_response.objects, search_response.resources
             )
             result['llm_answer'] = llm_answer
-
         return result
+
+    def _build_combined_map_resource(self, geo_resources: List[ResourceResult]) -> ResourceResult:
+        """Создаёт ресурс с общей картой из нескольких георесурсов."""
+        geojson_with_titles = []
+        for r in geo_resources:
+            # Извлекаем geojson и название из контента ресурса
+            content = r.content
+            geojson = None
+            title = r.title or "Геообъект"
+            if isinstance(content, dict) and 'geojson' in content:
+                geojson = content['geojson']
+            elif isinstance(content, GeoContent) and content.geojson:
+                geojson = content.geojson
+            if geojson:
+                geojson_with_titles.append((geojson, title))
+
+        if not geojson_with_titles:
+            # Не должно случиться, так как geo_resources не пуст
+            return None
+
+        # Генерируем читаемое имя файла
+        short_names = [title.replace(' ', '_')[:20] for _, title in geojson_with_titles[:3]]
+        base_name = "_".join(short_names) if short_names else "combined"
+        if len(short_names) > 1:
+            base_name += "_и_др"
+        # Ограничим общую длину, чтобы не было слишком длинных имён
+        if len(base_name) > 80:
+            base_name = hashlib.md5(base_name.encode()).hexdigest()[:16]
+        map_name = f"combined_{base_name}"
+
+        # Подготавливаем объекты для отрисовки
+        map_objects = [
+            {"geojson": gj, "tooltip": title, "popup": title, "name": title}
+            for gj, title in geojson_with_titles
+        ]
+        map_result = self._geo_service.draw_custom_geometries(map_objects, map_name)
+
+        return ResourceResult(
+            id=-1,
+            title=f"Общая карта ({len(geo_resources)} объектов)",
+            uri=None,
+            author=None,
+            source=None,
+            modality_type=ModalityType.GEODATA.value,
+            content={
+                "map_links": {
+                    "static": map_result.get("static_map"),
+                    "interactive": map_result.get("interactive_map")
+                }
+            },
+            features=None,
+            resource_type="Динамически вычисляемый"
+        )
+
+    # ---- Методы сериализации (без изменений) ----
+    def _serialize_resources(self, resources: List[ResourceResult], objects: List[ObjectResult]) -> List[Dict[str, Any]]:
+        serialized = []
+        for r in resources:
+            item = {
+                'id': r.id,
+                'title': r.title,
+                'uri': r.uri,
+                'author': r.author,
+                'source': r.source,
+                'modality_type': r.modality_type,
+                'features': r.features,
+                'resource_type': r.resource_type,
+            }
+            if r.modality_type == ModalityType.GEODATA.value:
+                if isinstance(r.content, dict) and 'map_links' in r.content:
+                    item['content'] = r.content
+                elif isinstance(r.content, GeoContent):
+                    item['content'] = {
+                        'geojson': r.content.geojson,
+                        'geometry_type': r.content.geometry_type,
+                        'map_links': {
+                            'static': r.content.map_links.static,
+                            'interactive': r.content.map_links.interactive,
+                        }
+                    }
+                else:
+                    item['content'] = r.content
+            else:
+                item['content'] = r.content
+            serialized.append(item)
+        return serialized
 
     def _serialize_object_criteria(self, criteria) -> Optional[Dict[str, Any]]:
         if not criteria:
@@ -66,53 +167,3 @@ class ResponseBuilder:
             }
             for o in objects
         ]
-
-    def _serialize_resources(self, resources: List[ResourceResult], objects: List[ObjectResult]) -> List[Dict[str, Any]]:
-        serialized = []
-        for r in resources:
-            item = {
-                'id': r.id,
-                'title': r.title,
-                'uri': r.uri,
-                'author': r.author,
-                'source': r.source,
-                'modality_type': r.modality_type,
-                'features': r.features,
-            }
-            map_name = None
-            for obj in objects:
-                if obj.properties.get('name'):
-                    map_name = obj.properties['name']
-                    break
-                if obj.synonyms:
-                    map_name = obj.synonyms[0]
-                    break
-            if not map_name:
-                map_name = f"map_{r.id}"
-
-            if r.modality_type == ModalityType.GEODATA.value:
-                if isinstance(r.content, GeoContent):
-                    item['content'] = {
-                        'geojson': r.content.geojson,
-                        'geometry_type': r.content.geometry_type,
-                        'map_links': {
-                            'static': r.content.map_links.static,
-                            'interactive': r.content.map_links.interactive,
-                        }
-                    }
-                elif isinstance(r.content, dict) and 'geojson' in r.content:
-                    enriched = self._geo_service.enrich_geo_content(r.content['geojson'], map_name)
-                    item['content'] = {
-                        'geojson': enriched.geojson,
-                        'geometry_type': enriched.geometry_type,
-                        'map_links': {
-                            'static': enriched.map_links.static,
-                            'interactive': enriched.map_links.interactive,
-                        }
-                    }
-                else:
-                    item['content'] = r.content
-            else:
-                item['content'] = r.content
-            serialized.append(item)
-        return serialized
