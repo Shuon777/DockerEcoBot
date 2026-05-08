@@ -16,12 +16,14 @@ def _get_repository():
 
 @place_search_bp.route('/place/objects', methods=['POST'])
 def search_objects_near_place():
+    import time
+    request_start = time.time()
     data = request.get_json() or {}
     place_name = data.get('place_name')
     if not place_name:
         return jsonify({'error': 'place_name is required'}), 400
 
-    subtypes = data.get('subtypes', ['Достопримечательности'])
+    subtypes = data.get('subtypes') or data.get('Подтип объекта', ['Достопримечательности'])
     modality_type = data.get('modality_type')
     buffer_radius_km = data.get('buffer_radius_km', 10.0)
     limit = data.get('limit', 20)
@@ -78,4 +80,6 @@ def search_objects_near_place():
     if hasattr(result, 'total_resources'):
         response_data['total_resources'] = result.total_resources
 
+    request_elapsed = time.time() - request_start
+    logger.info(f"POST /place/objects total request time: {request_elapsed:.4f}s")
     return jsonify(response_data), 200

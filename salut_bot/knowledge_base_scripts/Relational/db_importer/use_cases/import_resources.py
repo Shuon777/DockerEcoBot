@@ -419,25 +419,12 @@ class ImportResourcesUseCase:
         row = self.client.fetchone(sql, (object_id, object_id))
         return row[0] if row else None
     
-    def _find_matching_geometry(
-    self, obj_name: str, geometries: List[Tuple[str, Dict, str]]
-) -> Optional[Tuple[str, Dict, str]]:
+    def _find_matching_geometry(self, obj_name: str, geometries: List[Tuple[str, Dict, str]]) -> Optional[Tuple[str, Dict, str]]:
         obj_name_lower = obj_name.lower().strip()
-        exact_matches = []
-        
         for key, geometry, geom_type in geometries:
             key_lower = key.lower()
             if key_lower == obj_name_lower:
-                exact_matches.append((key, geometry, geom_type))
-        
-        if exact_matches:
-            return exact_matches[0]
-        
-        for key, geometry, geom_type in geometries:
-            key_lower = key.lower()
-            if obj_name_lower in key_lower or key_lower in obj_name_lower:
                 return (key, geometry, geom_type)
-        
         return None
     
     def _create_geometry_resource(
@@ -480,7 +467,7 @@ class ImportResourcesUseCase:
         metadata_id = self.metadata_repo.get_or_create(metadata)
         
         resource = Resource(
-            title=f"Геометрия: {obj_name}",
+            title=f"{obj_name}",
             uri=None,
             features={'source': 'auto_generated', 'geodb_id': geodb_id},
             text_id=text_id,

@@ -50,10 +50,10 @@ class ResponseBuilder:
         return result
 
     def _build_combined_map_resource(self, geo_resources: List[ResourceResult]) -> ResourceResult:
-        """Создаёт ресурс с общей картой из нескольких георесурсов."""
+        import time
+        start = time.time()
         geojson_with_titles = []
         for r in geo_resources:
-            # Извлекаем geojson и название из контента ресурса
             content = r.content
             geojson = None
             title = r.title or "Геообъект"
@@ -65,25 +65,24 @@ class ResponseBuilder:
                 geojson_with_titles.append((geojson, title))
 
         if not geojson_with_titles:
-            # Не должно случиться, так как geo_resources не пуст
+            logger.warning("_build_combined_map_resource: no valid geojson found")
             return None
 
-        # Генерируем читаемое имя файла
         short_names = [title.replace(' ', '_')[:20] for _, title in geojson_with_titles[:3]]
         base_name = "_".join(short_names) if short_names else "combined"
         if len(short_names) > 1:
             base_name += "_и_др"
-        # Ограничим общую длину, чтобы не было слишком длинных имён
         if len(base_name) > 80:
             base_name = hashlib.md5(base_name.encode()).hexdigest()[:16]
         map_name = f"combined_{base_name}"
 
-        # Подготавливаем объекты для отрисовки
         map_objects = [
             {"geojson": gj, "tooltip": title, "popup": title, "name": title}
             for gj, title in geojson_with_titles
         ]
         map_result = self._geo_service.draw_custom_geometries(map_objects, map_name)
+        elapsed = time.time() - start
+        logger.info(f"_build_combined_map_resource (drawing) took {elapsed:.4f}s for {len(geo_resources)} resources")
 
         return ResourceResult(
             id=-1,

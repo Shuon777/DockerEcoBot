@@ -1,8 +1,9 @@
 import logging
+import re
 from typing import Any, Dict, List, Optional, Tuple
 import json
 from sqlalchemy.orm import joinedload
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.dialects import postgresql
 from ..domain.entities import ObjectResult, ResourceResult, ObjectCriteria, ResourceCriteria
 from .search_repository import SearchRepository
@@ -33,17 +34,16 @@ class SQLAlchemySearchRepository(SearchRepository):
                 for lang, name_list in criteria.name_synonyms.items():
                     names.extend(name_list)
                 if names:
-                    from sqlalchemy import func, case
-                    name = names[0]
-                    relevance = case(
-                        (Object.synonyms.any(ObjectNameSynonym.synonym == name), 100),
-                        (Object.synonyms.any(ObjectNameSynonym.synonym.ilike(name)), 80),
-                        (Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'{name}%')), 60),
-                        (Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'%{name}%')), 40),
-                        else_=0
-                    )
-                    query = query.filter(Object.synonyms.any(ObjectNameSynonym.synonym.ilike(f'%{name}%')))
-                    query = query.order_by(relevance.desc(), Object.id)
+                    from sqlalchemy import or_
+                    conditions = []
+                    for name in names:
+                        conditions.append(
+                            Object.synonyms.any(func.lower(ObjectNameSynonym.synonym) == name.lower())
+                        )
+                        conditions.append(
+                            func.lower(Object.db_id) == name.lower()
+                        )
+                    query = query.filter(or_(*conditions))
             if criteria.properties:
                 for key, value in criteria.properties.items():
                     if key == 'subtypes' or key == 'Подтип объекта':
@@ -54,16 +54,16 @@ class SQLAlchemySearchRepository(SearchRepository):
                                 query = query.filter(Object.object_properties[key].op('?')(item))
                     else:
                         if isinstance(value, str):
-                            query = query.filter(Object.object_properties[key].as_string().ilike(f'%{value}%'))
+                            query = query.filter(Object.object_properties[key].as_string().ilike(f"%{value}%"))
                         elif isinstance(value, list):
                             for item in value:
-                                query = query.filter(Object.object_properties[key].as_string().ilike(f'%{item}%'))
+                                query = query.filter(Object.object_properties[key].as_string().ilike(f"%{item}%"))
                         elif isinstance(value, bool):
                             query = query.filter(Object.object_properties[key].as_boolean() == value)
                         elif isinstance(value, (int, float)):
                             query = query.filter(Object.object_properties[key].as_float() == value)
                         else:
-                            query = query.filter(Object.object_properties[key].as_string().ilike(f'%{str(value)}%'))
+                            query = query.filter(Object.object_properties[key].as_string().ilike(f"%{str(value)}%"))
             
             query = query.limit(limit).offset(offset)
             compiled = query.statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
@@ -208,25 +208,16 @@ class SQLAlchemySearchRepository(SearchRepository):
                     JOIN eco_assistant.modality m ON rv.modality_id = m.id
                     JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
                     WHERE m.modality_type = 'Геоданные'
-                    AND (
-                        ons.synonym ILIKE :name 
-                        OR ons.synonym ILIKE :name_wildcard
-                        OR o.db_id ILIKE :name_wildcard
-                    )
+                    AND (LOWER(ons.synonym) = LOWER(:name) OR LOWER(o.db_id) = LOWER(:name))
                 )
                 SELECT ST_AsGeoJSON(geometry)::json as geojson
                 FROM matched_geometries
                 ORDER BY priority ASC
                 LIMIT 1
             """)
-            
-            result = session.execute(sql, {
-                'name': place_name,
-                'name_wildcard': f'%{place_name}%'
-            }).first()
-            
+            result = session.execute(sql, {'name': place_name}).first()
             return result.geojson if result else None
-        
+
     def get_geometry_type_for_place(self, place_name: str) -> Optional[str]:
         session = self._session_factory()
         with session:
@@ -239,10 +230,8 @@ class SQLAlchemySearchRepository(SearchRepository):
                 JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
                 JOIN eco_assistant.modality m ON rv.modality_id = m.id
                 JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
-                WHERE (o.db_id ILIKE :name
-                    OR o.db_id ILIKE CONCAT('%', :name, '%')
-                    OR ons.synonym ILIKE :name)
-                AND m.modality_type = 'Геоданные'
+                WHERE m.modality_type = 'Геоданные'
+                AND (LOWER(ons.synonym) = LOWER(:name) OR LOWER(o.db_id) = LOWER(:name))
                 LIMIT 1
             """)
             result = session.execute(sql, {'name': place_name}).first()
