@@ -6,7 +6,6 @@ import logging
 import hashlib
 import json
 from pathlib import Path
-
 from knowledge_base_scripts.Relational.db_importer.adapters.database_client import DatabaseClient
 
 from ..domain.entities import (
@@ -348,40 +347,125 @@ class ImportResourcesUseCase:
         return result
     
     def ensure_geometries_for_geo_objects(self) -> Dict[str, int]:
+        """Создает ресурсы с геометрией для географических объектов, у которых их нет.
+        
+        Перебирает все русские названия объекта (primary_name + все ru_names) 
+        для поиска совпадения в geodb.json.
+        """
         result = {'created': 0, 'skipped': 0, 'errors': 0}
         
+        # Находим все географические объекты без геометрии
         geo_objects = self._find_geo_objects_without_geometry()
         self._logger.info(f"Found {len(geo_objects)} geo objects without geometry")
         
+        if not geo_objects:
+            self._logger.info("No geo objects without geometry found")
+            return result
+        
+        # Получаем все геометрии из geodb один раз
         all_geometries = self.geodata_provider.get_all_geometries()
         self._logger.info(f"Found {len(all_geometries)} geometries in geodb")
         
+        if not all_geometries:
+            self._logger.warning("No geometries found in geodb.json")
+            return result
+        
         for geo_obj in geo_objects:
-            obj_name = self._get_object_primary_name(geo_obj['id'])
-            if not obj_name:
-                self._logger.debug(f"No primary name for object {geo_obj['id']}")
-                result['skipped'] += 1
-                continue
-            
-            matching_geom = self._find_matching_geometry(obj_name, all_geometries)
-            if not matching_geom:
-                self._logger.debug(f"No matching geometry for {obj_name}")
-                result['skipped'] += 1
-                continue
-            
             try:
+                object_id = geo_obj['id']
+                object_db_id = geo_obj['db_id']
+                
+                # Получаем все русские названия объекта
+                names = self._get_object_rus_names(object_id)
+                
+                if not names:
+                    self._logger.debug(f"No Russian names found for object {object_db_id}")
+                    result['skipped'] += 1
+                    continue
+                
+                # Ищем геометрию по любому из названий
+                matching_geom = self._find_matching_geometry(names, all_geometries)
+                
+                if not matching_geom:
+                    self._logger.debug(f"No matching geometry for {names[0]} (db_id: {object_db_id})")
+                    result['skipped'] += 1
+                    continue
+                
+                # Создаем ресурс с геометрией
+                geodb_id, geometry, geom_type = matching_geom
                 resource_id = self._create_geometry_resource(
-                    geo_obj['id'], obj_name, matching_geom
+                    object_id, names[0], (geodb_id, geometry, geom_type)
                 )
+                
                 if resource_id:
                     result['created'] += 1
-                    self._logger.info(f"Created geometry for {obj_name}")
+                    self._logger.info(f"Created geometry for '{names[0]}' (db_id: {object_db_id})")
+                else:
+                    result['errors'] += 1
+                    self._logger.error(f"Failed to create geometry for '{names[0]}'")
+                    
             except Exception as e:
-                self._logger.error(f"Failed to create geometry for {obj_name}: {e}")
+                self._logger.error(f"Error processing object {geo_obj.get('db_id', 'unknown')}: {e}", exc_info=True)
                 result['errors'] += 1
         
+        self._logger.info(f"Geometry creation completed: created={result['created']}, skipped={result['skipped']}, errors={result['errors']}")
         return result
     
+    def _get_object_rus_names(self, object_id: int) -> List[str]:
+        """Возвращает список всех русских названий объекта.
+        
+        Порядок: сначала primary_name (если указан), затем все остальные ru_names.
+        """
+        sql = """
+            SELECT ons.synonym, 
+                CASE 
+                    WHEN o.object_properties->>'primary_name' = ons.synonym THEN 1 
+                    ELSE 2 
+                END as priority
+            FROM eco_assistant.object o
+            JOIN eco_assistant.object_name_synonym_link onsl ON o.id = onsl.object_id
+            JOIN eco_assistant.object_name_synonym ons ON onsl.synonym_id = ons.id
+            WHERE o.id = %s AND ons.language = 'ru'
+            ORDER BY priority, ons.id
+        """
+        rows = self.client.fetchall(sql, (object_id,))
+        
+        if not rows:
+            return []
+        
+        # Убираем дубликаты, сохраняя порядок
+        seen = set()
+        unique_names = []
+        for row in rows:
+            name = row[0].lower().strip()
+            if name not in seen:
+                seen.add(name)
+                unique_names.append(name)
+        
+        return unique_names
+
+    def _find_matching_geometry(self, names: List[str], geometries: List[Tuple[str, Dict, str]]) -> Optional[Tuple[str, Dict, str]]:
+        """Ищет геометрию по любому из переданных названий.
+        
+        Args:
+            names: Список названий для поиска (уже в нижнем регистре)
+            geometries: Список кортежей (key, geometry, geometry_type) из geodb
+        
+        Returns:
+            Первый найденный кортеж (key, geometry, geometry_type) или None
+        """
+        for name in names:
+            name_lower = name.lower().strip()
+            if len(name_lower) < 2:  # Пропускаем слишком короткие названия
+                continue
+                
+            for key, geometry, geom_type in geometries:
+                if key.lower() == name_lower:
+                    self._logger.debug(f"Found geometry for name '{name}' (key: {key})")
+                    return (key, geometry, geom_type)
+        
+        return None
+
     def _find_geo_objects_without_geometry(self) -> List[Dict[str, Any]]:
         sql = """
             SELECT DISTINCT o.id, o.db_id, o.object_properties
@@ -399,33 +483,6 @@ class ImportResourcesUseCase:
         """
         rows = self.client.fetchall(sql)
         return [{'id': row[0], 'db_id': row[1], 'properties': row[2]} for row in rows]
-
-    def _get_object_primary_name(self, object_id: int) -> Optional[str]:
-        sql = """
-            SELECT ons.synonym
-            FROM eco_assistant.object_name_synonym ons
-            JOIN eco_assistant.object_name_synonym_link onsl ON ons.id = onsl.synonym_id
-            WHERE onsl.object_id = %s
-            ORDER BY CASE 
-                WHEN ons.language = 'ru' AND ons.synonym = (
-                    SELECT o.object_properties->>'primary_name' 
-                    FROM eco_assistant.object o WHERE o.id = %s
-                ) THEN 1
-                WHEN ons.language = 'ru' THEN 2
-                ELSE 3
-            END
-            LIMIT 1
-        """
-        row = self.client.fetchone(sql, (object_id, object_id))
-        return row[0] if row else None
-    
-    def _find_matching_geometry(self, obj_name: str, geometries: List[Tuple[str, Dict, str]]) -> Optional[Tuple[str, Dict, str]]:
-        obj_name_lower = obj_name.lower().strip()
-        for key, geometry, geom_type in geometries:
-            key_lower = key.lower()
-            if key_lower == obj_name_lower:
-                return (key, geometry, geom_type)
-        return None
     
     def _create_geometry_resource(
     self, object_id: int, obj_name: str, geometry_data: Tuple[str, Dict, str]
