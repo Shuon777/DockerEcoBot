@@ -10,12 +10,12 @@ router = APIRouter()
 
 
 @router.post("/classify")
-async def classify_query(data: dict = Body(...)):
+async def classify_query(request: Request, data: dict = Body(...)):
     query = data.get("query", "").strip()
     if not query:
         raise HTTPException(status_code=400, detail="query required")
     provider = os.getenv("LLM_PROVIDER", "qwen")
-    classifier = SlotClassifier(provider=provider)
+    classifier = SlotClassifier(provider=provider, valid_features=request.app.state.valid_features)
     return await classifier.classify(query)
 
 
@@ -25,7 +25,7 @@ async def search_pipeline(request: Request, data: dict = Body(...)):
     if not query:
         raise HTTPException(status_code=400, detail="query required")
     provider = os.getenv("LLM_PROVIDER", "qwen")
-    classifier = SlotClassifier(provider=provider)
+    classifier = SlotClassifier(provider=provider, valid_features=request.app.state.valid_features)
     slots = await classifier.classify(query)
     executor = SlotSearchExecutor(session=request.app.state.session)
     return await executor.execute(query, slots)

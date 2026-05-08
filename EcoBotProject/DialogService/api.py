@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from adapters.http.routes.dialogue import router as dialogue_router
 from adapters.http.routes.search import router as search_router
 from adapters.http.routes.config import router as config_router
+from infrastructure.db_feature_loader import load_valid_features
 
 logging.basicConfig(
     level=logging.INFO,
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     app.state.session = aiohttp.ClientSession()
+    app.state.valid_features = await load_valid_features()
     logger.info("Core API: сессия открыта.")
     yield
     await app.state.session.close()

@@ -63,3 +63,4 @@ zstandard==0.25.0
 fastapi==0.110.0
 uvicorn==0.27.1
 python-multipart==0.0.9
+asyncpg==0.30.0

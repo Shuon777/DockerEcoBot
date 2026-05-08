@@ -85,11 +85,16 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=eco
+      - DB_USER=postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - backend
+      - db
     networks: [ecobot_net]
 
   telegram:

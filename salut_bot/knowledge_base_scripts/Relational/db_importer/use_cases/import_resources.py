@@ -6,7 +6,7 @@ import logging
 import hashlib
 import json
 from pathlib import Path
-from knowledge_base_scripts.Relational.db_importer.adapters.database_client import DatabaseClient
+from ..adapters.database_client import DatabaseClient
 
 from ..domain.entities import (
     Modality,

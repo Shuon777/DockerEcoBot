@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Optional, Dict, Any, Literal
+from typing import Optional, Dict, Any, Literal, Set
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from infrastructure.llm.factory import LLMFactory
 
@@ -46,7 +46,7 @@ null — если пользователь ищет класс объектов 
 • "Геоданные"   — маркеры: "на карте", "где растёт", "где обитает", "ареал", "рядом с", "около", "поблизости"
 
 ═══ СЛОТ 4: features (словарь, {{}} если нет) ═══
-Все ключи features — ТОЛЬКО при modality="Изображение".
+Все ключи features — ТОЛЬКО при modality="Изображение" и их фактическом упоминании.
 
 РАЗГРАНИЧЕНИЕ "Среда обитания" vs "Детальное расположение":
 • "на побережье", "в горах", "в лесу" → features["Среда обитания"] (тип среды, НЕ топоним)
@@ -176,7 +176,7 @@ def _detect_ambiguity(query: str, modality: str) -> bool:
     return False
 
 
-def _post_process_slots(query: str, slots: dict) -> dict:
+def _post_process_slots(query: str, slots: dict, valid_features: Optional[Dict[str, Set[str]]] = None) -> dict:
     """
     Детерминированные поправки к выводу LLM:
     1. Определение Услуги по ключевым маркерам запроса
@@ -184,6 +184,7 @@ def _post_process_slots(query: str, slots: dict) -> dict:
     3. Очистка Расположение относительно Байкала когда "байкал" часть синонима
     4. Fallback Расположение относительно Байкала при явном слове "Байкал"
     5. Нормализация топонима: features.location / features["Детальное расположение"] → properties["Детальное расположение"]
+    6. Фильтрация галлюцинированных features по допустимому списку из БД
     """
     q_lower = query.lower()
     props = dict(slots.get("properties") or {})
@@ -232,6 +233,15 @@ def _post_process_slots(query: str, slots: dict) -> dict:
         props["Детальное расположение"] = props.pop("location")
     elif "location" in props:
         props.pop("location")
+
+    # ── 6. Фильтрация features по допустимому списку из resource_feature ──────
+    # Если valid_features загружены из БД — оставляем только те признаки,
+    # которые реально существуют для данной модальности в resource.features.
+    # Это устраняет галлюцинации ЛЛМ типа {"Среда обитания": "Горы"} при Геоданных.
+    if valid_features is not None:
+        modality = slots.get("modality", "Текст")
+        allowed: Set[str] = valid_features.get(modality, set())
+        features = {k: v for k, v in features.items() if k.lower() in allowed}
 
     slots["properties"] = props
     slots["features"] = features
@@ -329,9 +339,10 @@ def _determine_template(slots: dict) -> Optional[str]:
 
 
 class SlotClassifier:
-    def __init__(self, provider: str = "qwen"):
+    def __init__(self, provider: str = "qwen", valid_features: Optional[Dict[str, Set[str]]] = None):
         llm = LLMFactory.get_model(provider)
         self.parser = llm.with_structured_output(SlotResult, method="json_mode")
+        self._valid_features = valid_features
 
     async def classify(self, query: str) -> dict:
         prompt = CLASSIFICATION_PROMPT.format(query=query)
@@ -339,7 +350,7 @@ class SlotClassifier:
         try:
             result: SlotResult = await self.parser.ainvoke(prompt)
             slots = result.model_dump()
-            slots = _post_process_slots(query, slots)
+            slots = _post_process_slots(query, slots, self._valid_features)
             slots["template"] = _determine_template(slots)
             slots["modality_ambiguous"] = _detect_ambiguity(query, slots["modality"])
             logger.info(f"🔍 Classification result: {slots}")
