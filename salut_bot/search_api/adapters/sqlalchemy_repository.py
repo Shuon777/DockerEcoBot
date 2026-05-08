@@ -3,8 +3,8 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 import json
 from sqlalchemy.orm import joinedload
-from sqlalchemy import text, func
 from sqlalchemy.dialects import postgresql
+from sqlalchemy import func, cast, text, String
 from ..domain.entities import ObjectResult, ResourceResult, ObjectCriteria, ResourceCriteria
 from .search_repository import SearchRepository
 from ..infrastructure.orm.object_models import Object, ObjectNameSynonym, ObjectType
@@ -16,6 +16,21 @@ logger = logging.getLogger(__name__)
 class SQLAlchemySearchRepository(SearchRepository):
     def __init__(self, session_factory):
         self._session_factory = session_factory
+
+
+    def _apply_exact_location_filter(self, query, value: str, key: str = 'exact_location'):
+        if not value or not isinstance(value, str):
+            return query
+        
+        json_field = Object.object_properties[key]
+        pattern = r'\y' + re.escape(value).replace(r'\ ', '[ -]?').replace('-', '[ -]?') + r'\y'
+        
+        regex_condition = func.regexp_matches(
+            func.cast(json_field.as_string(), String),
+            pattern, 'i'
+        )
+        
+        return query.filter(regex_condition.is_not(None))
 
     def find_objects_by_criteria(self, criteria: ObjectCriteria, limit: int = 20, offset: int = 0) -> List[ObjectResult]:
         if not criteria.db_id and not criteria.name_synonyms and not criteria.properties and not criteria.object_type:
@@ -44,6 +59,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                             func.lower(Object.db_id) == name.lower()
                         )
                     query = query.filter(or_(*conditions))
+            
             if criteria.properties:
                 for key, value in criteria.properties.items():
                     if key == 'subtypes' or key == 'Подтип объекта':
@@ -52,6 +68,21 @@ class SQLAlchemySearchRepository(SearchRepository):
                         elif isinstance(value, list):
                             for item in value:
                                 query = query.filter(Object.object_properties[key].op('?')(item))
+                    elif key == 'exact_location' or key == 'Детальное расположение':
+                        if isinstance(value, str):
+                            pattern = r'\y' + re.escape(value).replace(r'\ ', '[ -]?').replace('-', '[ -]?') + r'\y'
+                            query = query.filter(
+                                func.cast(Object.object_properties[key].as_string(), String).op('~*')(pattern)
+                            )
+                        elif isinstance(value, list):
+                            from sqlalchemy import or_
+                            conditions = []
+                            for item in value:
+                                pattern = r'\y' + re.escape(item).replace(r'\ ', '[ -]?').replace('-', '[ -]?') + r'\y'
+                                conditions.append(
+                                    func.cast(Object.object_properties[key].as_string(), String).op('~*')(pattern)
+                                )
+                            query = query.filter(or_(*conditions))
                     else:
                         if isinstance(value, str):
                             query = query.filter(Object.object_properties[key].as_string().ilike(f"%{value}%"))
@@ -64,7 +95,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                             query = query.filter(Object.object_properties[key].as_float() == value)
                         else:
                             query = query.filter(Object.object_properties[key].as_string().ilike(f"%{str(value)}%"))
-            
+                                
             query = query.limit(limit).offset(offset)
             compiled = query.statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
             logger.info(f"Executing query: {compiled}")
@@ -79,7 +110,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                     synonyms=[s.synonym for s in obj.synonyms]
                 ) for obj in objects
             ]
-            
+                          
     def find_resources_by_criteria(self, criteria: ResourceCriteria, object_ids: Optional[List[int]] = None, limit: int = 50, offset: int = 0) -> List[ResourceResult]:
         session = self._session_factory()
         with session:

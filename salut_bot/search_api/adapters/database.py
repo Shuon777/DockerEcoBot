@@ -30,11 +30,7 @@ class PostgresSearchRepository(SearchRepository):
     def find_objects_by_criteria(self, criteria: ObjectCriteria, limit: int = 20, offset: int = 0) -> List[ObjectResult]:
         logger = logging.getLogger(__name__)
         
-        logger.info(f"find_objects_by_criteria START")
-        logger.info(f"criteria.properties: {criteria.properties}")
-        
         if not criteria.db_id and not criteria.name_synonyms and not criteria.properties and not criteria.object_type:
-            logger.info("No criteria provided, returning empty list")
             return []
         
         with self._get_conn() as conn:
@@ -71,9 +67,19 @@ class PostgresSearchRepository(SearchRepository):
                 
                 if criteria.properties:
                     for key, value in criteria.properties.items():
-                        logger.info(f"Processing {key} = {value}")
-                        
-                        if isinstance(value, str):
+                        if key == 'exact_location' or key == 'Детальное расположение':
+                            if isinstance(value, str):
+                                pattern = r'\y' + value.replace(' ', r'[ -]?').replace('-', r'[ -]?') + r'\y'
+                                sql += f" AND o.object_properties->>'exact_location' ~* %s"
+                                params.append(pattern)
+                            elif isinstance(value, list):
+                                conditions = []
+                                for item in value:
+                                    pattern = r'\y' + item.replace(' ', r'[ -]?').replace('-', r'[ -]?') + r'\y'
+                                    conditions.append(f"o.object_properties->>'exact_location' ~* %s")
+                                    params.append(pattern)
+                                sql += f" AND ({' OR '.join(conditions)})"
+                        elif isinstance(value, str):
                             sql += f" AND o.object_properties->'{key}' @> '\"{value}\"'::jsonb"
                         elif isinstance(value, list):
                             for item in value:
@@ -88,13 +94,8 @@ class PostgresSearchRepository(SearchRepository):
                 sql += " GROUP BY o.id, ot.name"
                 sql += f" LIMIT {limit} OFFSET {offset}"
                 
-                logger.info(f"SQL: {sql}")
-                logger.info(f"Params: {params}")
-                
                 cur.execute(sql, params)
                 rows = cur.fetchall()
-                
-                logger.info(f"Found {len(rows)} rows")
                 
                 return [
                     ObjectResult(
