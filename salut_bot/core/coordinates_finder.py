@@ -5,20 +5,15 @@ from urllib.parse import quote
 from typing import Tuple, List, Dict, Any
 
 import requests
-import geopandas as gpd
-import matplotlib
-import matplotlib.pyplot as plt
-import contextily as ctx
 import folium
 import pyproj
+from staticmap import StaticMap, CircleMarker, Polygon as StaticMapPolygon, Line
 from shapely.geometry import shape, Point, GeometryCollection, mapping
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform
 
 from infrastructure.geo_db_store import get_place, add_place
 from infrastructure.maps_store import set_map_links
-
-matplotlib.use('Agg')
 
 
 class GeoProcessor:
@@ -27,17 +22,22 @@ class GeoProcessor:
         self.domain = domain
         os.makedirs(self.maps_dir, exist_ok=True)
 
-    def add_basemap(self, ax: matplotlib.axes.Axes) -> None:
-        for source in [
-            ctx.providers.Esri.WorldImagery,
-            ctx.providers.CartoDB.Positron,
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}",
-        ]:
-            try:
-                ctx.add_basemap(ax, source=source)
-                return
-            except Exception:
-                continue
+    def _add_geom_to_static(self, m: StaticMap, geom: BaseGeometry) -> None:
+        gt = geom.geom_type
+        if gt == 'Point':
+            m.add_marker(CircleMarker((geom.x, geom.y), '#E53935', 14))
+        elif gt == 'LineString':
+            m.add_line(Line(list(geom.coords), '#1565C0', 3))
+        elif gt == 'Polygon':
+            m.add_polygon(StaticMapPolygon(
+                list(geom.exterior.coords),
+                (26, 115, 232, 70),
+                '#1565C0',
+                2
+            ))
+        elif gt in ('MultiPolygon', 'MultiLineString', 'MultiPoint', 'GeometryCollection'):
+            for sub in geom.geoms:
+                self._add_geom_to_static(m, sub)
 
     def buffer_km(self, geom: BaseGeometry, buffer_km: float) -> BaseGeometry:
         proj_wgs84 = pyproj.CRS('EPSG:4326')
@@ -51,17 +51,31 @@ class GeoProcessor:
     def generate_folium_map(self, geometry: BaseGeometry, place_name: str) -> str:
         if geometry.geom_type == "Point":
             lat, lon = geometry.y, geometry.x
-            m = folium.Map(location=[lat, lon], zoom_start=10, tiles='CartoDB positron', attributionControl=False)
-            folium.Marker([lat, lon], popup=place_name).add_to(m)
+            m = folium.Map(location=[lat, lon], zoom_start=12, tiles='CartoDB Voyager', attributionControl=False)
+            folium.CircleMarker(
+                location=[lat, lon],
+                radius=10,
+                color='#E53935',
+                fill=True,
+                fill_color='#E53935',
+                fill_opacity=0.8,
+                popup=folium.Popup(place_name, max_width=300)
+            ).add_to(m)
         else:
             bounds = geometry.bounds
             center_lat = (bounds[1] + bounds[3]) / 2
             center_lon = (bounds[0] + bounds[2]) / 2
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=9, tiles='OpenStreetMap', attributionControl=False)
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=9, tiles='CartoDB Voyager', attributionControl=False)
             folium.GeoJson(
                 geometry.__geo_interface__,
                 name=place_name,
-                tooltip=place_name  
+                style_function=lambda x: {
+                    'fillColor': '#1a73e8',
+                    'color': '#0d47a1',
+                    'weight': 2,
+                    'fillOpacity': 0.3,
+                },
+                tooltip=place_name
             ).add_to(m)
 
         filename_html = f"webapp_{place_name}.html"
@@ -109,106 +123,24 @@ class GeoProcessor:
             # Если все геометрии вне региона, всё равно показываем их
             filtered_geometries = geometries
         
-        # Строим GeoDataFrame
-        gdf = gpd.GeoDataFrame(
-            [{"geometry": g} for g in filtered_geometries], 
-            crs="EPSG:4326"
-        ).to_crs(epsg=3857)
-        
-        # Отрисовка с улучшенным качеством
-        fig, ax = plt.subplots(figsize=(10, 10), dpi=500)  # Увеличили размер и DPI
-        
-        # Определяем стили для разных типов геометрий
-        for idx, row in gdf.iterrows():
-            geom = row.geometry
-            
-            # Увеличиваем минимальные размеры для видимости
-            if geom.geom_type == "Point":
-                # Для точек используем маркеры большего размера с прозрачностью
-                gdf_point = gpd.GeoDataFrame([row], crs=gdf.crs)
-                gdf_point.plot(
-                    ax=ax, 
-                    marker='o', 
-                    markersize=80,  # Умеренный размер
-                    color='red', 
-                    edgecolor='darkred',
-                    linewidth=1.5,
-                    alpha=0.7,  # Прозрачность для красных точек
-                    zorder=10  # Точки поверх полигонов
-                )
-            elif geom.geom_type in ["Polygon", "MultiPolygon"]:
-                # Для полигонов с прозрачной заливкой и четкими границами
-                gdf_poly = gpd.GeoDataFrame([row], crs=gdf.crs)
-                area = geom.area
-                # Увеличиваем минимальную толщину линии для маленьких полигонов
-                linewidth = max(2.0, 3.0 - (area / 1e10))  # Динамическая толщина
-                gdf_poly.plot(
-                    ax=ax, 
-                    facecolor='white', 
-                    edgecolor='darkblue',
-                    linewidth=linewidth,
-                    alpha=0.5,
-                    zorder=5
-                )
-            else:
-                # Для линий и других геометрий
-                gdf_line = gpd.GeoDataFrame([row], crs=gdf.crs)
-                gdf_line.plot(
-                    ax=ax, 
-                    color='green', 
-                    linewidth=3,
-                    alpha=0.8,
-                    zorder=7
-                )
-        
-        # Автомасштабирование с учетом всех геометрий
-        if len(filtered_geometries) > 0:
-            # Получаем общие границы
-            all_bounds = gdf.total_bounds
-            
-            # Если есть и точки и полигоны - добавляем дополнительный буфер для точек
-            has_points = any(g.geom_type == "Point" for g in filtered_geometries)
-            has_polygons = any(g.geom_type in ["Polygon", "MultiPolygon"] for g in filtered_geometries)
-            
-            if has_points and has_polygons:
-                # Увеличиваем буфер для лучшей видимости точек
-                buffer = max(5000, (all_bounds[2] - all_bounds[0]) * 0.3)  # 30% от ширины
-            else:
-                buffer = max(3000, (all_bounds[2] - all_bounds[0]) * 0.1)  # 10% от ширины
-            
-            ax.set_xlim(all_bounds[0] - buffer, all_bounds[2] + buffer)
-            ax.set_ylim(all_bounds[1] - buffer, all_bounds[3] + buffer)
-        
-        # Добавляем базовую карту
+        # Staticmap: CartoDB Voyager Retina (@2x, 512px тайлы) — быстро и чётко
+        m_static = StaticMap(
+            1024, 768,
+            url_template='https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+            tile_size=512
+        )
+        for geom in filtered_geometries:
+            self._add_geom_to_static(m_static, geom)
+
         try:
-            self.add_basemap(ax)
+            image = m_static.render()
         except Exception:
-            pass
-        
-        # Отключаем оси (как было изначально)
-        ax.axis('off')
-        
-        # Сохранение карты с улучшенными настройками
-        filename = f"{place_name}.jpeg"
+            image = m_static.render(zoom=12)
+
+        filename = f"{place_name}.png"
         image_path = os.path.join(self.maps_dir, filename)
-        
-        try:
-            with open(image_path, 'wb') as f:
-                plt.savefig(
-                    f,
-                    format='jpeg',
-                    dpi=500,  # Увеличили DPI для лучшего качества
-                    bbox_inches='tight',
-                    edgecolor='none',
-                    pad_inches=0,
-                    transparent=False
-                )
-                f.flush()
-                os.fsync(f.fileno())
-        finally:
-            plt.close(fig)
-        
-        # Генерация интерактивной карты
+        image.save(image_path, format='PNG', optimize=True)
+
         static_map_url = f"{self.domain}/maps/{filename}"
         web_app_url = self.generate_folium_map(geometry, place_name)
         
@@ -396,17 +328,19 @@ class GeoProcessor:
 
         # --- Создание интерактивной карты Folium ---
         centroid = combined_static.centroid
-        m = folium.Map(location=[centroid.y, centroid.x], zoom_start=9, tiles="OpenStreetMap", attributionControl=False)
+        m = folium.Map(location=[centroid.y, centroid.x], zoom_start=9, tiles='CartoDB Voyager', attributionControl=False)
 
-        # Добавляем геометрии с кастомными tooltip и popup
         for geom, tooltip_text, popup_html in zip(geometries, tooltips, popups):
-            # Folium.Popup позволяет рендерить HTML
-            popup = folium.Popup(popup_html, max_width=400)
-
             folium.GeoJson(
                 mapping(geom),
-                tooltip=tooltip_text, # Текст при наведении
-                popup=popup           # Окно с HTML при клике
+                tooltip=tooltip_text,
+                popup=folium.Popup(popup_html, max_width=400),
+                style_function=lambda x: {
+                    'fillColor': '#1a73e8',
+                    'color': '#0d47a1',
+                    'weight': 2,
+                    'fillOpacity': 0.3,
+                }
             ).add_to(m)
 
         filename_html = f"webapp_{name}.html"
@@ -443,12 +377,18 @@ class GeoProcessor:
         static_map, _ = self.draw_geometry(combined, name)
 
         centroid = combined.centroid
-        m = folium.Map(location=[centroid.y, centroid.x], zoom_start=9, tiles="OpenStreetMap", attributionControl=False)
+        m = folium.Map(location=[centroid.y, centroid.x], zoom_start=9, tiles='CartoDB Voyager', attributionControl=False)
 
         for geom, title in zip(geometries, names):
             folium.GeoJson(
                 mapping(geom),
-                tooltip=title
+                tooltip=title,
+                style_function=lambda x: {
+                    'fillColor': '#1a73e8',
+                    'color': '#0d47a1',
+                    'weight': 2,
+                    'fillOpacity': 0.3,
+                }
             ).add_to(m)
 
         filename_html = f"webapp_{name}.html"

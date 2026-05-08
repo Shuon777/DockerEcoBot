@@ -5,9 +5,7 @@ import logging
 from typing import Dict, Any, List, Tuple
 
 import folium
-import geopandas as gpd
-import matplotlib.pyplot as plt
-import contextily as ctx
+from staticmap import StaticMap, CircleMarker, Polygon as StaticMapPolygon, Line
 from shapely.geometry import shape, GeometryCollection, mapping
 from shapely.geometry.base import BaseGeometry
 from ..domain.value_objects import GeoContent, MapLinks
@@ -20,7 +18,6 @@ class GeoMapService:
         self.maps_dir = maps_dir
         self.domain = domain
         os.makedirs(maps_dir, exist_ok=True)
-        ctx.user_agent = "YourAppName/1.0 (your-email@example.com)"
 
     def generate_static_map(self, geojson: Dict[str, Any], name: str) -> str:
         start = time.time()
@@ -43,6 +40,23 @@ class GeoMapService:
             map_links=MapLinks(static=static_url, interactive=interactive_url)
         )
 
+    def _add_geom_to_static(self, m: StaticMap, geom: BaseGeometry) -> None:
+        gt = geom.geom_type
+        if gt == 'Point':
+            m.add_marker(CircleMarker((geom.x, geom.y), '#E53935', 14))
+        elif gt == 'LineString':
+            m.add_line(Line(list(geom.coords), '#1565C0', 3))
+        elif gt == 'Polygon':
+            m.add_polygon(StaticMapPolygon(
+                list(geom.exterior.coords),
+                (26, 115, 232, 70),
+                '#1565C0',
+                2
+            ))
+        elif gt in ('MultiPolygon', 'MultiLineString', 'MultiPoint', 'GeometryCollection'):
+            for sub in geom.geoms:
+                self._add_geom_to_static(m, sub)
+
     def _draw_geometry(self, geometry: BaseGeometry, name: str) -> Tuple[str, str]:
         draw_start = time.time()
         if isinstance(geometry, GeometryCollection):
@@ -50,52 +64,26 @@ class GeoMapService:
         else:
             geometries = [geometry]
 
-        gdf = gpd.GeoDataFrame([{"geometry": g} for g in geometries], crs="EPSG:4326").to_crs(epsg=3857)
-        fig, ax = plt.subplots(figsize=(10, 10), dpi=500)
+        m_static = StaticMap(
+            1024, 768,
+            url_template='https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+            tile_size=512
+        )
+        for geom in geometries:
+            self._add_geom_to_static(m_static, geom)
 
-        for idx, row in gdf.iterrows():
-            geom = row.geometry
-            if geom.geom_type == "Point":
-                gpd.GeoDataFrame([row], crs=gdf.crs).plot(
-                    ax=ax, marker='o', markersize=80, color='red',
-                    edgecolor='darkred', linewidth=1.5, alpha=0.7, zorder=10
-                )
-            else:
-                gpd.GeoDataFrame([row], crs=gdf.crs).plot(
-                    ax=ax, facecolor='white', edgecolor='darkblue',
-                    linewidth=2, alpha=0.5, zorder=5
-                )
+        try:
+            image = m_static.render()
+        except Exception:
+            image = m_static.render(zoom=12)
 
-        if geometries:
-            bounds = gdf.total_bounds
-            buffer = max(3000, (bounds[2] - bounds[0]) * 0.1)
-            ax.set_xlim(bounds[0] - buffer, bounds[2] + buffer)
-            ax.set_ylim(bounds[1] - buffer, bounds[3] + buffer)
-
-        self._add_basemap(ax)
-        ax.axis('off')
-
-        filename = f"{name}.jpeg"
+        filename = f"{name}.png"
         filepath = os.path.join(self.maps_dir, filename)
-        plt.savefig(filepath, format='jpeg', dpi=500, bbox_inches='tight', pad_inches=0)
-        plt.close(fig)
+        image.save(filepath, format='PNG', optimize=True)
 
         elapsed = time.time() - draw_start
         logger.info(f"_draw_geometry (static) '{name}' took {elapsed:.4f}s")
         return f"{self.domain}/maps/{filename}", None
-
-    def _add_basemap(self, ax: plt.Axes) -> None:
-        for source in [
-            ctx.providers.Esri.WorldImagery,
-            ctx.providers.CartoDB.Positron,
-            "https://server.arcgisonline.com/ArcGIS/rest/services/World_Physical_Map/MapServer/tile/{z}/{y}/{x}",
-            ctx.providers.OpenStreetMap.Mapnik,
-        ]:
-            try:
-                ctx.add_basemap(ax, source=source)
-                return
-            except Exception:
-                continue
 
     def generate_interactive_map(self, geojson: Dict[str, Any], name: str) -> str:
         start = time.time()
@@ -105,16 +93,20 @@ class GeoMapService:
         m = folium.Map(
             location=[centroid.y, centroid.x],
             zoom_start=9,
-            tiles='OpenStreetMap',
-            attributionControl=True,
-            tiles_kwds={
-                'headers': {
-                    'Referer': self.domain,
-                    'User-Agent': 'YourAppName/1.0'
-                }
-            }
+            tiles='CartoDB Voyager',
+            attributionControl=False,
         )
-        folium.GeoJson(mapping(geom), tooltip=name, name=name).add_to(m)
+        folium.GeoJson(
+            mapping(geom),
+            tooltip=name,
+            name=name,
+            style_function=lambda x: {
+                'fillColor': '#1a73e8',
+                'color': '#0d47a1',
+                'weight': 2,
+                'fillOpacity': 0.3,
+            }
+        ).add_to(m)
 
         filename = f"webapp_{name}.html"
         filepath = os.path.join(self.maps_dir, filename)
@@ -155,7 +147,7 @@ class GeoMapService:
         m = folium.Map(
             location=[centroid.y, centroid.x],
             zoom_start=9,
-            tiles='OpenStreetMap',
+            tiles='CartoDB Voyager',
             attributionControl=False
         )
 
@@ -163,7 +155,13 @@ class GeoMapService:
             folium.GeoJson(
                 mapping(geom),
                 tooltip=tooltip_text,
-                popup=folium.Popup(popup_html, max_width=400)
+                popup=folium.Popup(popup_html, max_width=400),
+                style_function=lambda x: {
+                    'fillColor': '#1a73e8',
+                    'color': '#0d47a1',
+                    'weight': 2,
+                    'fillOpacity': 0.3,
+                }
             ).add_to(m)
 
         filename_html = f"webapp_{name}.html"
