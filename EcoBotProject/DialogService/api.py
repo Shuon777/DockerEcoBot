@@ -3,7 +3,6 @@ import aiohttp
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-from adapters.http.routes.dialogue import router as dialogue_router
 from adapters.http.routes.search import router as search_router
 from adapters.http.routes.config import router as config_router
 from infrastructure.db_feature_loader import load_valid_features
@@ -26,7 +25,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="EcoBot Core API", lifespan=lifespan)
-app.include_router(dialogue_router)
 app.include_router(search_router)
 app.include_router(config_router)
 

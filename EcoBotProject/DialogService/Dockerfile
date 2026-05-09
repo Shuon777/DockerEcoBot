@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Устанавливаем общие зависимости
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 
 # Копируем весь код подмодуля
 COPY . .
