@@ -139,7 +139,8 @@ class PlaceSearchUseCase:
                 }
             },
             features=None,
-            resource_type="Динамически вычисляемый"
+            resource_type="Динамически вычисляемый",
+            external_id=None
         )
 
         total_time = time.time() - total_start

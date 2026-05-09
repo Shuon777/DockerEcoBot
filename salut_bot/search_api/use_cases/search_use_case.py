@@ -92,17 +92,19 @@ class SearchUseCase:
                         'similarity': doc.get('similarity', 0)
                     }
                 }
-                vector_resources.append(ResourceResult(
-                    id=-idx - 1,
-                    title=doc.get('object_name', 'Результат векторного поиска'),
-                    uri=None,
-                    author=None,
-                    source='векторный поиск',
-                    modality_type='Текст',
-                    content=content_obj,
-                    features={'similarity': doc.get('similarity', 0), 'search_type': 'vector'},
-                    resource_type="Статический"
-                ))
+                
+            vector_resources.append(ResourceResult(
+                id=-idx - 1,
+                title=doc.get('object_name', 'Результат векторного поиска'),
+                uri=None,
+                author=None,
+                source='векторный поиск',
+                modality_type='Текст',
+                content=content_obj,
+                features={'similarity': doc.get('similarity', 0), 'search_type': 'vector'},
+                resource_type="Статический",
+                external_id=None
+            ))
             resources = vector_resources[:request.limit]
             debug['vector_search_used'] = True
             debug['vector_results_count'] = len(vector_docs)

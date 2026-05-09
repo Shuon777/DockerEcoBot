@@ -101,7 +101,6 @@ class ResponseBuilder:
             resource_type="Динамически вычисляемый"
         )
 
-    # ---- Методы сериализации (без изменений) ----
     def _serialize_resources(self, resources: List[ResourceResult], objects: List[ObjectResult]) -> List[Dict[str, Any]]:
         serialized = []
         for r in resources:
@@ -114,6 +113,7 @@ class ResponseBuilder:
                 'modality_type': r.modality_type,
                 'features': r.features,
                 'resource_type': r.resource_type,
+                'external_id': r.external_id,
             }
             if r.modality_type == ModalityType.GEODATA.value:
                 if isinstance(r.content, dict) and 'map_links' in r.content:
@@ -133,16 +133,6 @@ class ResponseBuilder:
                 item['content'] = r.content
             serialized.append(item)
         return serialized
-
-    def _serialize_object_criteria(self, criteria) -> Optional[Dict[str, Any]]:
-        if not criteria:
-            return None
-        return {
-            'db_id': criteria.db_id,
-            'name_synonyms': criteria.name_synonyms,
-            'properties': criteria.properties,
-            'object_type': criteria.object_type,
-        }
 
     def _serialize_resource_criteria(self, criteria) -> Optional[Dict[str, Any]]:
         if not criteria:

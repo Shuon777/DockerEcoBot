@@ -1,7 +1,5 @@
-# search_api/domain/entities.py
 from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
-
 
 @dataclass
 class ObjectCriteria:
@@ -17,7 +15,6 @@ class ObjectCriteria:
             'properties': self.properties,
             'object_type': self.object_type,
         }
-
 
 @dataclass
 class ResourceCriteria:
@@ -42,7 +39,6 @@ class ResourceCriteria:
             'taxonomy': self.taxonomy,
         }
 
-
 @dataclass
 class SearchRequest:
     object: Optional[ObjectCriteria] = None
@@ -56,7 +52,6 @@ class SearchRequest:
     user_query: Optional[str] = None
     clean_user_query: Optional[str] = None
 
-
 @dataclass
 class ObjectResult:
     id: int
@@ -64,7 +59,6 @@ class ObjectResult:
     object_type: str
     properties: Dict[str, Any]
     synonyms: List[str]
-
 
 @dataclass
 class ResourceResult:
@@ -77,7 +71,7 @@ class ResourceResult:
     content: Any
     features: Optional[Dict[str, Any]] = None
     resource_type: str = "Статический"
-
+    external_id: Optional[str] = None
 
 @dataclass
 class SearchResponse:

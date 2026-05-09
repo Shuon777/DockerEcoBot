@@ -114,7 +114,11 @@ class SQLAlchemySearchRepository(SearchRepository):
     def find_resources_by_criteria(self, criteria: ResourceCriteria, object_ids: Optional[List[int]] = None, limit: int = 50, offset: int = 0) -> List[ResourceResult]:
         session = self._session_factory()
         with session:
-            query = session.query(Resource).outerjoin(
+            query = session.query(Resource).options(
+                joinedload(Resource.resource_static).joinedload(ResourceStatic.bibliographic).joinedload(Bibliographic.author),
+                joinedload(Resource.resource_static).joinedload(ResourceStatic.bibliographic).joinedload(Bibliographic.source),
+                joinedload(Resource.support_metadata)
+            ).outerjoin(
                 ResourceStatic, Resource.resource_static_id == ResourceStatic.id
             ).outerjoin(
                 Bibliographic, ResourceStatic.bibliographic_id == Bibliographic.id
@@ -133,7 +137,7 @@ class SQLAlchemySearchRepository(SearchRepository):
             ).outerjoin(
                 GeodataValue, (ResourceValue.value_id == GeodataValue.id) & (Modality.modality_type == 'Геоданные')
             )
-            
+
             if object_ids:
                 query = query.filter(Resource.objects.any(Object.id.in_(object_ids)))
             if criteria.title:
@@ -149,12 +153,11 @@ class SQLAlchemySearchRepository(SearchRepository):
             if criteria.features:
                 for key, val in criteria.features.items():
                     query = query.filter(Resource.features[key].as_string() == str(val))
-            
-            # ========== СОРТИРОВКА ПО ДЛИНЕ STRUCTURED_DATA ==========
+
             if criteria.modality_type == "Текст" or criteria.modality_type is None:
-                from sqlalchemy import text
+                from sqlalchemy import text as sql_text
                 query = query.order_by(
-                    text("""
+                    sql_text("""
                         length(
                             COALESCE(text_value.structured_data::text, '')
                         ) DESC NULLS LAST
@@ -162,10 +165,9 @@ class SQLAlchemySearchRepository(SearchRepository):
                 )
             else:
                 query = query.order_by(Resource.id)
-            # =========================================================
-            
+
             resources = query.limit(limit).offset(offset).all()
-            
+
             result = []
             for r in resources:
                 matching_rv = None
@@ -176,7 +178,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                             break
                 if not matching_rv and r.resource_values:
                     matching_rv = r.resource_values[0]
-                
+
                 content = None
                 if matching_rv and matching_rv.modality:
                     mt = matching_rv.modality.modality_type
@@ -192,7 +194,7 @@ class SQLAlchemySearchRepository(SearchRepository):
                             from geoalchemy2.shape import to_shape
                             geom = to_shape(gv.geometry)
                             content = {'geojson': geom.__geo_interface__, 'type': gv.geometry_type}
-                
+
                 author_name = None
                 source_name = None
                 if r.resource_static and r.resource_static.bibliographic:
@@ -200,23 +202,28 @@ class SQLAlchemySearchRepository(SearchRepository):
                         author_name = r.resource_static.bibliographic.author.name
                     if r.resource_static.bibliographic.source:
                         source_name = r.resource_static.bibliographic.source.name
-                
+
                 modality_type = None
                 if matching_rv and matching_rv.modality:
                     modality_type = matching_rv.modality.modality_type
-                
+
+                external_id = None
+                if r.support_metadata and r.support_metadata.parameters:
+                    external_id = r.support_metadata.parameters.get('external_id')
+
                 result.append(ResourceResult(
                     id=r.id, title=r.title, uri=r.uri,
                     author=author_name,
                     source=source_name,
                     modality_type=modality_type,
                     content=content,
-                    features=r.features
+                    features=r.features,
+                    external_id=external_id
                 ))
-            
+
             if criteria.modality_type:
                 result = [r for r in result if r.modality_type == criteria.modality_type]
-            
+
             return result
     
     def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]:
