@@ -2,7 +2,7 @@
 import logging
 import time
 from typing import List, Optional, Dict, Any
-from ..domain.entities import ObjectResult, ResourceResult
+from ..domain.entities import ObjectResult, ResourceResult, ResourceCriteria
 from ..domain.place_entities import PlaceSearchResponse
 from ..adapters.search_repository import SearchRepository
 from ..services.geo_map_service import GeoMapService
@@ -63,28 +63,26 @@ class PlaceSearchUseCase:
         geom_start = time.time()
         geometry = self._repository.find_place_geometry(place_name)
         geom_time = time.time() - geom_start
-        logger.info(f"find_place_geometry took {geom_time:.4f}s")
         if not geometry:
-            logger.info("No geometry found, returning empty")
             return PlaceSearchResponse(objects=[], resources=[], used_geometry={}, total_objects=0)
 
         geom_type = geometry.get('type', 'Point')
         effective_search_type = search_type
         if search_type == "inside" and geom_type not in ('Polygon', 'MultiPolygon'):
-            logger.warning(f"Place '{place_name}' has {geom_type} geometry, changing search_type to 'near'")
             effective_search_type = "near"
 
         objects_search_start = time.time()
-        objects, _ = self._repository.find_objects_with_geometry_by_subtypes(
+        objects, object_ids = self._repository.find_objects_with_geometry_by_subtypes(
             geometry, subtypes, buffer_radius_km, limit, offset, effective_search_type
         )
         objects_search_time = time.time() - objects_search_start
-        logger.info(f"find_objects_with_geometry_by_subtypes took {objects_search_time:.4f}s, found {len(objects)} raw objects")
 
         grouping_start = time.time()
         obj_results = []
         grouped = {}
+        all_object_ids = []
         for obj in objects:
+            all_object_ids.append(obj.id)
             geojson = getattr(obj, '_geometry_geojson', None)
             if not geojson:
                 continue
@@ -117,13 +115,33 @@ class PlaceSearchUseCase:
                     properties=o.object_properties, synonyms=synonyms_list
                 ))
         grouping_time = time.time() - grouping_start
-        logger.info(f"Grouping objects and building map_objects took {grouping_time:.4f}s, {len(map_objects)} unique geometries")
+
+        resources = []
+        if all_object_ids:
+            resources_start = time.time()
+            resource_criteria = ResourceCriteria(modality_type=modality_type)
+            resources = self._repository.find_resources_by_criteria(
+                resource_criteria, all_object_ids, limit=limit, offset=offset
+            )
+            resources_time = time.time() - resources_start
+            logger.info(f"Resources query took {resources_time:.4f}s, found {len(resources)}")
+
+        filtered_resources = []
+        for r in resources:
+            if r.modality_type == "Геоданные":
+                if isinstance(r.content, dict) and 'geojson' in r.content:
+                    content_without_geojson = {
+                        'map_links': r.content.get('map_links', {})
+                    }
+                    if 'geometry_type' in r.content:
+                        content_without_geojson['geometry_type'] = r.content['geometry_type']
+                    r.content = content_without_geojson
+            filtered_resources.append(r)
 
         map_name = f"place_{place_name.replace(' ', '_')}"
         draw_start = time.time()
         map_result = self._geo_service.draw_custom_geometries(map_objects, map_name)
         draw_time = time.time() - draw_start
-        logger.info(f"draw_custom_geometries (static + interactive) took {draw_time:.4f}s")
 
         geo_resource = ResourceResult(
             id=-1,
@@ -143,12 +161,14 @@ class PlaceSearchUseCase:
             external_id=None
         )
 
+        all_resources = [geo_resource] + filtered_resources
+
         total_time = time.time() - total_start
-        logger.info(f"Place search total time: {total_time:.4f}s (geometry: {geom_time:.4f}, objects_search: {objects_search_time:.4f}, grouping: {grouping_time:.4f}, map_draw: {draw_time:.4f})")
+        logger.info(f"Place search total time: {total_time:.4f}s")
 
         return PlaceSearchResponse(
             objects=obj_results,
-            resources=[geo_resource],
+            resources=all_resources,
             used_geometry=geometry,
             total_objects=len(obj_results)
         )
