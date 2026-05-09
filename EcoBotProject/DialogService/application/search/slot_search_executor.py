@@ -8,6 +8,25 @@ from config import API_URLS, STAND_SECRET_KEY
 from utils.stand_manager import is_stand_session_active
 
 _NEAR_RE = re.compile(r"рядом|около|возле|недалеко|поблизости|близ", re.IGNORECASE)
+
+
+def _normalize_map_links(links) -> dict:
+    """Приводит map_links из API к единому формату {"static": url, "interactive": url}."""
+    if isinstance(links, str):
+        return {"static": links, "interactive": None}
+    if isinstance(links, dict):
+        static = (
+            links.get("static")
+            or links.get("static_map")
+            or links.get("static_url")
+        )
+        interactive = (
+            links.get("interactive")
+            or links.get("interactive_map")
+            or links.get("interactive_url")
+        )
+        return {"static": static, "interactive": interactive}
+    return {}
 _MD_IMG_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')           # ![alt](url) → удалить
 _MD_LINK_RE = re.compile(r'\[([^\]]+)\]\([^)]+\)')          # [text](url) → text
 _EXCESS_NL_RE = re.compile(r'\n{3,}')
@@ -99,9 +118,11 @@ class SlotSearchExecutor:
 
         # ── Карта из geo-ресурсов (/search) ──
         for r in geo_res:
-            links = (r.get("content") or {}).get("map_links")
-            if links:
-                result["map"] = links
+            raw_links = (r.get("content") or {}).get("map_links")
+            logger.debug(f"map_links raw: {raw_links!r}")
+            if raw_links:
+                result["map"] = _normalize_map_links(raw_links)
+                logger.info(f"map normalized: {result['map']}")
                 break
 
         # ── Карта из свойств объектов (place-поиск) ──
@@ -114,6 +135,9 @@ class SlotSearchExecutor:
                         "interactive": props.get("interactive_map"),
                     }
                     break
+
+        if "map" not in result:
+            logger.info(f"map: не найдено (geo_res={len(geo_res)}, objects={len(objects)})")
 
         # ── Найденные объекты ──
         if objects:

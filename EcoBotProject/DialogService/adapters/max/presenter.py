@@ -49,10 +49,23 @@ async def render_pipeline_result(
             except Exception as e:
                 logger.error(f"Image send failed: {e}")
 
+    # ── Статическая карта как изображение ────────────────────────────────────
+    static_url = map_data.get("static") if isinstance(map_data, dict) else None
+    if static_url:
+        data = await _fetch_image(session, static_url)
+        if data:
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    attachments=[InputMediaBuffer(buffer=data, filename="map.jpg")],
+                )
+            except Exception as e:
+                logger.error(f"Static map send failed: {e}")
+
     builder = InlineKeyboardBuilder()
     has_buttons = False
 
-    # ── Интерактивная карта ───────────────────────────────────────────────────
+    # ── Интерактивная карта как кнопка ────────────────────────────────────────
     interactive_url = map_data.get("interactive") if isinstance(map_data, dict) else None
     if interactive_url:
         builder.row(LinkButton(text="Открыть интерактивную карту", url=interactive_url))
