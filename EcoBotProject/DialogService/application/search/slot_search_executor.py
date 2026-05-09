@@ -1,12 +1,18 @@
 import os
 import re
+import logging
 import aiohttp
 from typing import Any, Dict, List, Optional
+
+from config import API_URLS, STAND_SECRET_KEY
+from utils.stand_manager import is_stand_session_active
 
 _NEAR_RE = re.compile(r"рядом|около|возле|недалеко|поблизости|близ", re.IGNORECASE)
 _MD_IMG_RE = re.compile(r'!\[[^\]]*\]\([^)]*\)')           # ![alt](url) → удалить
 _MD_LINK_RE = re.compile(r'\[([^\]]+)\]\([^)]+\)')          # [text](url) → text
 _EXCESS_NL_RE = re.compile(r'\n{3,}')
+
+logger = logging.getLogger(__name__)
 
 
 class SlotSearchExecutor:
@@ -19,15 +25,45 @@ class SlotSearchExecutor:
         self._session = session
         self._backend_url = os.getenv("ECOBOT_API_BASE_URL", "http://backend:5555")
 
-    async def execute(self, query: str, slots: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None) -> Dict[str, Any]:
         if self._use_place_endpoint(slots):
             search_body = self._build_place_params(slots, query)
             search_data = await self._call_place(search_body)
         else:
             search_body = self._build_search_params(slots, query)
             search_data = await self._call_search(search_body)
+
+        if user_id and is_stand_session_active(user_id):
+            await self._send_to_stand(search_data)
+
         result = self._format_result(slots, search_data)
         return {"slots": slots, "search_request": search_body, "search": search_data, "result": result}
+
+    async def _send_to_stand(self, search_data: dict) -> None:
+        resources: List[dict] = search_data.get("resources") or []
+        external_ids = [
+            r["external_id"]
+            for r in resources
+            if isinstance(r, dict) and r.get("external_id")
+        ]
+        if not external_ids:
+            return
+        payload = {
+            "items": [{"id": eid} for eid in external_ids],
+            "secret_key": STAND_SECRET_KEY,
+        }
+        try:
+            own_session = self._session is None
+            sess = self._session or aiohttp.ClientSession()
+            try:
+                async with sess.post(API_URLS["stand_endpoint"], json=payload, timeout=5) as resp:
+                    if not resp.ok:
+                        logger.warning(f"Stand error: {resp.status}")
+            finally:
+                if own_session:
+                    await sess.close()
+        except Exception as e:
+            logger.error(f"Stand connection error: {e}")
 
     # ── Форматирование результата ─────────────────────────────────────────────
 

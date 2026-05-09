@@ -59,20 +59,10 @@
 <div class="card shadow-sm mb-3" style="border-radius: 16px;">
     <div class="card-body d-flex align-items-center justify-content-between py-2 px-4 bg-light" style="border-radius: 16px;">
         <div class="d-flex gap-4">
-            <!-- Режим (скрыт — пока работаем только с одним LLM-провайдером) -->
-            <div class="form-check form-switch" style="display:none">
-                <input class="form-check-input" type="checkbox" id="setting-mode" checked>
-                <label class="form-check-label fw-bold" for="setting-mode">GigaChat Mode</label>
-            </div>
             <!-- Debug -->
             <div class="form-check form-switch text-danger">
                 <input class="form-check-input" type="checkbox" id="setting-debug">
                 <label class="form-check-label fw-bold" for="setting-debug">🐞 Debug Mode</label>
-            </div>
-            <!-- Classify -->
-            <div class="form-check form-switch text-success">
-                <input class="form-check-input" type="checkbox" id="setting-classify">
-                <label class="form-check-label fw-bold" for="setting-classify">🔍 Classify Mode</label>
             </div>
         </div>
         <div>
@@ -150,59 +140,20 @@ async function sendMessage(overrideText = null, isCallback = false) {
     const loading = document.getElementById('loading-indicator');
     loading.classList.remove('d-none');
 
-    const classifyMode = document.getElementById('setting-classify').checked;
-
-    if (classifyMode) {
-        try {
-            const response = await fetch('/admin/chat/search', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: text })
-            });
-            const data = await response.json();
-            renderClassification(data.slots || data);
-            if (data.search_request) renderSearchRequest(data.search_request);
-            if (data.search) renderSearchDebug(data.search);
-            if (data.result) await renderResult(data.result);
-            if (data.error) appendMessage('bot', `❌ ${data.error}`);
-        } catch (e) {
-            console.error("Ошибка classify+search:", e);
-            appendMessage('bot', '❌ Ошибка сети или Core API не отвечает.');
-        } finally {
-            loading.classList.add('d-none');
-        }
-        return;
-    }
-
-    const chatSettings = {
-        mode: document.getElementById('setting-mode').checked ? 'gigachat' : 'rasa',
-        debug_mode: document.getElementById('setting-debug').checked,
-        gigachat_fallback: true // Можно тоже вынести в чекбокс
-    };
-
     try {
-        const response = await fetch('/admin/chat/ask', {
+        const response = await fetch('/admin/chat/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                text: text,
-                settings: chatSettings // Шлем настройки
-            })
+            body: JSON.stringify({ text: text })
         });
-
-        const responses = await response.json();
-
-        if (Array.isArray(responses)) {
-            responses.forEach(resp => {
-                try {
-                    renderResponse(resp);
-                } catch (err) {
-                    console.error("Ошибка отрисовки конкретного сообщения:", err);
-                }
-            });
-        }
+        const data = await response.json();
+        renderClassification(data.slots || data);
+        if (data.search_request) renderSearchRequest(data.search_request);
+        if (data.search) renderSearchDebug(data.search);
+        if (data.result) await renderResult(data.result);
+        if (data.error) appendMessage('bot', `❌ ${data.error}`);
     } catch (e) {
-        console.error("Ошибка запроса:", e);
+        console.error("Ошибка:", e);
         appendMessage('bot', '❌ Ошибка сети или Core API не отвечает.');
     } finally {
         loading.classList.add('d-none');

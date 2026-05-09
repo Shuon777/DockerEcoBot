@@ -75,7 +75,7 @@ services:
   #     - rasa-actions
   #   networks: [ecobot_net]
 
-  # ─────────────────────────── TELEGRAM BOT ─────────────────────────────
+  # ─────────────────────────── DIALOG SERVICE ──────────────────────────
 
   core-api:
     build: ./EcoBotProject/DialogService
@@ -97,23 +97,21 @@ services:
       - db
     networks: [ecobot_net]
 
-  telegram:
+  max:
     build: ./EcoBotProject/DialogService
     restart: always
     env_file: ./EcoBotProject/DialogService/.env
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
-    command: python main.py
+    command: python main_max.py
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - redis
       - backend
-      - gigachat
       - core-api
     networks: [ecobot_net]
 

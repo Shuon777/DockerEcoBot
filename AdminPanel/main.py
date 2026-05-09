@@ -17,7 +17,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func, delete, or_, create_engine, insert, text as sql_text
 from sqlalchemy.orm import sessionmaker
-from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 
 from database import get_db
@@ -49,9 +48,7 @@ templates = Jinja2Templates(directory="templates")
 templates.env.filters["tojson"] = lambda value, indent=None, **_: json.dumps(value, ensure_ascii=False, indent=indent)
 hb = BotHeartbeat(host=os.getenv('REDIS_HOST', 'redis'), port=int(os.getenv('REDIS_PORT', 6379)), db=2)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET_KEY', 'super-secret-key-for-admins'))
-BOT_CORE_URL = os.getenv("BOT_CORE_URL")
-parsed_url = urlparse(BOT_CORE_URL)
-CORE_API_BASE = f"{parsed_url.scheme}://{parsed_url.netloc}" # Получится http://localhost:5001
+CORE_API_BASE = os.getenv("CORE_API_BASE", "http://core-api:5001")
 ADMIN_DB_URL = os.getenv('ADMIN_DB_URL')
 admin_engine = create_engine(ADMIN_DB_URL, connect_args={"check_same_thread": False})
 AdminSessionLocal = sessionmaker(bind=admin_engine)
@@ -139,39 +136,6 @@ async def chat_page(request: Request):
     
     bot_online = await hb.is_alive()
     return templates.TemplateResponse("chat.html", {"request": request, "active_page": "chat", "bot_online": bot_online})
-
-@app.post("/chat/ask")
-async def proxy_to_core(request: Request, data: dict = Body(...)):
-    user_id = request.session.get("user_id")
-    if not user_id:
-        return [{"type": "text", "content": "❌ Ошибка: вы не авторизованы"}]
-
-    query = data.get("text")
-    settings = data.get("settings", {}) # Принимаем настройки с фронта
-
-    async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-        try:
-            response = await client.post(
-                BOT_CORE_URL,
-                json={
-                    "query": query,
-                    "user_id": user_id, # Теперь ID уникален для каждого админа
-                    "settings": settings
-                }
-            )
-            import json
-            try:
-                # Пытаемся вывести красиво отформатированный JSON
-                raw_data = response.json()
-                print("\n=== [CORE API RESPONSE START] ===")
-                print(json.dumps(raw_data, indent=2, ensure_ascii=False))
-                print("=== [CORE API RESPONSE END] ===\n")
-            except Exception:
-                # Если это не JSON, выводим просто текст
-                print(f"\n!!! [RAW TEXT RESPONSE]: {response.text}\n")
-            return response.json()
-        except Exception as e:
-            return [{"type": "text", "content": f"❌ Ошибка Core API: {str(e)}"}]
 
 @app.post("/chat/classify")
 async def classify_proxy(request: Request, data: dict = Body(...)):
