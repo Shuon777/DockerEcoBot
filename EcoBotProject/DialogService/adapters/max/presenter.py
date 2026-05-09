@@ -2,7 +2,7 @@ import logging
 import aiohttp
 from maxapi import Bot
 from maxapi.utils.inline_keyboard import InlineKeyboardBuilder
-from maxapi.types.attachments.buttons import LinkButton
+from maxapi.types.attachments.buttons import LinkButton, CallbackButton
 from maxapi.types import InputMediaBuffer
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,11 @@ async def render_pipeline_result(
     total = result.get("total_found")
     place = result.get("place")
 
+    proactive: dict = pipeline_result.get("proactive") or {}
+    modality_ambiguous: bool = pipeline_result.get("modality_ambiguous", False)
+    simplifications: list = pipeline_result.get("simplifications") or []
+    slots: dict = pipeline_result.get("slots") or {}
+
     for url in images[:_MAX_IMAGES]:
         data = await _fetch_image(session, url)
         if data:
@@ -47,14 +52,42 @@ async def render_pipeline_result(
     builder = InlineKeyboardBuilder()
     has_buttons = False
 
+    # ── Интерактивная карта ───────────────────────────────────────────────────
     interactive_url = map_data.get("interactive") if isinstance(map_data, dict) else None
     if interactive_url:
         builder.row(LinkButton(text="Открыть интерактивную карту", url=interactive_url))
         has_buttons = True
 
+    # ── Проактивные предложения ───────────────────────────────────────────────
+    if proactive.get("photo"):
+        builder.row(CallbackButton(text="🖼 Фото", payload=f"photo:{proactive['photo'][:50]}"))
+        has_buttons = True
+    if proactive.get("map"):
+        builder.row(CallbackButton(text="🗺 Карта ареала", payload=f"map:{proactive['map'][:50]}"))
+        has_buttons = True
+    if proactive.get("text"):
+        builder.row(CallbackButton(text="📖 Подробнее", payload=f"text:{proactive['text'][:50]}"))
+        has_buttons = True
+
+    # ── Неопределённая модальность (Сценарий 2) ───────────────────────────────
+    if modality_ambiguous and slots.get("synonym") and not proactive.get("map"):
+        builder.row(CallbackButton(
+            text="🗺 Показать на карте",
+            payload=f"map:{slots['synonym'][:50]}",
+        ))
+        has_buttons = True
+
+    # ── Текст ответа ──────────────────────────────────────────────────────────
     text = answer or "По вашему запросу ничего не найдено."
     if total is not None and place:
         text += f"\n\nНайдено объектов: {total} (место: {place})"
+
+    # ── Упрощения поиска (Сценарий 4) ────────────────────────────────────────
+    if simplifications:
+        text += "\n\nМожно расширить поиск:"
+        for i, s in enumerate(simplifications):
+            builder.row(CallbackButton(text=s["label"], payload=f"simplify:{i}"))
+            has_buttons = True
 
     await bot.send_message(
         chat_id=chat_id,

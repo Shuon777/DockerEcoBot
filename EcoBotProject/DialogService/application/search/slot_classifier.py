@@ -119,7 +119,7 @@ null — если пользователь ищет класс объектов 
 4. "Расположение относительно Байкала" — ОБЯЗАТЕЛЬНО при слове "Байкал"; "Подтип объекта" и "Расположение относительно Байкала" совместимы
 5. "Тип ОФФ" — ВСЕГДА заполнять при словах-классах (растения, животные, птицы, рыбы и т.д.)
 6. Верни ТОЛЬКО JSON без пояснений, обёрток и комментариев
-
+{context}
 ЗАПРОС: {query}
 
 Ответь строго JSON:
@@ -344,16 +344,27 @@ class SlotClassifier:
         self.parser = llm.with_structured_output(SlotResult, method="json_mode")
         self._valid_features = valid_features
 
-    async def classify(self, query: str) -> dict:
-        prompt = CLASSIFICATION_PROMPT.format(query=query)
-        logger.info(f"🔍 Classifying: '{query}'")
+    async def classify(self, query: str, prev_query: str | None = None) -> dict:
+        if prev_query:
+            context = (
+                f"\n═══ КОНТЕКСТ ДИАЛОГА ═══\n"
+                f"Предыдущий запрос пользователя: «{prev_query}»\n"
+                f"Используй его ИСКЛЮЧИТЕЛЬНО чтобы понять на что указывают местоимения "
+                f"(«он», «она», «его», «её», «нём», «ней», «там», «это», «туда» и т.п.). "
+                f"Не переноси слоты из предыдущего запроса — классифицируй только текущий.\n"
+            )
+        else:
+            context = ""
+
+        prompt = CLASSIFICATION_PROMPT.format(context=context, query=query)
+        logger.info(f"🔍 Classifying: '{query}'" + (f" | prev: '{prev_query}'" if prev_query else ""))
         try:
             result: SlotResult = await self.parser.ainvoke(prompt)
             slots = result.model_dump()
             slots = _post_process_slots(query, slots, self._valid_features)
             slots["template"] = _determine_template(slots)
             slots["modality_ambiguous"] = _detect_ambiguity(query, slots["modality"])
-            logger.info(f"🔍 Classification result: {slots}")
+            logger.info(f"🔍 Raw LLM slots: synonym={slots.get('synonym')!r} object_type={slots.get('object_type')!r} modality={slots.get('modality')!r} features={slots.get('features')}")
             return slots
         except Exception as e:
             logger.error(f"SlotClassifier error: {e}")

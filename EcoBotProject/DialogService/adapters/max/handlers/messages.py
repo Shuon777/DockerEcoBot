@@ -30,8 +30,7 @@ def register_message_handlers(dp: Dispatcher, bot: Bot) -> None:
             except Exception:
                 pass
 
-            slots = await ctx.classifier.classify(text)
-            result = await ctx.executor.execute(text, slots, user_id=str(chat_id))
+            result = await ctx.orchestrator.process(text, user_id=str(chat_id))
             await render_pipeline_result(bot, chat_id, result, ctx.session)
 
         except Exception as e:

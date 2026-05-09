@@ -8,10 +8,12 @@ from utils.stand_manager import end_stand_session
 
 logger = logging.getLogger("MaxCallbackHandler")
 
-# payload-префикс → шаблон запроса для пайплайна
+# payload-префикс → шаблон запроса, отправляемого в оркестратор
 _PAYLOAD_QUERIES: dict[str, str] = {
     "desc":  "Расскажи о {}",
     "photo": "Покажи фото {}",
+    "map":   "Где обитает {}",
+    "text":  "Расскажи о {}",
 }
 
 
@@ -21,6 +23,7 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
     async def handle_callback(event: MessageCallback) -> None:
         payload: str = event.callback.payload or ""
         chat_id, _ = event.get_ids()
+        user_id = str(chat_id)
         logger.info(f"[{chat_id}] Callback: '{payload}'")
 
         try:
@@ -28,14 +31,38 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
         except Exception:
             pass
 
+        # ── Стенд ────────────────────────────────────────────────────────────
         if payload == "stand_detach":
-            await end_stand_session(str(chat_id), ctx.session, ctx.redis_client)
-            await bot.send_message(
-                chat_id=chat_id,
-                text="Вы отключились от стенда.",
-            )
+            await end_stand_session(user_id, ctx.session, ctx.redis_client)
+            await bot.send_message(chat_id=chat_id, text="Вы отключились от стенда.")
             return
 
+        # ── Упрощение поиска (Сценарий 4) ────────────────────────────────────
+        if payload.startswith("simplify:"):
+            idx_str = payload.removeprefix("simplify:")
+            try:
+                idx = int(idx_str)
+            except ValueError:
+                return
+            item = await ctx.orchestrator.load_simplification(user_id, idx)
+            if not item:
+                await bot.send_message(chat_id=chat_id, text="Вариант поиска устарел. Повторите запрос.")
+                return
+            try:
+                await bot.send_action(chat_id=chat_id, action="typing_on")
+            except Exception:
+                pass
+            try:
+                result = await ctx.orchestrator.process_with_slots(
+                    item["query"], item["slots"], user_id=user_id
+                )
+                await render_pipeline_result(bot, chat_id, result, ctx.session)
+            except Exception as e:
+                logger.error(f"Simplify callback error [{chat_id}]: {e}", exc_info=True)
+                await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте ещё раз.")
+            return
+
+        # ── Стандартные проактивные кнопки ────────────────────────────────────
         prefix, _, name = payload.partition(":")
         query_template = _PAYLOAD_QUERIES.get(prefix)
         if not query_template or not name:
@@ -50,12 +77,8 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
             pass
 
         try:
-            slots = await ctx.classifier.classify(query)
-            result = await ctx.executor.execute(query, slots, user_id=str(chat_id))
+            result = await ctx.orchestrator.process(query, user_id=user_id)
             await render_pipeline_result(bot, chat_id, result, ctx.session)
         except Exception as e:
             logger.error(f"Callback pipeline error [{chat_id}]: {e}", exc_info=True)
-            await bot.send_message(
-                chat_id=chat_id,
-                text="Произошла ошибка. Попробуйте ещё раз.",
-            )
+            await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте ещё раз.")

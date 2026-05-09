@@ -9,6 +9,8 @@ from infrastructure.max_bot.setup import bot, dp
 from infrastructure.max_bot.context import ctx
 from application.search.slot_classifier import SlotClassifier
 from application.search.slot_search_executor import SlotSearchExecutor
+from application.search.context_manager import ConversationHistory
+from application.search.dialogue_orchestrator import DialogueOrchestrator
 from adapters.max.handlers.commands import register_command_handlers
 from adapters.max.handlers.messages import register_message_handlers
 from adapters.max.handlers.callbacks import register_callback_handlers
@@ -28,6 +30,13 @@ async def main() -> None:
     ctx.redis_client = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
     ctx.classifier = SlotClassifier(provider=llm_provider)
     ctx.executor = SlotSearchExecutor(session=ctx.session)
+    ctx.history = ConversationHistory(redis_client=ctx.redis_client)
+    ctx.orchestrator = DialogueOrchestrator(
+        classifier=ctx.classifier,
+        executor=ctx.executor,
+        history=ctx.history,
+        redis_client=ctx.redis_client,
+    )
 
     register_command_handlers(dp, bot)
     register_message_handlers(dp, bot)
