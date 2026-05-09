@@ -62,9 +62,13 @@ def search_objects_near_place():
             'modality_type': r.modality_type,
             'features': r.features,
             'resource_type': r.resource_type,
+            'external_id': getattr(r, 'external_id', None),
         }
         if r.modality_type == ModalityType.GEODATA.value:
-            item['content'] = r.content
+            if isinstance(r.content, dict) and 'map_links' in r.content:
+                item['content'] = r.content
+            else:
+                item['content'] = r.content
         else:
             item['content'] = r.content
         resources_serialized.append(item)

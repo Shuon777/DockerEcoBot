@@ -225,61 +225,12 @@ class SQLAlchemySearchRepository(SearchRepository):
                 result = [r for r in result if r.modality_type == criteria.modality_type]
 
             return result
-    
-    def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]:
-        session = self._session_factory()
-        with session:
-            sql = text("""
-                WITH matched_geometries AS (
-                    SELECT DISTINCT
-                        gv.geometry,
-                        CASE 
-                            WHEN ST_GeometryType(gv.geometry) IN ('ST_Polygon', 'ST_MultiPolygon') THEN 1
-                            WHEN ST_GeometryType(gv.geometry) = 'ST_Point' THEN 3
-                            ELSE 2
-                        END as priority
-                    FROM eco_assistant.object o
-                    LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
-                    LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
-                    JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
-                    JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
-                    JOIN eco_assistant.modality m ON rv.modality_id = m.id
-                    JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
-                    WHERE m.modality_type = 'Геоданные'
-                    AND (LOWER(ons.synonym) = LOWER(:name) OR LOWER(o.db_id) = LOWER(:name))
-                )
-                SELECT ST_AsGeoJSON(geometry)::json as geojson
-                FROM matched_geometries
-                ORDER BY priority ASC
-                LIMIT 1
-            """)
-            result = session.execute(sql, {'name': place_name}).first()
-            return result.geojson if result else None
-
-    def get_geometry_type_for_place(self, place_name: str) -> Optional[str]:
-        session = self._session_factory()
-        with session:
-            sql = text("""
-                SELECT gv.geometry_type
-                FROM eco_assistant.object o
-                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
-                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
-                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
-                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
-                JOIN eco_assistant.modality m ON rv.modality_id = m.id
-                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
-                WHERE m.modality_type = 'Геоданные'
-                AND (LOWER(ons.synonym) = LOWER(:name) OR LOWER(o.db_id) = LOWER(:name))
-                LIMIT 1
-            """)
-            result = session.execute(sql, {'name': place_name}).first()
-            return result.geometry_type if result else None
 
     def find_objects_with_geometry_by_subtypes(
     self, geometry_geojson: Dict[str, Any], subtypes: List[str],
     buffer_radius_km: float, limit: int, offset: int,
     search_type: str = "near"
-) -> Tuple[List[Any], List[Any]]:
+) -> Tuple[List[Any], List[int]]:
         session = self._session_factory()
         with session:
             geom_json_str = json.dumps(geometry_geojson)
@@ -328,7 +279,9 @@ class SQLAlchemySearchRepository(SearchRepository):
             from ..infrastructure.orm.object_models import Object, ObjectType, ObjectNameSynonym
             
             objects = []
+            object_ids = []
             for r in rows:
+                object_ids.append(r.id)
                 obj = Object()
                 obj.id = r.id
                 obj.db_id = r.db_id
@@ -338,4 +291,53 @@ class SQLAlchemySearchRepository(SearchRepository):
                 obj.synonyms = [ObjectNameSynonym(synonym=s) for s in (r.synonyms or [])]
                 objects.append(obj)
             
-            return objects, []
+            return objects, object_ids
+        
+    def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]:
+        session = self._session_factory()
+        with session:
+            sql = text("""
+                WITH matched_geometries AS (
+                    SELECT DISTINCT
+                        gv.geometry,
+                        CASE 
+                            WHEN ST_GeometryType(gv.geometry) IN ('ST_Polygon', 'ST_MultiPolygon') THEN 1
+                            WHEN ST_GeometryType(gv.geometry) = 'ST_Point' THEN 3
+                            ELSE 2
+                        END as priority
+                    FROM eco_assistant.object o
+                    LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                    LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                    JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                    JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                    JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                    JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                    WHERE m.modality_type = 'Геоданные'
+                    AND (LOWER(ons.synonym) = LOWER(:name) OR LOWER(o.db_id) = LOWER(:name))
+                )
+                SELECT ST_AsGeoJSON(geometry)::json as geojson
+                FROM matched_geometries
+                ORDER BY priority ASC
+                LIMIT 1
+            """)
+            result = session.execute(sql, {'name': place_name}).first()
+            return result.geojson if result else None
+
+    def get_geometry_type_for_place(self, place_name: str) -> Optional[str]:
+        session = self._session_factory()
+        with session:
+            sql = text("""
+                SELECT gv.geometry_type
+                FROM eco_assistant.object o
+                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                WHERE m.modality_type = 'Геоданные'
+                AND (LOWER(ons.synonym) = LOWER(:name) OR LOWER(o.db_id) = LOWER(:name))
+                LIMIT 1
+            """)
+            result = session.execute(sql, {'name': place_name}).first()
+            return result.geometry_type if result else None
