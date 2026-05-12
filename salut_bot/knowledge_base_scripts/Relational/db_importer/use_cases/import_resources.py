@@ -274,26 +274,42 @@ class ImportResourcesUseCase:
         elif modality_type in ("Геоданные", "Картографическая информация"):
             modality = self.modality_repo.get_or_create_modality('Геоданные', 'geodata_value')
             
-            if not modality_value or not modality_value.get('geodb_id'):
-                missing_title = self._current_resource_title or f"Resource_{resource_id}"
-                self._add_missing_geometry(missing_title)
-                if modality.id is not None:
-                    self.modality_repo.link_resource_value(resource_id, modality.id, None)
-                return
+            geodb_id = modality_value.get('geodb_id') if modality_value else None
+            geometry_data = None
             
-            geodb_id = modality_value.get('geodb_id')
-            geometry_data = self.geodata_provider.get_geometry(geodb_id)
+            if geodb_id:
+                geometry_data = self.geodata_provider.get_geometry(geodb_id)
+            
+            if not geometry_data and self._current_resource_title:
+                geometry_data = self.geodata_provider.get_geometry_by_name(self._current_resource_title)
+                if not geometry_data:
+                    object_id = self._find_object_by_synonym(self._current_resource_title)
+                    if object_id:
+                        row = self.client.fetchone(
+                            "SELECT object_properties->>'primary_name' FROM eco_assistant.object WHERE id = %s",
+                            (object_id,)
+                        )
+                        if row and row[0]:
+                            geometry_data = self.geodata_provider.get_geometry_by_name(row[0])
+            
             if geometry_data:
                 geometry, normalized_type = geometry_data
-                geodata_value = GeodataValue(
-                    geometry=geometry,
-                    geometry_type=normalized_type
-                )
+                geodata_value = GeodataValue(geometry=geometry, geometry_type=normalized_type)
                 value_id = self.modality_repo.save_geodata_value(geodata_value)
                 if modality.id is not None:
                     self.modality_repo.link_resource_value(resource_id, modality.id, value_id)
+                
+                search_name = geodb_id or self._current_resource_title
+                if search_name:
+                    object_id = self._find_object_by_synonym(search_name)
+                    if object_id:
+                        self.resource_repo.link_resource_to_object(resource_id, object_id, 'geometry')
+                        self._logger.debug(f"Linked geometry resource {resource_id} to object {object_id} (by synonym '{search_name}')")
+                    else:
+                        self._logger.debug(f"No object found for synonym '{search_name}'")
             else:
-                self._add_missing_geometry(geodb_id)
+                missing_id = geodb_id or self._current_resource_title or f"Resource_{resource_id}"
+                self._add_missing_geometry(missing_id)
                 if modality.id is not None:
                     self.modality_repo.link_resource_value(resource_id, modality.id, None)
                 
@@ -484,6 +500,21 @@ class ImportResourcesUseCase:
         rows = self.client.fetchall(sql)
         return [{'id': row[0], 'db_id': row[1], 'properties': row[2]} for row in rows]
     
+    def _find_object_by_synonym(self, name: str) -> Optional[int]:
+        """Find object by any Russian synonym (case-insensitive)."""
+        if not name:
+            return None
+        sql = """
+            SELECT DISTINCT o.id
+            FROM eco_assistant.object o
+            JOIN eco_assistant.object_name_synonym_link onsl ON o.id = onsl.object_id
+            JOIN eco_assistant.object_name_synonym ons ON onsl.synonym_id = ons.id
+            WHERE ons.language = 'ru'
+            AND LOWER(ons.synonym) = LOWER(%s)
+        """
+        row = self.client.fetchone(sql, (name.strip(),))
+        
+        return row[0] if row else None
     def _create_geometry_resource(
     self, object_id: int, obj_name: str, geometry_data: Tuple[str, Dict, str]
 ) -> Optional[int]:
