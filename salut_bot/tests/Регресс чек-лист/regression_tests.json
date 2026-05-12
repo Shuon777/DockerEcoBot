@@ -1517,6 +1517,82 @@
           "path": ["search", "search"]
         }
       }
+    },
+    {
+      "name": "TC-30: Покажи на карте где растет лиственница сибирская (геоданные)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Modality filter is 'Геоданные'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.modality_filter).to.equal(\"Геоданные\");",
+              "});",
+              "",
+              "pm.test(\"Response contains at least 1 object with synonyms containing 'лиственница сибирская'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
+              "    var hasLarch = jsonData.objects.some(function(obj) {",
+              "        return obj.synonyms && obj.synonyms.some(function(s) {",
+              "            return s.toLowerCase().includes('лиственница сибирская');",
+              "        });",
+              "    });",
+              "    pm.expect(hasLarch).to.be.true;",
+              "});",
+              "",
+              "pm.test(\"Response contains geo resource with combined map\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.resources.length).to.be.at.least(1);",
+              "    var hasGeoResource = jsonData.resources.some(function(resource) {",
+              "        return resource.modality_type === \"Геоданные\";",
+              "    });",
+              "    pm.expect(hasGeoResource).to.be.true;",
+              "});",
+              "",
+              "pm.test(\"Map links are present in geo resource\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var geoResource = jsonData.resources.find(function(r) { return r.modality_type === \"Геоданные\"; });",
+              "    if (geoResource && geoResource.content && geoResource.content.map_links) {",
+              "        pm.expect(geoResource.content.map_links.static).to.be.a.string;",
+              "        pm.expect(geoResource.content.map_links.interactive).to.be.a.string;",
+              "        pm.expect(geoResource.content.map_links.static).to.include('/maps/');",
+              "        pm.expect(geoResource.content.map_links.interactive).to.include('/maps/');",
+              "    } else if (geoResource && geoResource.content && geoResource.content.geojson) {",
+              "        pm.expect(geoResource.content.geojson.type).to.be.oneOf(['Point', 'Polygon', 'MultiPolygon', 'LineString']);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable for geodata search\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(20000);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"system_parameters\": {\n    \"user_query\": \"Покажи на карте где растет лиственница сибирская\",\n    \"use_llm_answer\": false,\n    \"limit\": 20,\n    \"offset\": 0,\n    \"debug\": true\n  },\n  \"search_parameters\": {\n    \"object\": {\n      \"name_synonyms\": {\n        \"ru_names\": [\"лиственница сибирская\", \"larix sibirica\"]\n      }\n    },\n    \"modality_type\": \"Геоданные\"\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/search/",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "search"]
+        }
+      }
     }
   ]
 }
