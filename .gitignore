@@ -109,3 +109,7 @@ dsapi/local_models/
 shared.env
 compose.full.yml
 
+
+CLAUDE.md
+tasks/
+/take_screenshot.py
