@@ -2,23 +2,119 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Вход в ЭкоБайкал Админ</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Вход — ЭкоБайкал Админ</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { background: #f1f5f9; height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .login-card { width: 400px; padding: 40px; border-radius: 24px; background: white; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1e3a5f 0%, #0f2342 50%, #1a4a2e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-wrapper {
+            display: flex;
+            width: 880px;
+            min-height: 520px;
+            border-radius: 24px;
+            overflow: hidden;
+            box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+        }
+        .login-left {
+            flex: 1;
+            background: linear-gradient(160deg, #10b981 0%, #059669 60%, #0d9488 100%);
+            padding: 56px 48px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            color: #fff;
+        }
+        .login-left .logo { font-size: 1.6rem; font-weight: 800; letter-spacing: -0.5px; }
+        .login-left .tagline { font-size: 1.35rem; font-weight: 700; line-height: 1.4; margin-top: 32px; }
+        .login-left .sub { font-size: 0.9rem; opacity: 0.85; margin-top: 10px; }
+        .stats { display: flex; gap: 24px; margin-top: 40px; }
+        .stat { text-align: center; }
+        .stat-num { font-size: 1.8rem; font-weight: 800; }
+        .stat-lbl { font-size: 0.75rem; opacity: 0.8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+        .login-right {
+            width: 380px;
+            background: #fff;
+            padding: 56px 44px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .login-right h2 { font-size: 1.5rem; font-weight: 800; color: #1e293b; margin-bottom: 6px; }
+        .login-right p { font-size: 0.9rem; color: #64748b; margin-bottom: 32px; }
+        .form-group { margin-bottom: 18px; }
+        label { display: block; font-size: 0.75rem; font-weight: 700; color: #64748b; text-transform: uppercase; margin-bottom: 7px; letter-spacing: 0.4px; }
+        input[type="text"], input[type="password"] {
+            width: 100%; padding: 12px 16px; border-radius: 10px;
+            border: 1.5px solid #cbd5e1; font-size: 0.95rem;
+            font-family: inherit; outline: none; transition: border-color 0.15s;
+        }
+        input:focus { border-color: #2563eb; }
+        .error-msg {
+            background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c;
+            padding: 10px 14px; border-radius: 10px; font-size: 0.88rem;
+            font-weight: 600; margin-bottom: 18px;
+        }
+        .btn-login {
+            width: 100%; padding: 13px; border-radius: 12px;
+            background: #2563eb; color: #fff; font-size: 1rem;
+            font-weight: 700; border: none; cursor: pointer; margin-top: 8px;
+            transition: background 0.15s;
+        }
+        .btn-login:hover { background: #1d4ed8; }
+        .footer-note { font-size: 0.78rem; color: #94a3b8; text-align: center; margin-top: 24px; }
     </style>
 </head>
 <body>
-    <div class="login-card">
-        <h2 class="fw-bold mb-4">🌿 Вход</h2>
-        <form action="/admin/login" method="post">
-            <div class="mb-3">
-                <label class="form-label text-muted small fw-bold">ВАШЕ ИМЯ (ДЛЯ КОНТЕКСТА)</label>
-                <input type="text" name="username" class="form-control form-control-lg" placeholder="Напр: alex" required>
+    <div class="login-wrapper">
+        <div class="login-left">
+            <div>
+                <div class="logo">🌿 ЭкоБайкал</div>
+                <div class="tagline">Административная панель<br>информационно-справочного бота</div>
+                <div class="sub">Байкальский государственный природный биосферный заповедник</div>
             </div>
-            <button type="submit" class="btn btn-primary w-100 btn-lg shadow">Войти в панель</button>
-        </form>
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-num">120+</div>
+                    <div class="stat-lbl">Объектов</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-num">450+</div>
+                    <div class="stat-lbl">Ресурсов</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-num">3</div>
+                    <div class="stat-lbl">Категории</div>
+                </div>
+            </div>
+        </div>
+        <div class="login-right">
+            <h2>Вход в систему</h2>
+            <p>Введите учётные данные администратора</p>
+
+            {% if error %}
+            <div class="error-msg">Неверный логин или пароль</div>
+            {% endif %}
+
+            <form action="/admin/login" method="post">
+                <div class="form-group">
+                    <label>Логин</label>
+                    <input type="text" name="username" placeholder="Введите логин" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>Пароль</label>
+                    <input type="password" name="password" placeholder="Введите пароль" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="btn-login">Войти</button>
+            </form>
+            <div class="footer-note">Доступ только для авторизованных сотрудников</div>
+        </div>
     </div>
 </body>
 </html>

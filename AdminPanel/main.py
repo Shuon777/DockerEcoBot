@@ -1,5 +1,8 @@
 import os
 import secrets
+import hashlib
+import binascii
+from pathlib import Path
 import httpx
 import uvicorn
 import requests
@@ -21,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 from database import get_db
 from models.models import ErrorLog, BiologicalEntity, TextContent, ImageContent, EntityRelation, EntityIdentifier, EntityIdentifierLink, GeographicalEntity, EntityGeo, MapContent
-from models.admin_models import AdminBase, TestSession
+from models.admin_models import AdminBase, TestSession, AdminUser
 from models.eco_assistant_models import (
     Object, ObjectType, ObjectNameSynonym, object_name_synonym_link,
     ObjectObjectLink, ResourceResourceLink,
@@ -33,7 +36,7 @@ from models.eco_assistant_models import (
     ObjectObjectRelationType, ResourceResourceRelationType, ResourceObjectRelationType,
 )
 from heartbeat import BotHeartbeat
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values, set_key
 
 # Константы типов объектов в eco_assistant.object_type
 BIO_OBJECT_TYPE_ID = 1  # «Объект флоры и фауны»
@@ -49,10 +52,41 @@ templates.env.filters["tojson"] = lambda value, indent=None, **_: json.dumps(val
 hb = BotHeartbeat(host=os.getenv('REDIS_HOST', 'redis'), port=int(os.getenv('REDIS_PORT', 6379)), db=2)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET_KEY', 'super-secret-key-for-admins'))
 CORE_API_BASE = os.getenv("CORE_API_BASE", "http://core-api:5001")
+SHARED_ENV_PATH = Path("/app/shared.env")
+ADMIN_ENV_PATH = Path("/app/.env")
 ADMIN_DB_URL = os.getenv('ADMIN_DB_URL')
 admin_engine = create_engine(ADMIN_DB_URL, connect_args={"check_same_thread": False})
 AdminSessionLocal = sessionmaker(bind=admin_engine)
 AdminBase.metadata.create_all(bind=admin_engine)
+
+
+def _hash_password(password: str) -> str:
+    salt = os.urandom(32)
+    key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+    return binascii.hexlify(salt).decode() + ':' + binascii.hexlify(key).decode()
+
+
+def _check_password(password: str, stored: str) -> bool:
+    try:
+        salt_hex, key_hex = stored.split(':', 1)
+        salt = binascii.unhexlify(salt_hex)
+        key = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, 100000)
+        return binascii.hexlify(key).decode() == key_hex
+    except Exception:
+        return False
+
+
+def _ensure_default_admin():
+    with AdminSessionLocal() as session:
+        if not session.query(AdminUser).first():
+            username = os.getenv('ADMIN_USERNAME', 'admin')
+            password = os.getenv('ADMIN_PASSWORD', 'admin')
+            session.add(AdminUser(username=username, password_hash=_hash_password(password)))
+            session.commit()
+            print(f"[Admin] Default user created: login={username}")
+
+_ensure_default_admin()
+
 
 def get_admin_db():
     db = AdminSessionLocal()
@@ -76,26 +110,62 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)):
 
     bot_online = await is_bot_online_redis()
 
-    # --- Считаем ошибки за последние 24 часа ---
+    # Ошибки за 24 часа
     time_24h_ago = datetime.now(timezone.utc) - timedelta(hours=24)
-    query = select(func.count(ErrorLog.id)).where(ErrorLog.created_at >= time_24h_ago)
-    result = await db.execute(query)
-    errors_24h = result.scalar() or 0  # Получаем число (или 0, если пусто)
-    # -------------------------------------------
+    q = select(func.count(ErrorLog.id)).where(ErrorLog.created_at >= time_24h_ago)
+    errors_24h = (await db.execute(q)).scalar() or 0
+
+    # Статистика базы знаний
+    kb_stats = {"flora": 0, "fauna": 0, "unclassified": 0, "geo": 0, "services": 0,
+                "texts": 0, "images": 0, "geodata": 0}
+    try:
+        obj_row = (await db.execute(sql_text("""
+            SELECT
+                COUNT(*) FILTER (WHERE object_type_id = :bio AND object_properties->>'Тип ОФФ' = 'Объект флоры')  AS flora,
+                COUNT(*) FILTER (WHERE object_type_id = :bio AND object_properties->>'Тип ОФФ' = 'Объект фауны')  AS fauna,
+                COUNT(*) FILTER (WHERE object_type_id = :bio AND COALESCE(object_properties->>'Тип ОФФ','') = '') AS unclassified,
+                COUNT(*) FILTER (WHERE object_type_id = :geo)  AS geo,
+                COUNT(*) FILTER (WHERE object_type_id = :svc)  AS services
+            FROM eco_assistant.object
+        """), {"bio": BIO_OBJECT_TYPE_ID, "geo": GEO_OBJECT_TYPE_ID, "svc": SERVICE_OBJECT_TYPE_ID})).first()
+        res_rows = (await db.execute(sql_text("""
+            SELECT m.modality_type, COUNT(DISTINCT rv.resource_id) AS cnt
+            FROM eco_assistant.resource_value rv
+            JOIN eco_assistant.modality m ON m.id = rv.modality_id
+            GROUP BY m.modality_type
+        """))).all()
+        res_map = {r.modality_type: int(r.cnt) for r in res_rows}
+        kb_stats = {
+            "flora":       int(obj_row.flora or 0),
+            "fauna":       int(obj_row.fauna or 0),
+            "unclassified": int(obj_row.unclassified or 0),
+            "geo":         int(obj_row.geo or 0),
+            "services":    int(obj_row.services or 0),
+            "texts":       res_map.get("Текст", 0),
+            "images":      res_map.get("Изображение", 0),
+            "geodata":     res_map.get("Геоданные", 0),
+        }
+    except Exception as e:
+        print(f"[Dashboard] KB stats query failed: {e}")
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "active_page": "dashboard",
         "bot_online": bot_online,
-        "errors_24h": errors_24h  # <--- Передаем число в шаблон
+        "errors_24h": errors_24h,
+        "kb_stats": kb_stats,
     })
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request):
-    return templates.TemplateResponse("login.html", {"request": request})
+async def login_page(request: Request, error: str = None):
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 @app.post("/login")
-async def login(request: Request, username: str = Form(...)):
-    # Здесь можно добавить проверку пароля, но пока просто верим на слово
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    with AdminSessionLocal() as session:
+        user = session.query(AdminUser).filter(AdminUser.username == username).first()
+    if not user or not _check_password(password, user.password_hash):
+        return RedirectResponse(url="/login?error=1", status_code=303)
     request.session["user_id"] = f"admin_{username}"
     return RedirectResponse(url="/", status_code=303)
 
@@ -182,27 +252,25 @@ async def settings_page(request: Request):
 
     bot_online = await is_bot_online_redis()
     prompts = {}
-    config = {}
 
-    # Стучимся в Core API бота, чтобы забрать текущие промпты и конфиг
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             p_resp = await client.get(f"{CORE_API_BASE}/prompts")
             if p_resp.status_code == 200:
                 prompts = p_resp.json()
-
-            c_resp = await client.get(f"{CORE_API_BASE}/config")
-            if c_resp.status_code == 200:
-                config = c_resp.json()
         except Exception as e:
-            print(f"Ошибка загрузки настроек из бота: {e}")
+            print(f"Ошибка загрузки промптов: {e}")
+
+    shared = dict(dotenv_values(SHARED_ENV_PATH)) if SHARED_ENV_PATH.exists() else {}
+    admin_config = dict(dotenv_values(ADMIN_ENV_PATH)) if ADMIN_ENV_PATH.exists() else {}
 
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "active_page": "settings",
         "bot_online": bot_online,
         "prompts": prompts,
-        "config": config
+        "shared": shared,
+        "admin_config": admin_config,
     })
 
 
@@ -216,14 +284,28 @@ async def save_prompts(request: Request, data: dict = Body(...)):
         raise HTTPException(status_code=500, detail="Ошибка сохранения промптов")
 
 
-@app.post("/settings/config")
-async def save_config(request: Request, data: dict = Body(...)):
-    """Отправляем измененный конфиг (.env) обратно в бота"""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(f"{CORE_API_BASE}/config", json=data)
-        if resp.status_code == 200:
-            return resp.json()
-        raise HTTPException(status_code=500, detail="Ошибка сохранения конфига")
+@app.post("/settings/shared")
+async def save_shared(request: Request, data: dict = Body(...)):
+    """Сохраняем общие настройки в shared.env"""
+    if not request.session.get("user_id"):
+        raise HTTPException(status_code=401)
+    if not SHARED_ENV_PATH.exists():
+        SHARED_ENV_PATH.touch()
+    for key, value in data.items():
+        set_key(str(SHARED_ENV_PATH), key, str(value))
+    return {"status": "success", "message": "Настройки сохранены. Перезапустите затронутые сервисы для применения."}
+
+
+@app.post("/settings/admin")
+async def save_admin_config(request: Request, data: dict = Body(...)):
+    """Сохраняем настройки AdminPanel в .env"""
+    if not request.session.get("user_id"):
+        raise HTTPException(status_code=401)
+    if not ADMIN_ENV_PATH.exists():
+        ADMIN_ENV_PATH.touch()
+    for key, value in data.items():
+        set_key(str(ADMIN_ENV_PATH), key, str(value))
+    return {"status": "success", "message": "Настройки AdminPanel сохранены. Перезапустите admin-сервис."}
 
 # ==========================================
 # CMS: ФЛОРА И ФАУНА (eco_assistant схема)

@@ -5,6 +5,16 @@ from datetime import datetime
 
 AdminBase = declarative_base()
 
+
+class AdminUser(AdminBase):
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), unique=True, nullable=False)
+    password_hash = Column(String(256), nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+
+
 class TestSession(AdminBase):
     __tablename__ = "test_sessions"
     

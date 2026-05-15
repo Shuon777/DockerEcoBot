@@ -2,122 +2,503 @@
 {% block title %}⚙️ Настройки системы{% endblock %}
 
 {% block content %}
-<!-- Словарь с описаниями промптов -->
-{% set prompt_descriptions = {
-    'classifications_actions_part_of_prompt.txt': 'Список возможных действий (интентов), которые LLM должна выбрать на основе запроса пользователя.',
-    'classifications_entities_part_of_prompt.txt': 'Справочник категорий и подкатегорий (Flora, Fauna, Infrastructure), чтобы LLM правильно классифицировала объекты.',
-    'examples_entity.txt': 'Сложные примеры названий растений и животных для того, чтобы нейросеть лучше понимала границы названий.',
-    'examples_for_prompt.txt': 'Примеры логики (Few-Shot) в формате "Запрос пользователя -> Идеальный JSON ответ", обучающие LLM думать правильно.'
-} %}
+<style>
+.settings-tab-nav .nav-link { font-weight: 700; color: #475569; border-radius: 10px 10px 0 0; padding: 10px 18px; font-size: 0.88rem; }
+.settings-tab-nav .nav-link.active { color: #1e293b; background: #fff; border-bottom-color: #fff; }
+.settings-tab-nav .nav-link .badge-svc { font-size: 0.65rem; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: #e2e8f0; color: #475569; margin-left: 6px; vertical-align: middle; }
+.settings-tab-nav .nav-link.active .badge-svc { background: #dcfce7; color: #166534; }
+
+.restart-notice { display: flex; align-items: center; gap: 10px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px; padding: 10px 16px; margin-bottom: 20px; font-size: 0.85rem; }
+.restart-notice .svc-chip { display: inline-block; background: #fff; border: 1px solid #fbbf24; border-radius: 6px; padding: 1px 8px; font-size: 0.75rem; font-weight: 700; color: #92400e; margin-left: 4px; }
+.instant-notice { display: flex; align-items: center; gap: 10px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px; padding: 10px 16px; margin-bottom: 20px; font-size: 0.85rem; color: #166534; }
+
+.settings-section { margin-bottom: 28px; }
+.section-label { font-size: 0.68rem; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.section-label::after { content: ''; flex: 1; height: 1px; background: #f1f5f9; }
+
+.field-group { margin-bottom: 16px; }
+.field-group label { font-size: 0.78rem; font-weight: 700; color: #374151; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.field-group label .var-name { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #64748b; background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+.field-group .field-desc { font-size: 0.75rem; color: #94a3b8; margin-bottom: 5px; }
+.field-group .input-wrap { position: relative; }
+.field-group .input-wrap input { width: 100%; padding: 8px 12px; font-size: 0.88rem; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; transition: border-color .15s; font-family: 'JetBrains Mono', monospace; }
+.field-group .input-wrap input:focus { outline: none; border-color: #22c55e; background: #fff; box-shadow: 0 0 0 3px rgba(34,197,94,0.1); }
+.field-group .input-wrap input[type=password] { padding-right: 40px; }
+.field-group .toggle-pw { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94a3b8; cursor: pointer; padding: 0; font-size: 1rem; }
+.field-group .toggle-pw:hover { color: #475569; }
+
+.save-bar { display: flex; align-items: center; gap: 14px; padding-top: 8px; border-top: 1px solid #f1f5f9; margin-top: 8px; }
+</style>
+
+{% set sv = shared %}
+{% set ac = admin_config %}
 
 <div class="card shadow-sm" style="border-radius: 16px; min-height: 70vh;">
-    <div class="card-header bg-white" style="border-bottom: 1px solid #e2e8f0; border-radius: 16px 16px 0 0; padding: 20px 30px;">
-        <ul class="nav nav-tabs card-header-tabs" id="settingsTabs" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active fw-bold text-dark" id="prompts-tab" data-bs-toggle="tab" data-bs-target="#prompts" type="button" role="tab">🧠 Промпты (LLM)</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link fw-bold text-dark" id="config-tab" data-bs-toggle="tab" data-bs-target="#config" type="button" role="tab">🔧 Конфигурация (.env)</button>
-            </li>
-        </ul>
-    </div>
-    
-    <div class="card-body p-4 tab-content" id="settingsTabsContent">
-        
-        <!-- Вкладка Промптов -->
-        <div class="tab-pane fade show active" id="prompts" role="tabpanel">
-            <p class="text-muted mb-4">Здесь вы можете редактировать инструкции для нейросети. Изменения применяются <b>мгновенно</b>.</p>
-            
-            <form id="promptsForm">
-                {% for filename, content in prompts.items() %}
-                <div class="mb-4">
-                    <label class="form-label fw-bold text-primary d-flex align-items-center gap-2">
-                        {{ filename }}
-                        <!-- Добавляем иконку вопроса с тултипом -->
-                        {% if filename in prompt_descriptions %}
-                        <i class="bi bi-question-circle text-muted" 
-                           data-bs-toggle="tooltip" 
-                           data-bs-placement="right" 
-                           title="{{ prompt_descriptions[filename] }}" 
-                           style="cursor: help; font-size: 1.1rem; color: #94a3b8 !important;"></i>
-                        {% endif %}
-                    </label>
-                    <textarea class="form-control" name="{{ filename }}" rows="8" style="font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; background: #f8fafc; border: 1px solid #cbd5e1;">{{ content }}</textarea>
-                </div>
-                {% endfor %}
-                <button type="button" class="btn btn-primary px-5 py-2 fw-bold" onclick="saveSettings('prompts')">💾 Сохранить промпты</button>
-            </form>
-        </div>
+  <div class="card-header bg-white" style="border-bottom: 1px solid #e2e8f0; border-radius: 16px 16px 0 0; padding: 0 24px;">
+    <ul class="nav nav-tabs settings-tab-nav card-header-tabs" id="settingsTabs" role="tablist" style="border-bottom: none; gap: 4px; padding-top: 12px;">
+      <li class="nav-item">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-network" type="button">
+          🌐 Сеть и БД<span class="badge-svc">backend · core-api · admin</span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-llm" type="button">
+          🤖 LLM / AI<span class="badge-svc">backend · core-api</span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-bot" type="button">
+          📱 Бот<span class="badge-svc">core-api · max</span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-prompts" type="button">
+          🧠 Промпты<span class="badge-svc">мгновенно</span>
+        </button>
+      </li>
+      <li class="nav-item">
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-system" type="button">
+          ⚙️ Системные<span class="badge-svc">admin</span>
+        </button>
+      </li>
+    </ul>
+  </div>
 
-        <!-- Вкладка Конфигов -->
-        <div class="tab-pane fade" id="config" role="tabpanel">
-            <div class="alert alert-warning mb-4">
-                <i class="bi bi-exclamation-triangle-fill"></i> Изменение некоторых ключей (например, <b>BOT_TOKEN</b>) потребует жесткой перезагрузки контейнера бота.
+  <div class="card-body p-4 tab-content" id="settingsTabContent">
+
+    <!-- ═══════════════════════════════ СЕТЬ И БД ═══════════════════════════════ -->
+    <div class="tab-pane fade show active" id="tab-network">
+      <div class="restart-notice">
+        <i class="bi bi-arrow-clockwise" style="color:#ea580c; font-size:1.1rem;"></i>
+        <span>Изменения применяются после перезапуска:</span>
+        <span class="svc-chip">backend</span><span class="svc-chip">core-api</span>
+        <span class="svc-chip">admin</span><span class="svc-chip">max</span>
+      </div>
+
+      <form id="formNetwork">
+        <!-- Адреса сервисов -->
+        <div class="settings-section">
+          <div class="section-label">Адреса сервисов</div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>Публичный URL <span class="var-name">PUBLIC_BASE_URL</span></label>
+                <div class="field-desc">Домен приложения для ссылок в сообщениях пользователям</div>
+                <div class="input-wrap"><input type="text" name="PUBLIC_BASE_URL" value="{{ sv.get('PUBLIC_BASE_URL', '') }}"></div>
+              </div>
             </div>
-            
-            <form id="configForm">
-                <div class="row">
-                    {% for key, value in config.items() %}
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label fw-bold text-secondary small">{{ key }}</label>
-                        <input type="text" class="form-control" name="{{ key }}" value="{{ value }}">
-                    </div>
-                    {% endfor %}
-                </div>
-                <button type="button" class="btn btn-primary px-5 py-2 fw-bold mt-3" onclick="saveSettings('config')">💾 Сохранить конфиг</button>
-            </form>
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>Backend API <span class="var-name">ECOBOT_API_BASE_URL</span></label>
+                <div class="field-desc">Внутренний адрес backend в Docker-сети</div>
+                <div class="input-wrap"><input type="text" name="ECOBOT_API_BASE_URL" value="{{ sv.get('ECOBOT_API_BASE_URL', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>GigaChat сервис <span class="var-name">GIGACHAT_FALLBACK_URL</span></label>
+                <div class="field-desc">Адрес GigaChat микросервиса (fallback для бота)</div>
+                <div class="input-wrap"><input type="text" name="GIGACHAT_FALLBACK_URL" value="{{ sv.get('GIGACHAT_FALLBACK_URL', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>URL карт <span class="var-name">BASE_URL_MAPS</span></label>
+                <div class="field-desc">Базовый URL для раздачи картографических файлов</div>
+                <div class="input-wrap"><input type="text" name="BASE_URL_MAPS" value="{{ sv.get('BASE_URL_MAPS', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="field-group">
+                <label>Rasa webhook <span class="var-name">RASA_WEBHOOK_URL</span></label>
+                <div class="field-desc">Webhook Rasa NLU (используется если Rasa сервис активен)</div>
+                <div class="input-wrap"><input type="text" name="RASA_WEBHOOK_URL" value="{{ sv.get('RASA_WEBHOOK_URL', '') }}"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
-    </div>
-</div>
+        <!-- PostgreSQL -->
+        <div class="settings-section">
+          <div class="section-label">PostgreSQL</div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Имя базы <span class="var-name">DB_NAME</span></label>
+                <div class="field-desc">Имя PostgreSQL-базы</div>
+                <div class="input-wrap"><input type="text" name="DB_NAME" value="{{ sv.get('DB_NAME', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Пользователь <span class="var-name">DB_USER</span></label>
+                <div class="field-desc">PostgreSQL username</div>
+                <div class="input-wrap"><input type="text" name="DB_USER" value="{{ sv.get('DB_USER', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Пароль <span class="var-name">DB_PASSWORD</span></label>
+                <div class="field-desc">PostgreSQL password</div>
+                <div class="input-wrap">
+                  <input type="password" name="DB_PASSWORD" value="{{ sv.get('DB_PASSWORD', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Порт <span class="var-name">DB_PORT</span></label>
+                <div class="field-desc">Стандартный: 5432</div>
+                <div class="input-wrap"><input type="number" name="DB_PORT" value="{{ sv.get('DB_PORT', '5432') }}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-<!-- Toast-уведомление -->
+        <!-- Redis -->
+        <div class="settings-section">
+          <div class="section-label">Redis</div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Порт <span class="var-name">REDIS_PORT</span></label>
+                <div class="field-desc">Стандартный: 6379</div>
+                <div class="input-wrap"><input type="number" name="REDIS_PORT" value="{{ sv.get('REDIS_PORT', '6379') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Номер базы <span class="var-name">REDIS_DB</span></label>
+                <div class="field-desc">Логическая база Redis (0–15)</div>
+                <div class="input-wrap"><input type="number" name="REDIS_DB" value="{{ sv.get('REDIS_DB', '1') }}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <button type="button" class="btn btn-primary px-4 fw-bold" onclick="saveGroup('formNetwork', '/admin/settings/shared')">💾 Сохранить</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ═══════════════════════════════ LLM / AI ═══════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-llm">
+      <div class="restart-notice">
+        <i class="bi bi-arrow-clockwise" style="color:#ea580c; font-size:1.1rem;"></i>
+        <span>Изменения применяются после перезапуска:</span>
+        <span class="svc-chip">backend</span><span class="svc-chip">core-api</span>
+      </div>
+
+      <form id="formLlm">
+        <!-- LLM -->
+        <div class="settings-section">
+          <div class="section-label">Языковая модель (Ollama / OpenAI-compatible)</div>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="field-group">
+                <label>Провайдер <span class="var-name">LLM_PROVIDER</span></label>
+                <div class="field-desc">qwen или gigachat</div>
+                <div class="input-wrap"><input type="text" name="LLM_PROVIDER" value="{{ sv.get('LLM_PROVIDER', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-5">
+              <div class="field-group">
+                <label>Базовый URL <span class="var-name">LLM_BASE_URL</span></label>
+                <div class="field-desc">API endpoint (напр. http://host.docker.internal:11434/v1)</div>
+                <div class="input-wrap"><input type="text" name="LLM_BASE_URL" value="{{ sv.get('LLM_BASE_URL', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="field-group">
+                <label>Модель <span class="var-name">LLM_MODEL</span></label>
+                <div class="field-desc">Идентификатор модели</div>
+                <div class="input-wrap"><input type="text" name="LLM_MODEL" value="{{ sv.get('LLM_MODEL', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="field-group">
+                <label>API ключ <span class="var-name">LLM_API_KEY</span></label>
+                <div class="field-desc">ollama или облачный ключ</div>
+                <div class="input-wrap">
+                  <input type="password" name="LLM_API_KEY" value="{{ sv.get('LLM_API_KEY', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- GigaChat -->
+        <div class="settings-section">
+          <div class="section-label">GigaChat (Sber)</div>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="field-group">
+                <label>Модель <span class="var-name">GIGACHAT_MODEL</span></label>
+                <div class="field-desc">Напр. GigaChat-2-Max</div>
+                <div class="input-wrap"><input type="text" name="GIGACHAT_MODEL" value="{{ sv.get('GIGACHAT_MODEL', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="field-group">
+                <label>Credentials <span class="var-name">GIGACHAT_CREDENTIALS</span></label>
+                <div class="field-desc">Base64-encoded ключ авторизации Sber для основного сервиса</div>
+                <div class="input-wrap">
+                  <input type="password" name="GIGACHAT_CREDENTIALS" value="{{ sv.get('GIGACHAT_CREDENTIALS', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="field-group">
+                <label>Enterprise ключ <span class="var-name">SBER_KEY_ENTERPRICE</span></label>
+                <div class="field-desc">Base64 ключ для GigaChat API напрямую</div>
+                <div class="input-wrap">
+                  <input type="password" name="SBER_KEY_ENTERPRICE" value="{{ sv.get('SBER_KEY_ENTERPRICE', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <button type="button" class="btn btn-primary px-4 fw-bold" onclick="saveGroup('formLlm', '/admin/settings/shared')">💾 Сохранить</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ═══════════════════════════════ БОТ ═══════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-bot">
+      <div class="restart-notice">
+        <i class="bi bi-arrow-clockwise" style="color:#ea580c; font-size:1.1rem;"></i>
+        <span>Изменения применяются после перезапуска:</span>
+        <span class="svc-chip">core-api</span><span class="svc-chip">max</span>
+      </div>
+
+      <form id="formBot">
+        <!-- Telegram -->
+        <div class="settings-section">
+          <div class="section-label">Telegram</div>
+          <div class="row g-3">
+            <div class="col-12">
+              <div class="field-group">
+                <label>Токен основного бота <span class="var-name">BOT_TOKEN</span></label>
+                <div class="field-desc">Получен в @BotFather. Изменение требует перезапуска core-api.</div>
+                <div class="input-wrap">
+                  <input type="password" name="BOT_TOKEN" value="{{ sv.get('BOT_TOKEN', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="field-group">
+                <label>Токен бота MAX <span class="var-name">MAX_BOT_TOKEN</span></label>
+                <div class="field-desc">Токен дополнительного бота-помощника (сервис max)</div>
+                <div class="input-wrap">
+                  <input type="password" name="MAX_BOT_TOKEN" value="{{ sv.get('MAX_BOT_TOKEN', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STAND API -->
+        <div class="settings-section">
+          <div class="section-label">STAND API (внешний сервис достопримечательностей)</div>
+          <div class="row g-3">
+            <div class="col-md-8">
+              <div class="field-group">
+                <label>Endpoint <span class="var-name">STAND_ENDPOINT</span></label>
+                <div class="field-desc">URL внешнего STAND-сервиса</div>
+                <div class="input-wrap"><input type="text" name="STAND_ENDPOINT" value="{{ sv.get('STAND_ENDPOINT', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="field-group">
+                <label>Секретный ключ <span class="var-name">STAND_SECRET_KEY</span></label>
+                <div class="field-desc">Ключ аутентификации</div>
+                <div class="input-wrap">
+                  <input type="password" name="STAND_SECRET_KEY" value="{{ sv.get('STAND_SECRET_KEY', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <button type="button" class="btn btn-primary px-4 fw-bold" onclick="saveGroup('formBot', '/admin/settings/shared')">💾 Сохранить</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ═══════════════════════════════ ПРОМПТЫ ═══════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-prompts">
+      <div class="instant-notice">
+        <i class="bi bi-lightning-fill"></i>
+        <span>Изменения применяются <strong>мгновенно</strong> — без перезапуска контейнеров.</span>
+      </div>
+
+      {% if not prompts %}
+      <div class="alert d-flex align-items-center gap-3 mb-4" style="background:#fff7ed; border:1px solid #fed7aa; border-radius:12px; padding:14px 18px;">
+        <i class="bi bi-exclamation-triangle-fill" style="color:#ea580c; font-size:1.3rem;"></i>
+        <div>
+          <strong style="color:#9a3412;">Core API недоступен</strong>
+          <div class="text-muted" style="font-size:0.88rem;">Промпты не загружены. Убедитесь, что контейнер <code>core-api</code> запущен, затем обновите страницу.</div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% set prompt_descriptions = {
+        'classifications_actions_part_of_prompt.txt': 'Список возможных действий (интентов), которые LLM должна выбрать на основе запроса пользователя.',
+        'classifications_entities_part_of_prompt.txt': 'Справочник категорий и подкатегорий (Flora, Fauna, Infrastructure).',
+        'examples_entity.txt': 'Сложные примеры названий для лучшего понимания границ названий.',
+        'examples_for_prompt.txt': 'Few-Shot примеры: «Запрос → Идеальный JSON», обучающие LLM думать правильно.',
+        'classification_prompt.txt': 'Главный промпт классификатора: извлечение слотов object_type, synonym, modality, properties, features, extra.'
+      } %}
+
+      <form id="formPrompts">
+        {% for filename, content in prompts.items() %}
+        <div class="mb-4">
+          <label class="form-label fw-bold text-primary d-flex align-items-center gap-2">
+            {{ filename }}
+            {% if filename in prompt_descriptions %}
+            <i class="bi bi-question-circle text-muted"
+               data-bs-toggle="tooltip" data-bs-placement="right"
+               title="{{ prompt_descriptions[filename] }}"
+               style="cursor:help; font-size:1.1rem; color:#94a3b8 !important;"></i>
+            {% endif %}
+          </label>
+          <textarea class="form-control" name="{{ filename }}" rows="10"
+            style="font-family:'JetBrains Mono',monospace; font-size:0.85rem; background:#f8fafc; border:1px solid #cbd5e1;">{{ content }}</textarea>
+        </div>
+        {% endfor %}
+        <div class="save-bar">
+          <button type="button" class="btn btn-primary px-4 fw-bold" onclick="saveGroup('formPrompts', '/admin/settings/prompts')">💾 Сохранить промпты</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- ═══════════════════════════════ СИСТЕМНЫЕ ═══════════════════════════════ -->
+    <div class="tab-pane fade" id="tab-system">
+      <div class="restart-notice">
+        <i class="bi bi-arrow-clockwise" style="color:#ea580c; font-size:1.1rem;"></i>
+        <span>Изменения применяются после перезапуска:</span>
+        <span class="svc-chip">admin</span>
+      </div>
+
+      <form id="formSystem">
+        <div class="settings-section">
+          <div class="section-label">Внутренние адреса сервисов</div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>Core API <span class="var-name">CORE_API_BASE</span></label>
+                <div class="field-desc">Адрес core-api в Docker-сети</div>
+                <div class="input-wrap"><input type="text" name="CORE_API_BASE" value="{{ ac.get('CORE_API_BASE', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>Сервис тестирования <span class="var-name">TEST_API_BASE</span></label>
+                <div class="field-desc">URL ModulDynamicTestingDSAPIBackend</div>
+                <div class="input-wrap"><input type="text" name="TEST_API_BASE" value="{{ ac.get('TEST_API_BASE', '') }}"></div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>Токен тестирования <span class="var-name">TEST_TOKEN</span></label>
+                <div class="field-desc">JWT-токен для API тестирования (совпадает с API_AUTH_TOKEN)</div>
+                <div class="input-wrap">
+                  <input type="password" name="TEST_TOKEN" value="{{ ac.get('TEST_TOKEN', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-label">Безопасность</div>
+          <div class="row g-3">
+            <div class="col-md-8">
+              <div class="field-group">
+                <label>Секрет сессий <span class="var-name">SESSION_SECRET_KEY</span></label>
+                <div class="field-desc">Ключ шифрования сессий AdminPanel (минимум 32 случайных символа)</div>
+                <div class="input-wrap">
+                  <input type="password" name="SESSION_SECRET_KEY" value="{{ ac.get('SESSION_SECRET_KEY', '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)"><i class="bi bi-eye"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="save-bar">
+          <button type="button" class="btn btn-primary px-4 fw-bold" onclick="saveGroup('formSystem', '/admin/settings/admin')">💾 Сохранить</button>
+        </div>
+      </form>
+    </div>
+
+  </div><!-- card-body -->
+</div><!-- card -->
+
+<!-- Toast -->
 <div class="toast-container position-fixed bottom-0 end-0 p-3">
   <div id="liveToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
     <div class="d-flex">
       <div class="toast-body fw-bold" id="toastMessage">Сохранено успешно!</div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
     </div>
   </div>
 </div>
 
 <script>
-// Оживляем всплывающие подсказки (тултипы) от Bootstrap
-document.addEventListener("DOMContentLoaded", function() {
-    var tooltipTriggerList =[].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
 });
 
-async function saveSettings(type) {
-    const form = document.getElementById(type + 'Form');
-    const formData = new FormData(form);
-    const data = Object.fromEntries(formData.entries());
+function togglePw(btn) {
+  const input = btn.closest('.input-wrap').querySelector('input');
+  const icon = btn.querySelector('i');
+  if (input.type === 'password') {
+    input.type = 'text';
+    icon.className = 'bi bi-eye-slash';
+  } else {
+    input.type = 'password';
+    icon.className = 'bi bi-eye';
+  }
+}
 
-    try {
-        const response = await fetch(`/admin/settings/${type}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-            document.getElementById('toastMessage').innerText = result.message || "Успешно сохранено!";
-            document.getElementById('liveToast').className = "toast align-items-center text-bg-success border-0";
-            const toast = new bootstrap.Toast(document.getElementById('liveToast'));
-            toast.show();
-        } else {
-            throw new Error(result.detail || "Ошибка сохранения");
-        }
-    } catch (e) {
-        document.getElementById('toastMessage').innerText = "❌ " + e.message;
-        document.getElementById('liveToast').className = "toast align-items-center text-bg-danger border-0";
-        const toast = new bootstrap.Toast(document.getElementById('liveToast'));
-        toast.show();
+async function saveGroup(formId, endpoint) {
+  const form = document.getElementById(formId);
+  const data = Object.fromEntries(new FormData(form).entries());
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (resp.ok) {
+      showToast(result.message || 'Сохранено!', 'success');
+    } else {
+      showToast(result.detail || 'Ошибка сохранения', 'danger');
     }
+  } catch (e) {
+    showToast('❌ ' + e.message, 'danger');
+  }
+}
+
+function showToast(msg, type) {
+  const toast = document.getElementById('liveToast');
+  toast.className = `toast align-items-center text-bg-${type} border-0`;
+  document.getElementById('toastMessage').innerText = msg;
+  new bootstrap.Toast(toast).show();
 }
 </script>
 {% endblock %}
