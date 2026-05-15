@@ -245,12 +245,13 @@ async def _biological_list_impl(
     # 1. Счётчики ресурсов по каждому объекту
     counts_raw = await db.execute(sql_text("""
         SELECT ro.object_id,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS text_count,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS image_count,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo_count
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'                             THEN ro.resource_id END) AS text_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'                       THEN ro.resource_id END) AS image_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные' AND gv.id IS NOT NULL   THEN ro.resource_id END) AS geo_count
         FROM eco_assistant.resource_object ro
         JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
         JOIN eco_assistant.modality m ON m.id = rv.modality_id
+        LEFT JOIN eco_assistant.geodata_value gv ON gv.id = rv.value_id AND m.modality_type = 'Геоданные'
         JOIN eco_assistant.object o ON o.id = ro.object_id
         WHERE o.object_type_id = :otid
         GROUP BY ro.object_id
@@ -1264,12 +1265,13 @@ async def geographical_list(
     # 1. Счетчики
     counts_raw = await db.execute(sql_text("""
         SELECT ro.object_id,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS text_count,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS image_count,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo_count
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'                             THEN ro.resource_id END) AS text_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'                       THEN ro.resource_id END) AS image_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные' AND gv.id IS NOT NULL   THEN ro.resource_id END) AS geo_count
         FROM eco_assistant.resource_object ro
         JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
         JOIN eco_assistant.modality m ON m.id = rv.modality_id
+        LEFT JOIN eco_assistant.geodata_value gv ON gv.id = rv.value_id AND m.modality_type = 'Геоданные'
         JOIN eco_assistant.object o ON o.id = ro.object_id
         WHERE o.object_type_id = :otid
         GROUP BY ro.object_id
@@ -2070,12 +2072,13 @@ async def service_list(
 
     counts_raw = await db.execute(sql_text("""
         SELECT ro.object_id,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'        THEN ro.resource_id END) AS text_count,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'  THEN ro.resource_id END) AS image_count,
-               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные'    THEN ro.resource_id END) AS geo_count
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Текст'                             THEN ro.resource_id END) AS text_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Изображение'                       THEN ro.resource_id END) AS image_count,
+               COUNT(DISTINCT CASE WHEN m.modality_type = 'Геоданные' AND gv.id IS NOT NULL   THEN ro.resource_id END) AS geo_count
         FROM eco_assistant.resource_object ro
         JOIN eco_assistant.resource_value rv ON rv.resource_id = ro.resource_id
         JOIN eco_assistant.modality m ON m.id = rv.modality_id
+        LEFT JOIN eco_assistant.geodata_value gv ON gv.id = rv.value_id AND m.modality_type = 'Геоданные'
         JOIN eco_assistant.object o ON o.id = ro.object_id
         WHERE o.object_type_id = :otid
         GROUP BY ro.object_id
