@@ -1,5 +1,6 @@
 import logging
 import re
+from pathlib import Path
 from typing import Optional, Dict, Any, Literal, Set
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from infrastructure.llm.factory import LLMFactory
@@ -125,6 +126,18 @@ null — если пользователь ищет класс объектов 
 Ответь строго JSON:
 {{"object_type": "...", "synonym": "...", "properties": {{}}, "features": {{}}, "extra": {{}}, "modality": "..."}}
 """
+
+_PROMPT_FILE = Path(__file__).parent.parent.parent / "prompts" / "classification_prompt.txt"
+
+
+def _get_prompt_template() -> str:
+    if _PROMPT_FILE.exists():
+        try:
+            return _PROMPT_FILE.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    return CLASSIFICATION_PROMPT
+
 
 # ── Нормализация галлюцинаций LLM ─────────────────────────────────────────────
 
@@ -356,7 +369,7 @@ class SlotClassifier:
         else:
             context = ""
 
-        prompt = CLASSIFICATION_PROMPT.format(context=context, query=query)
+        prompt = _get_prompt_template().format(context=context, query=query)
         logger.info(f"🔍 Classifying: '{query}'" + (f" | prev: '{prev_query}'" if prev_query else ""))
         try:
             result: SlotResult = await self.parser.ainvoke(prompt)

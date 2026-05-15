@@ -40,3 +40,5 @@ __pycache__/
 .claude/
 CLAUDE.md
 tasks/
+
+/take_screenshot.py

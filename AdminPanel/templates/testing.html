@@ -41,7 +41,10 @@
                             </div>
                             <span id="progress-text-{{ test.session_id }}" class="small fw-bold">{{ test.progress }}%</span>
                         </div>
-                        <small id="status-{{ test.session_id }}" class="text-uppercase fw-bold text-muted" style="font-size: 10px;">{{ test.status }}</small>
+                        <small id="status-{{ test.session_id }}" class="text-uppercase fw-bold text-muted" style="font-size: 10px;"
+                               data-raw-status="{{ test.status }}">{{
+                            {'pending': 'Ожидает', 'running': 'Выполняется', 'completed': 'Завершён', 'failed': 'Ошибка'}.get(test.status, test.status)
+                        }}</small>
                     </td>
                     <td>
                         {% if test.stats %}
@@ -262,7 +265,8 @@ async function updateStatuses() {
             continue;
         }
 
-        const currentStatus = statusEl.innerText.trim().toLowerCase();
+        const STATUS_RU = { pending: 'Ожидает', running: 'Выполняется', completed: 'Завершён', failed: 'Ошибка' };
+        const currentStatus = (statusEl.getAttribute('data-raw-status') || statusEl.innerText).trim().toLowerCase();
         console.log(`JS: Проверяю тест ${sid}, текущий статус: ${currentStatus}`);
 
         // Опрашиваем только если статус не финальный
@@ -283,8 +287,9 @@ async function updateStatuses() {
             if (bar) bar.style.width = (data.progress || 0) + '%';
             if (txt) txt.innerText = (data.progress || 0) + '%';
 
-            // Обновляем текст статуса
-            statusEl.innerText = data.status;
+            // Обновляем текст статуса (русский + raw для проверок)
+            statusEl.innerText = STATUS_RU[data.status] || data.status;
+            statusEl.setAttribute('data-raw-status', data.status);
 
             // Если завершено - активируем кнопку
             if (data.status === 'completed') {

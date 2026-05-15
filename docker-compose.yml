@@ -30,7 +30,9 @@ services:
     depends_on:
       - db
       - redis
-    env_file: ./salut_bot/.env
+    env_file:
+      - ./salut_bot/.env
+      - ./shared.env
     volumes:
       - ./maps:/app/maps
       - ./salut_bot/images:/app/images
@@ -49,7 +51,9 @@ services:
   gigachat:
     build: ./EcoBotProject/GigaChatAPI
     restart: always
-    env_file: ./EcoBotProject/GigaChatAPI/.env
+    env_file:
+      - ./EcoBotProject/GigaChatAPI/.env
+      - ./shared.env
     networks: [ecobot_net]
 
   # rasa-actions:
@@ -80,15 +84,14 @@ services:
   core-api:
     build: ./EcoBotProject/DialogService
     restart: always
-    env_file: ./EcoBotProject/DialogService/.env
+    env_file:
+      - ./EcoBotProject/DialogService/.env
+      - ./shared.env
     command: python api.py
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
       - DB_HOST=db
-      - DB_PORT=5432
-      - DB_NAME=eco
-      - DB_USER=postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -100,7 +103,9 @@ services:
   max:
     build: ./EcoBotProject/DialogService
     restart: always
-    env_file: ./EcoBotProject/DialogService/.env
+    env_file:
+      - ./EcoBotProject/DialogService/.env
+      - ./shared.env
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
@@ -120,14 +125,16 @@ services:
   admin:
     build: ./AdminPanel
     restart: always
-    env_file: ./AdminPanel/.env
+    env_file:
+      - ./AdminPanel/.env
+      - ./shared.env
     volumes:
       - ./data/admin_db:/app/admin_db
+      - ./shared.env:/app/shared.env
+      - ./AdminPanel/.env:/app/.env
     environment:
       - DB_HOST=db
-      - DB_PORT=5432
       - REDIS_HOST=redis
-      - REDIS_PORT=6379
     depends_on:
       - db
       - redis
