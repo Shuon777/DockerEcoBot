@@ -209,6 +209,12 @@ def _post_process_slots(query: str, slots: dict, valid_features: Optional[Dict[s
     features = dict(slots.get("features") or {})
     synonym = (slots.get("synonym") or "").lower()
 
+    # ── 0. Если features заполнены, а modality не Изображение — исправляем ──
+    # features по правилам промпта существуют ТОЛЬКО при modality="Изображение",
+    # поэтому их наличие — однозначный сигнал даже если LLM пропустил поле
+    if features and slots.get("modality") != "Изображение":
+        slots["modality"] = "Изображение"
+
     # ── 1. Определение Услуги по маркерам ────────────────────────────────────
     if slots.get("object_type") != "Услуга":
         for marker in _SERVICE_MARKERS:
