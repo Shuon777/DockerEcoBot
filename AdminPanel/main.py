@@ -3431,7 +3431,7 @@ async def resource_update_features(
     res = (await db.execute(select(Resource).where(Resource.id == resource_id))).scalar()
     if not res:
         raise HTTPException(status_code=404)
-    new_features = {k: v for k, v in (data.get("features") or {}).items() if v is not None and v != ""}
+    new_features = {k.strip().capitalize(): v for k, v in (data.get("features") or {}).items() if v is not None and v != ""}
     res.features = new_features
     await db.commit()
     return {"ok": True}
