@@ -109,9 +109,10 @@ class SlotSearchExecutor:
 
         # ── Изображения ──
         images = [
-            r["content"]["file_path"]
+            r["content"].get("file_path") or r["content"].get("url")
             for r in image_res
-            if isinstance(r.get("content"), dict) and r["content"].get("file_path")
+            if isinstance(r.get("content"), dict)
+            and (r["content"].get("file_path") or r["content"].get("url"))
         ]
         if images:
             result["images"] = images[:5]
