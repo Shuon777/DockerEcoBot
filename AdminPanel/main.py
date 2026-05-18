@@ -234,7 +234,7 @@ async def search_proxy(request: Request, data: dict = Body(...)):
     query = data.get("text", "").strip()
     if not query:
         return {"error": "пустой запрос"}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(150.0)) as client:
         try:
             response = await client.post(
                 f"{CORE_API_BASE}/search_pipeline",
