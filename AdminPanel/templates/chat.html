@@ -316,28 +316,17 @@ function renderSearchRequest(req) {
     chat.scrollTop = chat.scrollHeight;
 }
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+
 async function resolveDeadHosts(urls) {
-    const currentOrigin = window.location.origin;
-    const foreignOrigins = new Set();
+    const deadOrigins = new Set();
     for (const url of urls) {
         if (!url) continue;
         try {
-            const origin = new URL(url).origin;
-            if (origin !== currentOrigin) foreignOrigins.add(origin);
+            const hostname = new URL(url).hostname;
+            if (LOCAL_HOSTS.has(hostname)) deadOrigins.add(new URL(url).origin);
         } catch {}
     }
-
-    const deadOrigins = new Set();
-    await Promise.all([...foreignOrigins].map(async (origin) => {
-        try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 1500);
-            await fetch(origin, { method: 'HEAD', mode: 'no-cors', signal: controller.signal });
-            clearTimeout(timer);
-        } catch {
-            deadOrigins.add(origin);
-        }
-    }));
     return deadOrigins;
 }
 

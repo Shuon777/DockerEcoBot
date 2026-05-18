@@ -233,6 +233,14 @@ class SlotSearchExecutor:
 
     # ── Стандартный поиск (/search) ───────────────────────────────────────────
 
+    @staticmethod
+    def _strip_nulls(obj):
+        if isinstance(obj, dict):
+            return {k: SlotSearchExecutor._strip_nulls(v) for k, v in obj.items() if v is not None}
+        if isinstance(obj, list):
+            return [SlotSearchExecutor._strip_nulls(i) for i in obj if i is not None]
+        return obj
+
     def _build_search_params(self, slots: Dict[str, Any], user_query: str) -> dict:
         search_params = {}
 
@@ -273,7 +281,7 @@ class SlotSearchExecutor:
         own_session = self._session is None
         sess = self._session or aiohttp.ClientSession()
         try:
-            async with sess.post(f"{self._backend_url}/search", json=body) as resp:
+            async with sess.post(f"{self._backend_url}/search", json=self._strip_nulls(body)) as resp:
                 return await resp.json()
         finally:
             if own_session:
