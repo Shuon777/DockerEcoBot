@@ -174,6 +174,8 @@ _HABITAT_WORDS = {
     "река", "озеро", "море", "поле", "степь", "сад", "пустыня"
 }
 
+_GEO_MAP_RE = re.compile(r'на\s+карт[еу]|по\s+карт[еу]|\bкарт[еу]\b', re.IGNORECASE)
+
 
 def _detect_ambiguity(query: str, modality: str) -> bool:
     """
@@ -214,6 +216,13 @@ def _post_process_slots(query: str, slots: dict, valid_features: Optional[Dict[s
     # поэтому их наличие — однозначный сигнал даже если LLM пропустил поле
     if features and slots.get("modality") != "Изображение":
         slots["modality"] = "Изображение"
+
+    # ── 0.5. Явный маркер карты → Геоданные ──────────────────────────────────
+    # "на карте", "на карту", "по карте", "карту/карте" — однозначный сигнал
+    # формата. Перекрывает даже шаг 0: features релевантны только для Изображения.
+    if _GEO_MAP_RE.search(query) and slots.get("modality") != "Геоданные":
+        slots["modality"] = "Геоданные"
+        slots["features"] = {}
 
     # ── 1. Определение Услуги по маркерам ────────────────────────────────────
     if slots.get("object_type") != "Услуга":

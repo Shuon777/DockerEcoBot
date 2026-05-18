@@ -72,10 +72,17 @@ class GeoMapService:
         for geom in geometries:
             self._add_geom_to_static(m_static, geom)
 
-        try:
-            image = m_static.render()
-        except Exception:
-            image = m_static.render(zoom=12)
+        last_err = None
+        for attempt in range(3):
+            try:
+                image = m_static.render()
+                break
+            except Exception as e:
+                last_err = e
+                logger.warning(f"_draw_geometry '{name}': tile download failed (attempt {attempt + 1}/3): {e}")
+                time.sleep(0.5)
+        else:
+            raise last_err
 
         filename = f"{name}.png"
         filepath = os.path.join(self.maps_dir, filename)
