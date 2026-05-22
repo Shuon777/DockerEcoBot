@@ -2,7 +2,7 @@
 import logging
 import time
 from typing import List, Optional, Dict, Any
-from ..domain.entities import ObjectResult, ResourceResult, ResourceCriteria
+from ..domain.entities import ObjectResult, ResourceResult, ResourceCriteria, ObjectCriteria
 from ..domain.place_entities import PlaceSearchResponse
 from ..adapters.search_repository import SearchRepository
 from ..services.geo_map_service import GeoMapService
@@ -55,7 +55,7 @@ class PlaceSearchUseCase:
     def execute(
         self, place_name: str, subtypes: List[str], modality_type: Optional[str] = None,
         buffer_radius_km: float = 10.0, limit: int = 20, offset: int = 0,
-        search_type: str = "near"
+        search_type: str = "near", object_criteria: Optional[ObjectCriteria] = None
     ) -> PlaceSearchResponse:
         total_start = time.time()
         logger.info(f"Place search start: {place_name}, search_type={search_type}")
@@ -72,9 +72,14 @@ class PlaceSearchUseCase:
             effective_search_type = "near"
 
         objects_search_start = time.time()
-        objects, object_ids = self._repository.find_objects_with_geometry_by_subtypes(
-            geometry, subtypes, buffer_radius_km, limit, offset, effective_search_type
-        )
+        if object_criteria and (object_criteria.object_type or object_criteria.properties or object_criteria.name_synonyms or object_criteria.db_id):
+            objects, object_ids = self._repository.find_objects_with_geometry_by_criteria(
+                geometry, object_criteria, buffer_radius_km, limit, offset, effective_search_type
+            )
+        else:
+            objects, object_ids = self._repository.find_objects_with_geometry_by_subtypes(
+                geometry, subtypes, buffer_radius_km, limit, offset, effective_search_type
+            )
         objects_search_time = time.time() - objects_search_start
 
         grouping_start = time.time()

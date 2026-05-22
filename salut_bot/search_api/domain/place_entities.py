@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, List, Any, Dict
+from .entities import ObjectCriteria
 
 @dataclass
 class PlaceGeometryRequest:
@@ -22,6 +23,7 @@ class PlaceObjectsQuery:
     limit: int
     offset: int
     search_type: str = "near"
+    object_criteria: Optional[ObjectCriteria] = None
 
 @dataclass
 class PlaceSearchResponse:

@@ -6,13 +6,13 @@ from ..adapters.sqlalchemy_repository import SQLAlchemySearchRepository
 from ..infrastructure.database import get_session
 from ..services.geo_map_service import GeoMapService
 from ..domain.value_objects import ModalityType
+from ..domain.entities import ObjectCriteria
 
 place_search_bp = Blueprint('place_search', __name__, url_prefix='/search')
 logger = logging.getLogger(__name__)
 
 def _get_repository():
     return SQLAlchemySearchRepository(get_session)
-
 
 @place_search_bp.route('/place/objects', methods=['POST'])
 def search_objects_near_place():
@@ -30,6 +30,24 @@ def search_objects_near_place():
     offset = data.get('offset', 0)
     search_type = data.get('search_type', 'near')
 
+    object_criteria = None
+    if data.get('object_criteria'):
+        oc = data['object_criteria']
+        object_criteria = ObjectCriteria(
+            db_id=oc.get('db_id'),
+            name_synonyms=oc.get('name_synonyms'),
+            properties=oc.get('properties'),
+            object_type=oc.get('object_type')
+        )
+    else:
+        if data.get('object_type') or data.get('name_synonyms') or data.get('properties'):
+            object_criteria = ObjectCriteria(
+                db_id=data.get('db_id'),
+                name_synonyms=data.get('name_synonyms'),
+                properties=data.get('properties'),
+                object_type=data.get('object_type')
+            )
+
     config = current_app.config.get('SEARCH_CONFIG')
     if not config:
         from ..config import SearchConfig
@@ -40,7 +58,8 @@ def search_objects_near_place():
     result = use_case.execute(
         place_name=place_name, subtypes=subtypes,
         modality_type=modality_type, buffer_radius_km=buffer_radius_km,
-        limit=limit, offset=offset, search_type=search_type
+        limit=limit, offset=offset, search_type=search_type,
+        object_criteria=object_criteria
     )
 
     objects_serialized = [{

@@ -292,7 +292,102 @@ class SQLAlchemySearchRepository(SearchRepository):
                 objects.append(obj)
             
             return objects, object_ids
-        
+
+    def find_objects_with_geometry_by_criteria(
+        self, geometry_geojson: Dict[str, Any], criteria: ObjectCriteria,
+        buffer_radius_km: float, limit: int, offset: int,
+        search_type: str = "near"
+    ) -> Tuple[List[Any], List[int]]:
+        session = self._session_factory()
+        with session:
+            geom_json_str = json.dumps(geometry_geojson)
+            buffer_meters = buffer_radius_km * 1000.0
+
+            base_conditions = []
+            params = {
+                'geom': geom_json_str,
+                'buffer': buffer_meters,
+                'limit': limit,
+                'offset': offset
+            }
+            
+            if criteria.object_type:
+                base_conditions.append("ot.name = :object_type")
+                params['object_type'] = criteria.object_type
+            if criteria.db_id:
+                base_conditions.append("o.db_id = :db_id")
+                params['db_id'] = criteria.db_id
+            if criteria.name_synonyms:
+                names = []
+                for lang, name_list in criteria.name_synonyms.items():
+                    names.extend(name_list)
+                if names:
+                    placeholders = ','.join([f"'{n}'" for n in names])
+                    base_conditions.append(f"ons.synonym IN ({placeholders})")
+            if criteria.properties:
+                for key, val in criteria.properties.items():
+                    param_name = f"prop_{key.replace(' ', '_').replace('-', '_')}"
+                    if isinstance(val, str):
+                        base_conditions.append(
+                            f"o.object_properties->>'{key}' = :{param_name}"
+                        )
+                        params[param_name] = val
+                    elif isinstance(val, list):
+                        items = "', '".join(val)
+                        base_conditions.append(
+                            f"o.object_properties->'{key}' ?| ARRAY['{items}']"
+                        )
+            
+            base_where = " AND ".join(base_conditions) if base_conditions else "TRUE"
+
+            if search_type == "inside":
+                spatial_cond = "ST_Within(gv.geometry, ig.geom)"
+            elif search_type == "near":
+                spatial_cond = "ST_DWithin(gv.geometry, ig.geom, :buffer)"
+            else:
+                spatial_cond = "(ST_Within(gv.geometry, ig.geom) OR ST_DWithin(gv.geometry, ig.geom, :buffer))"
+
+            sql = text(f"""
+                WITH input_geom AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326) AS geom)
+                SELECT o.id, o.db_id, o.object_properties, ot.name as object_type,
+                    ST_AsGeoJSON(gv.geometry)::json as geometry_geojson,
+                    ST_GeometryType(gv.geometry) as geom_type,
+                    ST_Distance(gv.geometry, ig.geom) as distance,
+                    array_agg(DISTINCT ons.synonym) FILTER (WHERE ons.synonym IS NOT NULL) as synonyms
+                FROM eco_assistant.object o
+                JOIN eco_assistant.object_type ot ON o.object_type_id = ot.id
+                JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+                JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+                JOIN eco_assistant.modality m ON rv.modality_id = m.id
+                JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                CROSS JOIN input_geom ig
+                WHERE m.modality_type = 'Геоданные'
+                AND {spatial_cond}
+                AND {base_where}
+                GROUP BY o.id, ot.name, gv.geometry, ig.geom
+                ORDER BY distance
+                LIMIT :limit OFFSET :offset
+            """)
+            
+            rows = session.execute(sql, params).fetchall()
+
+            from ..infrastructure.orm.object_models import Object, ObjectType, ObjectNameSynonym
+            objects = []
+            object_ids = []
+            for r in rows:
+                object_ids.append(r.id)
+                obj = Object()
+                obj.id = r.id
+                obj.db_id = r.db_id
+                obj.object_properties = r.object_properties
+                obj.object_type = ObjectType(name=r.object_type)
+                obj._geometry_geojson = r.geometry_geojson
+                obj.synonyms = [ObjectNameSynonym(synonym=s) for s in (r.synonyms or [])]
+                objects.append(obj)
+            return objects, object_ids
+          
     def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]:
         session = self._session_factory()
         with session:

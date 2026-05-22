@@ -1593,6 +1593,155 @@
           "path": ["search", "search"]
         }
       }
+    },
+        {
+      "name": "TC-31: Покажи редкие объекты флоры и фауны есть на Байкале (place search с фильтром по свойствам)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains objects with 'Редкость' = 'Редкое'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        var rarity = obj.properties && obj.properties['Редкость'];",
+              "        pm.expect(rarity).to.equal('Редкое');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"All objects have property 'Расположение относительно Байкала' containing 'Байкала'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        var location = obj.properties && obj.properties['Расположение относительно Байкала'];",
+              "        if (location) {",
+              "            pm.expect(location.toLowerCase()).to.include('байкал');",
+              "        }",
+              "    });",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"place_name\": \"Байкал\",\n  \"subtypes\": [\"Объект флоры и фауны\"],\n  \"buffer_radius_km\": 50,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"near\",\n  \"object_criteria\": {\n    \"properties\": {\n      \"Редкость\": \"Редкое\",\n      \"Расположение относительно Байкала\": \"рядом/около Байкала\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/search/place/objects",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "search", "place", "objects"]
+        }
+      }
+    },
+    {
+      "name": "TC-32: Покажи редкие объекты на Байкале (place search с фильтром по свойствам и полигоном)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains objects with 'Редкость' = 'Редкое'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        var rarity = obj.properties && obj.properties['Редкость'];",
+              "        pm.expect(rarity).to.equal('Редкое');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"Place name is 'Байкал'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.place_name).to.equal('Байкал');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"place_name\": \"Байкал\",\n  \"buffer_radius_km\": 10,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"inside\",\n  \"object_criteria\": {\n    \"properties\": {\n      \"Редкость\": \"Редкое\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/search/place/objects",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "search", "place", "objects"]
+        }
+      }
+    },
+    {
+      "name": "TC-32: Покажи эндемиков Байкала (place search с фильтром по свойствам и полигоном)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response contains objects with 'Редкость' = 'Редкое'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.objects.length).to.be.at.least(1);",
+              "    jsonData.objects.forEach(function(obj) {",
+              "        var rarity = obj.properties && obj.properties['Редкость'];",
+              "        pm.expect(rarity).to.equal('Редкое');",
+              "    });",
+              "});",
+              "",
+              "pm.test(\"Place name is 'Байкал'\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.place_name).to.equal('Байкал');",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"place_name\": \"Байкал\",\n  \"buffer_radius_km\": 10,\n  \"limit\": 20,\n  \"offset\": 0,\n  \"search_type\": \"inside\",\n  \"object_criteria\": {\n    \"properties\": {\n      \"Редкость\": \"Редкое\"\n    }\n  }\n}"
+        },
+        "url": {
+          "raw": "http://localhost/search/search/place/objects",
+          "protocol": "http",
+          "host": ["localhost"],
+          "path": ["search", "search", "place", "objects"]
+        }
+      }
     }
   ]
 }
