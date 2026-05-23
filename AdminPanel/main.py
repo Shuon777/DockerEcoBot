@@ -226,6 +226,14 @@ async def classify_proxy(request: Request, data: dict = Body(...)):
             return {"error": f"Ошибка Core API: {str(e)}"}
 
 
+_CALLBACK_QUERIES: dict[str, str] = {
+    "desc":  "Расскажи о {}",
+    "photo": "Покажи фото {}",
+    "map":   "Где обитает {}",
+    "text":  "Расскажи о {}",
+}
+
+
 @app.post("/chat/search")
 async def search_proxy(request: Request, data: dict = Body(...)):
     user_id = request.session.get("user_id")
@@ -238,8 +246,36 @@ async def search_proxy(request: Request, data: dict = Body(...)):
         try:
             response = await client.post(
                 f"{CORE_API_BASE}/search_pipeline",
-                json={"query": query}
+                json={"query": query, "user_id": user_id}
             )
+            return response.json()
+        except Exception as e:
+            return {"error": f"Ошибка Core API: {str(e)}"}
+
+
+@app.post("/chat/callback")
+async def callback_proxy(request: Request, data: dict = Body(...)):
+    user_id = request.session.get("user_id")
+    if not user_id:
+        return {"error": "не авторизован"}
+    payload = data.get("payload", "")
+    async with httpx.AsyncClient(timeout=httpx.Timeout(150.0)) as client:
+        try:
+            if payload.startswith("simplify:"):
+                idx = int(payload.removeprefix("simplify:"))
+                response = await client.post(
+                    f"{CORE_API_BASE}/callback_simplify",
+                    json={"user_id": user_id, "idx": idx}
+                )
+            else:
+                prefix, _, name = payload.partition(":")
+                template = _CALLBACK_QUERIES.get(prefix)
+                if not template or not name:
+                    return {"error": "Неизвестный тип кнопки"}
+                response = await client.post(
+                    f"{CORE_API_BASE}/search_pipeline",
+                    json={"query": template.format(name), "user_id": user_id}
+                )
             return response.json()
         except Exception as e:
             return {"error": f"Ошибка Core API: {str(e)}"}

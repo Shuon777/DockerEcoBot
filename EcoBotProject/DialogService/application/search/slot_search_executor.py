@@ -9,6 +9,8 @@ from utils.stand_manager import is_stand_session_active
 
 _NEAR_RE = re.compile(r"рядом|около|возле|недалеко|поблизости|близ", re.IGNORECASE)
 
+_LOCATION_KEYS = frozenset({"Детальное расположение", "Расположение относительно Байкала"})
+
 
 def _normalize_map_links(links) -> dict:
     """Приводит map_links из API к единому формату {"static": url, "interactive": url}."""
@@ -36,7 +38,7 @@ logger = logging.getLogger(__name__)
 
 class SlotSearchExecutor:
     """Исполнительная часть пайплайна нового классификатора.
-    Преобразует слоты в параметры запроса к /search или /search/place/objects
+    Преобразует слоты в параметры запроса к /search или /place/objects
     и возвращает результат.
     """
 
@@ -196,6 +198,8 @@ class SlotSearchExecutor:
         is_baikal = bool(props.get("Расположение относительно Байкала"))
 
         place_name = "озеро байкал" if is_baikal else (props.get("Детальное расположение") or "").lower()
+        if not place_name:
+            logger.warning("_build_place_params: place_name is empty — slot missing location")
         search_type = self._resolve_search_type(user_query, is_baikal)
         buffer_km = 1.0 if is_baikal else 10.0
 
@@ -207,9 +211,19 @@ class SlotSearchExecutor:
             "search_type": search_type,
         }
 
-        subtypes = props.get("Подтип объекта")
-        if subtypes:
-            body["Подтип объекта"] = [subtypes] if isinstance(subtypes, str) else subtypes
+        # DB-свойства объекта без геолокационных ключей (они только для place_name)
+        object_props = {k: v for k, v in props.items() if k not in _LOCATION_KEYS}
+        subtypes = object_props.pop("Подтип объекта", None)
+
+        if object_props:
+            # Есть дополнительные фильтры (напр. Редкость) → object_criteria.properties
+            criteria_props = dict(object_props)
+            if subtypes:
+                criteria_props["Подтип объекта"] = [subtypes] if isinstance(subtypes, str) else list(subtypes)
+            body["object_criteria"] = {"properties": criteria_props}
+        elif subtypes:
+            # Только подтип — обратная совместимость с find_objects_with_geometry_by_subtypes
+            body["Подтип объекта"] = [subtypes] if isinstance(subtypes, str) else list(subtypes)
 
         return body
 

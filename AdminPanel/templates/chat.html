@@ -147,10 +147,11 @@ async function sendMessage(overrideText = null, isCallback = false) {
             body: JSON.stringify({ text: text })
         });
         const data = await response.json();
-        renderClassification(data.slots || data);
-        if (data.search_request) renderSearchRequest(data.search_request);
-        if (data.search) renderSearchDebug(data.search);
-        if (data.result) await renderResult(data.result);
+        const isDebug = document.getElementById('setting-debug').checked;
+        if (isDebug) renderClassification(data.slots || data);
+        if (isDebug && data.search_request) renderSearchRequest(data.search_request);
+        if (isDebug && data.search) renderSearchDebug(data.search);
+        await renderResult(data);
         if (data.error) appendMessage('bot', `❌ ${data.error}`);
     } catch (e) {
         console.error("Ошибка:", e);
@@ -383,8 +384,14 @@ function renderSearchDebug(searchData) {
     chat.scrollTop = chat.scrollHeight;
 }
 
-async function renderResult(result) {
-    if (!result) return;
+async function renderResult(pipelineData) {
+    if (!pipelineData || pipelineData.error) return;
+
+    const result = pipelineData.result || {};
+    const proactive = pipelineData.proactive || {};
+    const modality_ambiguous = pipelineData.modality_ambiguous || false;
+    const simplifications = pipelineData.simplifications || [];
+    const slots = pipelineData.slots || {};
 
     const urlsToCheck = [
         ...(result.images || []),
@@ -393,21 +400,97 @@ async function renderResult(result) {
     ].filter(Boolean);
     const deadOrigins = await resolveDeadHosts(urlsToCheck);
 
-    if (result.answer) appendMessage('bot', result.answer);
-
-    if (result.images && result.images.length > 0) {
-        for (const url of result.images) {
-            appendImage('bot', fixUrl(url, deadOrigins));
-        }
+    // Изображения (до 3) — как в MAX
+    for (const url of (result.images || []).slice(0, 3)) {
+        appendImage('bot', fixUrl(url, deadOrigins));
     }
 
-    if (result.map) {
-        if (result.map.static) appendImage('bot', fixUrl(result.map.static, deadOrigins));
-        if (result.map.interactive) appendMapLink('bot', fixUrl(result.map.interactive, deadOrigins));
+    // Статическая карта как картинка
+    if (result.map?.static) {
+        appendImage('bot', fixUrl(result.map.static, deadOrigins));
     }
 
-    const chat = document.getElementById('chat-window');
-    chat.scrollTop = chat.scrollHeight;
+    // Кнопки
+    const buttons = [];
+
+    if (result.map?.interactive) {
+        buttons.push({ type: 'link', text: 'Открыть интерактивную карту', url: fixUrl(result.map.interactive, deadOrigins) });
+    }
+    if (proactive.photo) buttons.push({ type: 'callback', text: '🖼 Фото', payload: `photo:${proactive.photo.substring(0, 50)}` });
+    if (proactive.map)   buttons.push({ type: 'callback', text: '🗺 Карта ареала', payload: `map:${proactive.map.substring(0, 50)}` });
+    if (proactive.text)  buttons.push({ type: 'callback', text: '📖 Подробнее', payload: `text:${proactive.text.substring(0, 50)}` });
+
+    if (modality_ambiguous && slots.synonym && !proactive.map) {
+        buttons.push({ type: 'callback', text: '🗺 Показать на карте', payload: `map:${slots.synonym.substring(0, 50)}` });
+    }
+
+    // Текст ответа
+    let text = result.answer || 'По вашему запросу ничего не найдено.';
+    if (result.total_found != null && result.place) {
+        text += `\n\nНайдено объектов: ${result.total_found} (место: ${result.place})`;
+    }
+
+    if (simplifications.length > 0) {
+        text += '\n\nМожно расширить поиск:';
+        simplifications.forEach((s, i) => {
+            buttons.push({ type: 'callback', text: s.label, payload: `simplify:${i}` });
+        });
+    }
+
+    const msgDiv = appendMessage('bot', text.replace(/\n/g, '<br>'));
+
+    if (buttons.length > 0 && msgDiv) {
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'mt-3 d-flex flex-wrap gap-2';
+        buttons.forEach(btn => {
+            if (btn.type === 'link') {
+                const a = document.createElement('a');
+                a.href = btn.url;
+                a.target = '_blank';
+                a.className = 'btn btn-sm btn-success shadow-sm px-3 py-2';
+                a.style.cssText = 'border-radius:10px;text-decoration:none';
+                a.innerHTML = `<i class="bi bi-geo-alt-fill me-1"></i> ${btn.text}`;
+                btnContainer.appendChild(a);
+            } else {
+                const b = document.createElement('button');
+                b.className = 'btn btn-sm btn-outline-primary shadow-sm px-3 py-2';
+                b.style.borderRadius = '10px';
+                b.innerText = btn.text;
+                b.onclick = () => {
+                    appendMessage('user', btn.text);
+                    btnContainer.remove();
+                    sendCallback(btn.payload);
+                };
+                btnContainer.appendChild(b);
+            }
+        });
+        msgDiv.querySelector('.message-bubble').appendChild(btnContainer);
+    }
+
+    document.getElementById('chat-window').scrollTop = document.getElementById('chat-window').scrollHeight;
+}
+
+async function sendCallback(payload) {
+    const loading = document.getElementById('loading-indicator');
+    loading.classList.remove('d-none');
+    try {
+        const response = await fetch('/admin/chat/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload })
+        });
+        const data = await response.json();
+        const isDebug = document.getElementById('setting-debug').checked;
+        if (isDebug && data.slots) renderClassification(data.slots);
+        if (isDebug && data.search_request) renderSearchRequest(data.search_request);
+        if (isDebug && data.search) renderSearchDebug(data.search);
+        await renderResult(data);
+        if (data.error) appendMessage('bot', `❌ ${data.error}`);
+    } catch (e) {
+        appendMessage('bot', '❌ Ошибка при обработке кнопки.');
+    } finally {
+        loading.classList.add('d-none');
+    }
 }
 
 document.getElementById('user-input').addEventListener('keypress', (e) => {

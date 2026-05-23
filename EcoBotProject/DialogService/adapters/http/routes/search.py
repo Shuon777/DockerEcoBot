@@ -47,3 +47,23 @@ async def search_pipeline(request: Request, data: dict = Body(...)):
     user_id: str | None = data.get("user_id") or None
     orchestrator = _make_orchestrator(request)
     return await orchestrator.process(query, user_id=user_id)
+
+
+@router.post("/callback_simplify")
+async def callback_simplify(request: Request, data: dict = Body(...)):
+    user_id: str | None = data.get("user_id") or None
+    idx = data.get("idx", 0)
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    orchestrator = _make_orchestrator(request)
+    item = await orchestrator.load_simplification(user_id, idx)
+    if not item:
+        return {
+            "result": {"answer": "Вариант поиска устарел. Повторите запрос."},
+            "slots": {},
+            "proactive": {},
+            "simplifications": [],
+            "modality_ambiguous": False,
+            "is_continuation": False,
+        }
+    return await orchestrator.process_with_slots(item["query"], item["slots"], user_id=user_id)
