@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from application.search.context_manager import ConversationHistory, DialogueTurn
@@ -10,6 +11,10 @@ from application.search.slot_classifier import SlotClassifier, _determine_templa
 from application.search.slot_search_executor import SlotSearchExecutor
 
 logger = logging.getLogger(__name__)
+
+def _ms(t: float) -> int:
+    return round((time.monotonic() - t) * 1000)
+
 
 _SIMPLIFY_KEY_PREFIX = "simplify:"
 _SIMPLIFY_TTL = 300  # 5 минут — пока пользователь видит кнопки
@@ -151,17 +156,23 @@ class DialogueOrchestrator:
 
     async def process(self, query: str, user_id: str | None = None) -> dict:
         """Полный цикл: классификация → мердж контекста → поиск → проактивность."""
+        t0 = time.monotonic()
         turns = await self._history.get_turns(user_id) if user_id else []
         prev = turns[-1] if turns else None
 
         # Передаём предыдущий запрос в LLM — для разрешения местоимений
+        t_classify = time.monotonic()
         slots = await self._classifier.classify(query, prev_query=prev.query if prev else None)
+        classify_ms = _ms(t_classify)
 
         is_continuation = False
+        context_ms = 0
         if prev:
+            t_ctx = time.monotonic()
             slots, is_continuation = _merge_with_context(slots, prev, query)
             slots["template"] = _determine_template(slots)
             slots["modality_ambiguous"] = _detect_ambiguity(query, slots["modality"])
+            context_ms = _ms(t_ctx)
 
         logger.info(
             f"[CTX] Итог [{user_id}]: "
@@ -172,13 +183,25 @@ class DialogueOrchestrator:
             f"continuation={is_continuation}"
         )
 
-        return await self._execute_and_finalize(query, slots, user_id, is_continuation)
+        result = await self._execute_and_finalize(query, slots, user_id, is_continuation)
+        exec_timing = result.get("timing", {})
+        result["timing"] = {
+            "classify_ms": classify_ms,
+            "context_ms": context_ms,
+            **exec_timing,
+            "total_ms": _ms(t0),
+        }
+        return result
 
     async def process_with_slots(
         self, query: str, slots: dict, user_id: str | None = None
     ) -> dict:
         """Выполнение с готовыми слотами — для callback упрощений."""
-        return await self._execute_and_finalize(query, slots, user_id, is_continuation=False)
+        t0 = time.monotonic()
+        result = await self._execute_and_finalize(query, slots, user_id, is_continuation=False)
+        exec_timing = result.get("timing", {})
+        result["timing"] = {**exec_timing, "total_ms": _ms(t0)}
+        return result
 
     async def _execute_and_finalize(
         self,
@@ -187,13 +210,18 @@ class DialogueOrchestrator:
         user_id: str | None,
         is_continuation: bool,
     ) -> dict:
+        t_search = time.monotonic()
         pipeline_result = await self._executor.execute(query, slots, user_id=user_id)
+        search_ms = _ms(t_search)
         result = pipeline_result.get("result", {})
 
         # Сценарий 4: нет результатов → ищем упрощения параллельно
         simplifications: list[dict] = []
+        simplifications_ms = 0
         if user_id and self._redis and not _has_content(result):
+            t_simp = time.monotonic()
             simplifications = await self._try_simplifications(query, slots, user_id)
+            simplifications_ms = _ms(t_simp)
 
         proactive = _build_proactive(slots, result)
 
@@ -208,6 +236,10 @@ class DialogueOrchestrator:
         pipeline_result["modality_ambiguous"] = slots.get("modality_ambiguous", False)
         pipeline_result["is_continuation"] = is_continuation
         pipeline_result["simplifications"] = simplifications
+        pipeline_result["timing"] = {
+            "search_ms": search_ms,
+            "simplifications_ms": simplifications_ms,
+        }
 
         return pipeline_result
 

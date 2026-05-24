@@ -201,7 +201,7 @@ class SlotSearchExecutor:
         if not place_name:
             logger.warning("_build_place_params: place_name is empty — slot missing location")
         search_type = self._resolve_search_type(user_query, is_baikal)
-        buffer_km = 1.0 if is_baikal else 10.0
+        buffer_km = 10.0
 
         body: dict = {
             "place_name": place_name,
