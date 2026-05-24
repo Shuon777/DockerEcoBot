@@ -151,6 +151,7 @@ async function sendMessage(overrideText = null, isCallback = false) {
         if (isDebug) renderClassification(data.slots || data);
         if (isDebug && data.search_request) renderSearchRequest(data.search_request);
         if (isDebug && data.search) renderSearchDebug(data.search);
+        if (isDebug && data.timing) renderTiming(data.timing);
         await renderResult(data);
         if (data.error) appendMessage('bot', `❌ ${data.error}`);
     } catch (e) {
@@ -384,6 +385,57 @@ function renderSearchDebug(searchData) {
     chat.scrollTop = chat.scrollHeight;
 }
 
+function renderTiming(timing) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'message system-message';
+
+    const STAGES = [
+        { key: 'classify_ms',       label: 'Классификация (LLM)' },
+        { key: 'context_ms',        label: 'Контекст' },
+        { key: 'search_ms',         label: 'Поиск (backend)' },
+        { key: 'simplifications_ms', label: 'Упрощения' },
+    ].filter(s => timing[s.key] != null);
+
+    const total = timing.total_ms;
+    const maxVal = Math.max(...STAGES.map(s => timing[s.key] || 0), 1);
+
+    function msColor(ms) {
+        if (ms < 100) return '#10b981';
+        if (ms < 500) return '#fbbf24';
+        return '#f87171';
+    }
+
+    function bar(ms) {
+        const filled = Math.max(0, Math.round((ms / maxVal) * 12));
+        return '<span style="color:#10b981">' + '█'.repeat(filled) + '</span>'
+             + '<span style="color:#1f2937">' + '█'.repeat(12 - filled) + '</span>';
+    }
+
+    const COL = 24;
+    const lines = STAGES.map(s => {
+        const ms = timing[s.key] || 0;
+        const pad = ' '.repeat(Math.max(0, COL - s.label.length));
+        return `  <span style="color:#94a3b8">${s.label}${pad}</span>`
+             + `<span style="color:${msColor(ms)};font-weight:bold">${String(ms).padStart(5)} ms</span>`
+             + `  ${bar(ms)}`;
+    });
+
+    if (total != null) {
+        lines.push(`  <span style="color:#374151">${'─'.repeat(50)}</span>`);
+        const totPad = ' '.repeat(Math.max(0, COL - 5));
+        lines.push(`  <span style="color:#94a3b8">Итого${totPad}</span>`
+                 + `<span style="color:${msColor(total)};font-weight:bold">${String(total).padStart(5)} ms</span>`);
+    }
+
+    div.innerHTML = `
+        <div class="debug-header"><i class="bi bi-stopwatch"></i> Pipeline Timing</div>
+        <pre class="debug-block">${lines.join('\n')}</pre>
+    `;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
 async function renderResult(pipelineData) {
     if (!pipelineData || pipelineData.error) return;
 
@@ -484,6 +536,7 @@ async function sendCallback(payload) {
         if (isDebug && data.slots) renderClassification(data.slots);
         if (isDebug && data.search_request) renderSearchRequest(data.search_request);
         if (isDebug && data.search) renderSearchDebug(data.search);
+        if (isDebug && data.timing) renderTiming(data.timing);
         await renderResult(data);
         if (data.error) appendMessage('bot', `❌ ${data.error}`);
     } catch (e) {

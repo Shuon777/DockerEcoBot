@@ -14,6 +14,7 @@ from application.search.dialogue_orchestrator import DialogueOrchestrator
 from adapters.max.handlers.commands import register_command_handlers
 from adapters.max.handlers.messages import register_message_handlers
 from adapters.max.handlers.callbacks import register_callback_handlers
+from adapters.max.handlers.attachments import register_attachment_handlers
 
 setup_logging()
 logger = logging.getLogger("MaxBotApp")
@@ -41,6 +42,7 @@ async def main() -> None:
     register_command_handlers(dp, bot)
     register_message_handlers(dp, bot)
     register_callback_handlers(dp, bot)
+    register_attachment_handlers(dp, bot)
 
     use_webhook = os.getenv("MAX_USE_WEBHOOK", "").lower() == "true"
 

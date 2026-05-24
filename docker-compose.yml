@@ -100,25 +100,25 @@ services:
       - db
     networks: [ecobot_net]
 
-  # max:
-  #   build: ./EcoBotProject/DialogService
-  #   restart: always
-  #   env_file:
-  #     - ./EcoBotProject/DialogService/.env
-  #     - ./shared.env
-  #   volumes:
-  #     - ./logs:/app/logs
-  #     - ./data:/app/data
-  #   command: python main_max.py
-  #   environment:
-  #     - PYTHONUNBUFFERED=1
-  #     - REDIS_HOST=redis
-  #   extra_hosts:
-  #     - "host.docker.internal:host-gateway"
-  #   depends_on:
-  #     - backend
-  #     - core-api
-  #   networks: [ecobot_net]
+  max:
+    build: ./EcoBotProject/DialogService
+    restart: always
+    env_file:
+      - ./EcoBotProject/DialogService/.env
+      - ./shared.env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    command: python main_max.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REDIS_HOST=redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
+      - core-api
+    networks: [ecobot_net]
 
   # ─────────────────────────── ADMIN PANEL ──────────────────────────────
 
