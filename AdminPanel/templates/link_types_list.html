@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Каталог типов связей{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <h4 class="fw-bold mb-1"><i class="bi bi-diagram-3"></i> Типы связей</h4>
+        <p class="text-muted small mb-0">Справочники типов, используемых в связях между объектами и ресурсами</p>
+    </div>
+</div>
+
+<div class="card shadow-sm border-0" style="border-radius: 16px;">
+    <div class="card-header bg-white p-3 border-bottom">
+        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+            <li class="nav-item">
+                <button class="nav-link fw-bold active" data-bs-toggle="tab" data-bs-target="#tab-obj-obj" type="button">
+                    <i class="bi bi-diagram-3 me-1"></i> Объект ↔ Объект
+                    <span class="badge bg-secondary ms-1">{{ obj_obj_types|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-res-res" type="button">
+                    <i class="bi bi-files me-1"></i> Ресурс ↔ Ресурс
+                    <span class="badge bg-secondary ms-1">{{ res_res_types|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item">
+                <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#tab-res-obj" type="button">
+                    <i class="bi bi-file-earmark-arrow-right me-1"></i> Ресурс ↔ Объект
+                    <span class="badge bg-secondary ms-1">{{ res_obj_types|length }}</span>
+                </button>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body p-4">
+        <div class="tab-content">
+
+            {# ── Объект ↔ Объект ── #}
+            <div class="tab-pane fade show active" id="tab-obj-obj">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <p class="text-muted small mb-0">Используются в связях между объектами (животные, растения, геообъекты, услуги)</p>
+                    <button class="btn btn-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addObjObjModal">
+                        <i class="bi bi-plus-lg"></i> Добавить
+                    </button>
+                </div>
+                {% if obj_obj_types %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light"><tr><th>Название</th><th>Создан</th><th style="width:60px;"></th></tr></thead>
+                        <tbody>
+                            {% for t in obj_obj_types %}
+                            <tr>
+                                <td><span class="badge fw-semibold fs-6" style="background:#dcfce7; color:#166534;">{{ t.name }}</span></td>
+                                <td class="text-muted small">{{ t.created_at.strftime('%d.%m.%Y') if t.created_at else '—' }}</td>
+                                <td>
+                                    <form method="post" action="/admin/link-types/obj-obj/{{ t.id }}/delete"
+                                          onsubmit="return confirm('Удалить тип «{{ t.name }}»?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-diagram-3 fs-1 d-block mb-2 text-light"></i>
+                    Нет типов. Добавьте первый.
+                </div>
+                {% endif %}
+            </div>
+
+            {# ── Ресурс ↔ Ресурс ── #}
+            <div class="tab-pane fade" id="tab-res-res">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <p class="text-muted small mb-0">Используются в связях между ресурсами</p>
+                    <button class="btn btn-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addResResModal">
+                        <i class="bi bi-plus-lg"></i> Добавить
+                    </button>
+                </div>
+                {% if res_res_types %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light"><tr><th>Название</th><th>Создан</th><th style="width:60px;"></th></tr></thead>
+                        <tbody>
+                            {% for t in res_res_types %}
+                            <tr>
+                                <td><span class="badge fw-semibold fs-6" style="background:#dbeafe; color:#1e40af;">{{ t.name }}</span></td>
+                                <td class="text-muted small">{{ t.created_at.strftime('%d.%m.%Y') if t.created_at else '—' }}</td>
+                                <td>
+                                    <form method="post" action="/admin/link-types/res-res/{{ t.id }}/delete"
+                                          onsubmit="return confirm('Удалить тип «{{ t.name }}»?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-files fs-1 d-block mb-2 text-light"></i>
+                    Нет типов. Добавьте первый.
+                </div>
+                {% endif %}
+            </div>
+
+            {# ── Ресурс ↔ Объект ── #}
+            <div class="tab-pane fade" id="tab-res-obj">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <p class="text-muted small mb-0">Используются при привязке ресурсов к объектам</p>
+                    <button class="btn btn-success btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#addResObjModal">
+                        <i class="bi bi-plus-lg"></i> Добавить
+                    </button>
+                </div>
+                {% if res_obj_types %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light"><tr><th>Название</th><th>Создан</th><th style="width:60px;"></th></tr></thead>
+                        <tbody>
+                            {% for t in res_obj_types %}
+                            <tr>
+                                <td><span class="badge fw-semibold fs-6" style="background:#fef3c7; color:#92400e;">{{ t.name }}</span></td>
+                                <td class="text-muted small">{{ t.created_at.strftime('%d.%m.%Y') if t.created_at else '—' }}</td>
+                                <td>
+                                    <form method="post" action="/admin/link-types/res-obj/{{ t.id }}/delete"
+                                          onsubmit="return confirm('Удалить тип «{{ t.name }}»?')">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3"></i></button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-4 text-muted">
+                    <i class="bi bi-file-earmark-arrow-right fs-1 d-block mb-2 text-light"></i>
+                    Нет типов. Добавьте первый.
+                </div>
+                {% endif %}
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Модалки добавления -->
+{% for modal_id, action, title in [
+    ('addObjObjModal', '/admin/link-types/obj-obj/new', 'Новый тип: Объект ↔ Объект'),
+    ('addResResModal', '/admin/link-types/res-res/new', 'Новый тип: Ресурс ↔ Ресурс'),
+    ('addResObjModal', '/admin/link-types/res-obj/new', 'Новый тип: Ресурс ↔ Объект'),
+] %}
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius: 20px;">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold"><i class="bi bi-diagram-3 me-1 text-success"></i> {{ title }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="{{ action }}">
+                <div class="modal-body">
+                    <label class="form-label small fw-bold text-secondary">НАЗВАНИЕ *</label>
+                    <input type="text" name="name" class="form-control" required
+                           placeholder="например: описание объекта, дополняет...">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
+                    <button type="submit" class="btn btn-success fw-bold">
+                        <i class="bi bi-plus-lg me-1"></i> Добавить
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

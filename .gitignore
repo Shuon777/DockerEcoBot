@@ -1,0 +1,102 @@
+# Secrets and environment files
+.env
+.env.*
+*.env
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Backups
+backup/
+backups/
+*.bak
+*.backup
+*.tar
+*.tar.gz
+*.zip
+
+# Certbot / SSL certificates
+certbot/
+letsencrypt/
+ssl/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Runtime data / volumes
+data/
+storage/
+volumes/
+
+# Local models / large ML files
+embedding_models/
+*.bin
+*.gguf
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Databases and dumps
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Node.js
+node_modules/
+dist/
+build/
+.next/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Nested environment files
+**/.env
+**/.env.*
+!**/.env.example
+
+# Rasa runtime files
+EcoBotProject/RasaProject/.rasa/
+EcoBotProject/RasaProject/models/
+
+# Local embedding models
+salut_bot/embedding_models/
+
+# Python cache everywhere
+**/__pycache__/
+**/*.pyc
+
+# Local databases/cache
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Archives and model artifacts
+**/*.tar.gz
+**/*.tar
+**/*.zip
+
+# Large image assets
+images/
+
+# Local ML models (full folder, not just model weights)
+dsapi/local_models/
+
+# Shared env with secrets
+shared.env
+compose.full.yml

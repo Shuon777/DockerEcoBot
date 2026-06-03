@@ -1,0 +1,215 @@
+{
+  "TAXONOMY": {
+    "A photo of a seal": {
+      "genus": "Нeрпы",
+      "family": "Настоящие тюлени",
+      "name": "Нерпа"
+    },
+    "A photo of a omul": {
+      "genus": "Омуль",
+      "family": "Рыбы",
+      "name": "Омуль"
+    },
+    "A photo of a silver gull": {
+      "genus": "Чайка",
+      "family": "Чайковые",
+      "name": "Серебристая чайка"
+    },
+    "A photo of a thyme": {
+      "genus": "Тимьян",
+      "family": "Яснотковые",
+      "name": "Чабрец (Тимьян)"
+    },
+    "A photo of a tree cone": {
+      "genus": "Лиственница",
+      "family": "Сосновые",
+      "name": "Шишка"
+    },
+    "A photo of a siberian larch": {
+      "genus": "Лиственница",
+      "family": "Сосновые",
+      "name": "Лиственница Сибирская"
+    },
+    "A photo of a siberian fir": {
+      "genus": "Пихта",
+      "family": "Сосновые",
+      "name": "Пихта Сибирская"
+    },
+    "Undefined": {
+      "genus": "",
+      "family": "",
+      "name": ""
+    }
+
+  },
+  "SEASONS": {
+    "A photo of a Spring": "Весна",
+    "A photo of a Summer": "Лето",
+    "A photo of a Autumn": "Осень",
+    "A photo of a Winter": "Зима",
+    "Undefined": "Неопределёно"
+  },
+  "PRECIPITATION": {
+    "A photo of a no precipitation": "Без осадков",
+    "A photo of a Rain": "Дождь",
+    "A photo of a A photo of a Snow": "Снег",
+    "A photo of a Drizzle": "Морось",
+    "A photo of a Hail": "Град",
+    "A photo of a Thunderstorm": "Гроза",
+    "A photo of a Fog": "Туман",
+    "Undefined": "Неопределено"
+  },
+  "CLOUDINESS": {
+    "A photo of a Clear": "Ясно",
+    "A photo of a PartlyCloudy": "Переменная облачность",
+    "A photo of a Overcast": "Пасмурно",
+    "Undefined": "Неопределено"
+  },
+  "TEMPERATURE": {
+    "A photo of a Hot": "Жарко",
+    "A photo of a Warm": "Тепло",
+    "A photo of a Cool": "Прохладно",
+    "A photo of a Cold": "Холодно",
+    "A photo of a Freezing": "Мороз",
+    "Undefined": "Неопределено"
+  },
+  "WIND": {
+    "A photo of a Calm": "Штиль",
+    "A photo of a Breezy": "Лёгкий ветер",
+    "A photo of a Windy": "Ветрено",
+    "A photo of a Storm": "Штормовой ветер",
+    "Undefined": "Неопределено"
+  },
+
+  "SEXES": {
+    "A photo of a Male": "Мужской",
+    "A photo of a Female": "Женский",
+    "Undefined": "Неопределёно"
+  },
+  "AGES": {
+    "A photo of a Cub": "Детеныш",
+    "A photo of a Young individual": "Молодая особь",
+    "A photo of a Adult individual": "Взрослая особь",
+    "A photo of a Old individual": "Старая особь",
+    "Undefined": "Неопределёно"
+  },
+
+  "TIME_OF_DAY": {
+    "A photo of a Morning": "Утро",
+    "A photo of a Afternoon": "День",
+    "A photo of a Evening": "Вечер",
+    "A photo of a Night": "Ночь",
+    "Undefined": "Неопределёно"
+  },
+
+
+  "LOCATION": {
+    "A photo of on Ground": "На земле",
+    "A photo of On Tree": "На дереве",
+    "A photo of On Branch": "На ветке",
+    "A photo of a On Rock": "На камне",
+    "A photo of a In Water": "В воде",
+    "A photo of a In Sky": "В небе",
+    "A photo of On Grass": "На траве",
+    "A photo of On Sand": "На песке",
+    "A photo of On Snow": "На снегу",
+    "A photo of On Wall": "На стене",
+    "A photo of On Building": "На здании",
+    "Undefined": "Неопределено"
+  },
+  "BEHAVIOR": {
+    "A photo of a Sitting object": "Сидит",
+    "A photo of a Standing object": "Стоит",
+    "A photo of a Flying object": "Летит",
+    "A photo of a Walking object": "Идёт",
+    "A photo of a Running object": "Бежит",
+    "A photo of a Swimming object": "Плавает",
+    "A photo of a Climbing object": "Лазит",
+    "A photo of a Resting object": "Отдыхает",
+    "A photo of a Eating object": "Ест",
+    "A photo of a Hunting object": "Охотится",
+    "A photo of a Playing object": "Играет",
+    "Undefined": "Неопределено"
+  },
+  "HABITAT": {
+    "A photo of a Forest": "Лес",
+    "A photo of a Field": "Поле",
+    "A photo of a Meadow": "Луг",
+    "A photo of a Desert": "Пустыня",
+    "A photo of a Wetland": "Болото",
+    "A photo of a Mountains": "Горы",
+    "A photo of a Urban": "Городская среда",
+    "A photo of a Village": "Деревня",
+    "A photo of a Coast": "Побережье",
+    "A photo of a River": "Река",
+    "A photo of a Lake": "Озеро",
+    "A photo of a Sea": "Море",
+    "A photo of a Garden": "Сад",
+    "A photo of a Park": "Парк",
+    "Undefined": "Неопределено"
+  },
+  "SURFACE_TYPE": {
+    "A photo of a Bark": "Кора",
+    "A photo of a Grass": "Трава",
+    "A photo of a asphalt": "асфальт",
+    "A photo of a Sand": "Песок",
+    "A photo of a Snow": "Снег",
+    "A photo of a Soil": "Почва",
+    "A photo of a Rock": "Камень",
+    "A photo of a Leaf": "Лист",
+    "A photo of a Water": "Вода",
+    "A photo of a Concrete": "Бетон",
+    "A photo of a Wood": "Дерево (доски)",
+    "A photo of a Metal": "Металл",
+    "A photo of a Plastic": "Пластик",
+    "Undefined": "Неопределено"
+  },
+  "INTERACTION": {
+    "A photo of an Alone": "Один",
+    "A photo of a Group": "В группе",
+    "A photo of a With Human": "С человеком",
+    "A photo of a With Animal": "С другим животным",
+    "A photo of a Parent With Offspring": "С потомством",
+    "Undefined": "Неопределено"
+  },
+  "MOOD": {
+    "A photo of a Calm object": "Спокоен",
+    "A photo of a Aggressive": "Агрессивен",
+    "A photo of a Alert": "Насторожен",
+    "A photo of a Scared": "Испуган",
+    "A photo of a Curious": "Любопытен",
+    "A photo of a Sleeping": "Спит",
+    "A photo of a Injured": "Ранен",
+    "A photo of a Playful": "Играет",
+    "Undefined": "Неопределено"
+  },
+
+  "LIFEFORM": {
+    "A photo of a object from Fauna": "Фауна",
+    "A photo of a object from Flora": "Флора",
+    "Undefined": "Неопределено"
+  },
+  "FAUNA_TYPE": {
+    "A photo of a Mammal": "Млекопитающее",
+    "A photo of a Bird": "Птица",
+    "A photo of a Reptile": "Рептилия",
+    "A photo of a Amphibian": "Земноводное",
+    "A photo of a Fish": "Рыба",
+    "A photo of a Insect": "Насекомое",
+    "A photo of a Arachnid": "Паукообразное",
+    "A photo of a Mollusk": "Моллюск",
+    "A photo of a Crustacean": "Ракообразное",
+    "A photo of a Worm": "Червь",
+    "Undefined": "Неопределено"
+  },
+  "FLORA_TYPE": {
+    "A photo of a Tree": "Дерево",
+    "A photo of a Shrub": "Кустарник",
+    "A photo of a Grass": "Травянистое растение",
+    "A photo of a Flower": "Цветущее растение",
+    "A photo of a Fern": "Папоротник",
+    "A photo of a Moss": "Мох",
+    "A photo of a Algae": "Водоросль",
+    "Undefined": "Неопределено"
+  }
+}

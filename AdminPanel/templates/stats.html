@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Статистика{% endblock %}
+{% block content %}
+<div class="card" style="padding: 60px; text-align: center;">
+    <div style="font-size: 48px; margin-bottom: 24px;">📊</div>
+    <h3 class="fw-bold">Статистика в разработке</h3>
+    <p class="text-secondary">Здесь будут графики частоты ошибок и анализ проблемных запросов через Chart.js</p>
+    <div style="margin-top: 24px;">
+        <a href="/admin/logs" class="btn-details" style="text-decoration: none;">Вернуться к логам</a>
+    </div>
+</div>
+{% endblock %}
