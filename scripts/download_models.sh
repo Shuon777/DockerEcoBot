@@ -1,57 +1,58 @@
 #!/usr/bin/env bash
 # =============================================================
-# download_models.sh — скачивание ML-моделей для всех сервисов
+# download_models.sh — скачивание ML-моделей через Docker
 # Запускать из корня репозитория: bash scripts/download_models.sh
 # =============================================================
 set -e
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
 
 log() { echo "[download_models] $*"; }
 die() { echo "[download_models] ERROR: $*" >&2; exit 1; }
+
+# Базовые флаги для backend: переопределяем embedding_models без :ro
+BACKEND_RUN="docker compose run --rm --no-deps
+    -v ${REPO_ROOT}/salut_bot/embedding_models:/app/embedding_models
+    backend"
 
 # -----------------------------------------------------------
 # 1. salut_bot — embedding модели (sentence-transformers)
 # -----------------------------------------------------------
 log "=== salut_bot: embedding models ==="
 
-EMBED_DIR="$REPO_ROOT/salut_bot/embedding_models"
-EMBED_SCRIPT="$REPO_ROOT/salut_bot/scripts/download_embedding_model_from_HF.py"
+$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "BAAI/bge-m3" \
+    || die "failed to download bge-m3"
 
-cd "$REPO_ROOT/salut_bot"
-python "$EMBED_SCRIPT" "BAAI/bge-m3"                          || die "failed to download bge-m3"
-python "$EMBED_SCRIPT" "sergeyzh/BERTA"                       || die "failed to download BERTA"
-python "$EMBED_SCRIPT" "BAAI/bge-reranker-v2-m3"              || die "failed to download bge-reranker-v2-m3"
-python "$EMBED_SCRIPT" "DiTy/cross-encoder-russian-msmarco"   || die "failed to download cross-encoder-russian-msmarco"
+$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "sergeyzh/BERTA" \
+    || die "failed to download BERTA"
 
-log "salut_bot: embedding models done ($(du -sh "$EMBED_DIR" | cut -f1))"
+$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "BAAI/bge-reranker-v2-m3" \
+    || die "failed to download bge-reranker-v2-m3"
+
+$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "DiTy/cross-encoder-russian-msmarco" \
+    || die "failed to download cross-encoder-russian-msmarco"
+
+log "salut_bot: done"
 
 # -----------------------------------------------------------
 # 2. dsapi — классификаторы (transformers)
 # -----------------------------------------------------------
 log "=== dsapi: local models ==="
 
-cd "$REPO_ROOT/dsapi"
-python setup_models.py || die "dsapi setup_models.py failed"
+docker compose run --rm --no-deps dsapi python setup_models.py \
+    || die "dsapi setup_models.py failed"
 
-log "dsapi: local models done ($(du -sh "$REPO_ROOT/dsapi/local_models" | cut -f1))"
+log "dsapi: done"
 
 # -----------------------------------------------------------
-# 3. Ollama модели (LLM)
+# 3. Ollama (LLM) — ручной шаг
 # -----------------------------------------------------------
-log "=== Ollama: LLM models ==="
-log "Убедитесь что Ollama запущена на хосте, затем выполните:"
+log "=== Ollama: выполните вручную на хосте ==="
 log "  ollama pull qwen2.5:14b"
-log "  ollama pull qwen3-vl:32b     (для dsapi vision)"
-log "(пропускаем автоматическое скачивание — требует работающей Ollama)"
+log "  ollama pull qwen3-vl:32b"
 
-# -----------------------------------------------------------
-# 4. Итог
-# -----------------------------------------------------------
 log ""
-log "=== Готово ==="
-log "salut_bot/embedding_models: $(du -sh "$REPO_ROOT/salut_bot/embedding_models" | cut -f1)"
-log "dsapi/local_models:         $(du -sh "$REPO_ROOT/dsapi/local_models" | cut -f1)"
-log ""
-log "Следующий шаг — собрать FAISS-индекс:"
-log "  cd salut_bot && python knowledge_base_scripts/Vector/faiss_adapter.py"
+log "=== Всё готово ==="
+log "Следующий шаг (если нужно пересобрать FAISS-индекс):"
+log "  bash scripts/build_faiss.sh"

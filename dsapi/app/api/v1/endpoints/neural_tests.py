@@ -5,11 +5,11 @@ from app.api.v1.endpoints.text_tests import checker
 from app.services.text_validation.spelling import SpellingChecker
 from app.services.text_validation.neural_checkers import NeuralValidator
 from app.services.text_validation.checkers import TextCheckerPiiFIO
+from app.core.config import settings
 
 router = APIRouter()
 spelling_service = SpellingChecker()
-# Инициализация нейронного валидатора (загрузка моделей произойдет при первом вызове)
-neural_service = NeuralValidator()
+neural_service = NeuralValidator(local_path=settings.PATH_LOCAL_MODELS)
 checker_pii_fio = TextCheckerPiiFIO()
 
 class SimpleTextRequest(BaseModel):

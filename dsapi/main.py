@@ -20,7 +20,7 @@ from app.services.files_repositories.excel_repo import ExcelTemplateRepository
 async def lifespan(app: FastAPI):
     # инициализируем тяжелые модели один раз
     print("🚀 Инициализация нейронных моделей...")
-    NeuralValidator()
+    NeuralValidator(local_path=settings.PATH_LOCAL_MODELS)
     yield
     # Действия при выключении
     print("🛑 Отключение системы...")
