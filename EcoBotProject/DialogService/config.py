@@ -30,7 +30,7 @@ API_URLS = {
     "find_species_with_description": f"{ECOBOT_API_BASE_URL}/find_species_with_description",
     "find_geo_special_description": f"{ECOBOT_API_BASE_URL}/object/description/",
     "show_map_infrastructure": f"{ECOBOT_API_BASE_URL}/objects_in_area_by_type",
-    "stand_endpoint": get_env_var("STAND_ENDPOINT", "http://84.237.20.90:8084/scripts/sights_ii.jsp"),
+    "stand_endpoint": get_env_var("STAND_ENDPOINT"),
     "log_error": f"{ECOBOT_API_BASE_URL}/log_error"
 }
 

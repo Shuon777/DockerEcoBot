@@ -16,7 +16,7 @@ class ResourceUpdateService:
     def __init__(self, resources_dist_path: str, images_dir: str, domain: str = None):
         self.resources_dist_path = resources_dist_path
         self.images_dir = images_dir
-        self.domain = domain or os.getenv("PUBLIC_BASE_URL", "https://testecobot.ru")
+        self.domain = domain or os.getenv("PUBLIC_BASE_URL", "")
         self.temp_dir = None
         
     def extract_archive_chunked(self, archive_path: str, extract_to: str, chunk_size_mb: int = 100) -> Dict:

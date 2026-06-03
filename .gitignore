@@ -17,8 +17,11 @@ backups/
 *.tar.gz
 *.zip
 
-# Certbot / SSL certificates
-certbot/
+# Certbot / SSL certificates (содержимое, но не сами папки)
+certbot/conf/*
+certbot/www/*
+!certbot/conf/.gitkeep
+!certbot/www/.gitkeep
 letsencrypt/
 ssl/
 *.pem
@@ -63,6 +66,7 @@ build/
 # IDE / OS
 .idea/
 .vscode/
+.claude/
 .DS_Store
 
 # Nested environment files
@@ -100,3 +104,4 @@ dsapi/local_models/
 # Shared env with secrets
 shared.env
 compose.full.yml
+

@@ -255,7 +255,7 @@ class GeoProcessor:
     def reverse_geocode(self, lat: float, lon: float) -> str:
         try:
             url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=10&addressdetails=1"
-            headers = {"User-Agent": "TestEcoBot (testecobot.ru)"}
+            headers = {"User-Agent": "EcoBot"}
             response = requests.get(url, headers=headers, timeout=10)
             if response.status_code != 200:
                 return "Не удалось определить место"

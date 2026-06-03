@@ -35,9 +35,9 @@ except:
     pass
 
 class IntegratedDynamicPipeline:
-    def __init__(self, domain: str = "https://testecobot.ru"):
-        self.domain = domain
-        self.test_query_url = f"{domain}/test-api/test_query"
+    def __init__(self, domain: str = None):
+        self.domain = domain or os.getenv("BOT_DOMAIN", "")
+        self.test_query_url = f"{self.domain}/test-api/test_query"
 
         self.llm = LLMService()
         self.vlm = VisionLL_Service()

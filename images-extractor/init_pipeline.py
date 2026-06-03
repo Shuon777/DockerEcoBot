@@ -635,7 +635,7 @@ class ImageProcessor:
     def process_folder(self, excel_path: str, off_path: str, out_json: str = 'features_results.json'):
         output = {}
         folder_name = ""
-        client = ApiClient(base_url="https://testecobot.ru", default_headers={"X-Admin-Password": "ecobotadminpass"})
+        client = ApiClient(base_url=os.getenv("ECOBOT_API_BASE_URL", ""), default_headers={"X-Admin-Password": os.getenv("ADMIN_PASSWORD", "")})
         df = pd.read_excel(excel_path)
         df_off = pd.read_excel(off_path)
         start = time.time()

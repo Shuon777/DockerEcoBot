@@ -76,8 +76,8 @@ services:
   #     - MAX_USE_WEBHOOK=false
   #     - MAX_WEBHOOK_PORT=8080
   #     - MAX_WEBHOOK_PATH=/max-webhook
-  #     - MAX_WEBHOOK_SECRET=Ecobot_Wh_2026_K9mPx7nQ3
-  #     - MAX_WEBHOOK_URL=https://ecoassistant.194-156-118-21.sslip.io/max-webhook
+  #     - MAX_WEBHOOK_SECRET=${MAX_WEBHOOK_SECRET}
+  #     - MAX_WEBHOOK_URL=${PUBLIC_BASE_URL}/max-webhook
   #   extra_hosts:
   #     - "host.docker.internal:host-gateway"
   #   dns:
@@ -119,7 +119,7 @@ services:
       - ./maps:/var/www/maps
       - ./salut_bot/images:/var/www/images
       - ./certbot/www:/var/www/certbot
-      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
     depends_on:
       - backend
       - admin

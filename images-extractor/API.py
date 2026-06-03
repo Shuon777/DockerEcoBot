@@ -169,7 +169,7 @@ class ApiClient(ApiClientBase):
 
 # ===== Пример использования =====
 if __name__ == "__main__":
-    client = ApiClient(base_url="https://testecobot.ru", default_headers={"X-Admin-Password": "ecobotadminpass"})
+    client = ApiClient(base_url=os.getenv("ECOBOT_API_BASE_URL", ""), default_headers={"X-Admin-Password": os.getenv("ADMIN_PASSWORD", "")})
 
     # result = client.upload_both_archives(
     #     json_path="Siberian fir_features1.zip",
