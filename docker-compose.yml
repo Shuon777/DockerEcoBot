@@ -42,7 +42,7 @@ services:
     volumes:
       - ./maps:/app/maps
       - ./salut_bot/images:/app/images
-      - ./salut_bot/embedding_models:/app/embedding_models:ro
+      - ./salut_bot/embedding_models:/app/embedding_models
       - ./salut_bot/knowledge_base_scripts/Vector/faiss_index:/app/knowledge_base_scripts/Vector/faiss_index:ro
       - ./logs:/app/logs
     environment:

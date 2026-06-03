@@ -11,27 +11,17 @@ cd "$REPO_ROOT"
 log() { echo "[download_models] $*"; }
 die() { echo "[download_models] ERROR: $*" >&2; exit 1; }
 
-# Базовые флаги для backend: переопределяем embedding_models без :ro
-BACKEND_RUN="docker compose run --rm --no-deps
-    -v ${REPO_ROOT}/salut_bot/embedding_models:/app/embedding_models
-    backend"
-
 # -----------------------------------------------------------
 # 1. salut_bot — embedding модели (sentence-transformers)
 # -----------------------------------------------------------
 log "=== salut_bot: embedding models ==="
 
-$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "BAAI/bge-m3" \
-    || die "failed to download bge-m3"
-
-$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "sergeyzh/BERTA" \
-    || die "failed to download BERTA"
-
-$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "BAAI/bge-reranker-v2-m3" \
-    || die "failed to download bge-reranker-v2-m3"
-
-$BACKEND_RUN python scripts/download_embedding_model_from_HF.py "DiTy/cross-encoder-russian-msmarco" \
-    || die "failed to download cross-encoder-russian-msmarco"
+for MODEL in "BAAI/bge-m3" "sergeyzh/BERTA" "BAAI/bge-reranker-v2-m3" "DiTy/cross-encoder-russian-msmarco"; do
+    log "Скачивание: $MODEL"
+    docker compose run --rm --no-deps backend \
+        python scripts/download_embedding_model_from_HF.py "$MODEL" \
+        || die "failed to download $MODEL"
+done
 
 log "salut_bot: done"
 
@@ -48,11 +38,11 @@ log "dsapi: done"
 # -----------------------------------------------------------
 # 3. Ollama (LLM) — ручной шаг
 # -----------------------------------------------------------
+log ""
 log "=== Ollama: выполните вручную на хосте ==="
 log "  ollama pull qwen2.5:14b"
 log "  ollama pull qwen3-vl:32b"
-
 log ""
 log "=== Всё готово ==="
-log "Следующий шаг (если нужно пересобрать FAISS-индекс):"
+log "Следующий шаг (пересборка FAISS-индекса при необходимости):"
 log "  bash scripts/build_faiss.sh"
