@@ -5,7 +5,7 @@
 # =============================================================
 set -euo pipefail
 
-REPO_ROOT="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+REPO_ROOT="$(pwd)"
 
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[install]${NC} $*"; }
@@ -31,7 +31,7 @@ ask "=== Настройка сервера ==="
 
 ask "Публичный адрес сервера (домен или IP, без слэша в конце)."
 ask "Примеры: https://ecobot.example.com  |  http://192.168.1.10"
-read -r -p "PUBLIC_BASE_URL: " PUBLIC_BASE_URL
+read -r -p "PUBLIC_BASE_URL: " PUBLIC_BASE_URL < /dev/tty
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL%/}"
 [[ -n "$PUBLIC_BASE_URL" ]] || die "PUBLIC_BASE_URL не может быть пустым"
 
@@ -46,11 +46,11 @@ else
 fi
 
 ask "Пароль PostgreSQL (Enter = оставить из shared.env):"
-read -r -s -p "DB_PASSWORD: " DB_PASSWORD_INPUT
+read -r -s -p "DB_PASSWORD: " DB_PASSWORD_INPUT < /dev/tty
 echo ""
 
 ask "Telegram Bot Token (Enter = оставить из shared.env):"
-read -r -s -p "BOT_TOKEN: " BOT_TOKEN_INPUT
+read -r -s -p "BOT_TOKEN: " BOT_TOKEN_INPUT < /dev/tty
 echo ""
 
 echo ""
@@ -132,7 +132,7 @@ mkdir -p \
 echo ""
 ask "Скачать ML-модели сейчас? (salut_bot ~2.7GB + dsapi ~4.6GB)"
 ask "Можно пропустить и запустить позже: bash scripts/download_models.sh"
-read -r -p "Скачать? [y/N]: " DOWNLOAD_MODELS
+read -r -p "Скачать? [y/N]: " DOWNLOAD_MODELS < /dev/tty
 if [[ "$DOWNLOAD_MODELS" =~ ^[Yy]$ ]]; then
     log "Скачивание моделей (это займёт время)..."
     bash "$REPO_ROOT/scripts/download_models.sh"
@@ -166,7 +166,7 @@ log "backend готов"
 echo ""
 ask "Инициализировать БД начальными данными?"
 ask "(--full удаляет и пересоздаёт схему; пропустите если БД уже заполнена)"
-read -r -p "Инициализировать? [y/N]: " INIT_DB
+read -r -p "Инициализировать? [y/N]: " INIT_DB < /dev/tty
 if [[ "$INIT_DB" =~ ^[Yy]$ ]]; then
     log "Генерация resources_deploy.json с адресом $PUBLIC_BASE_URL..."
     sed "s|{{PUBLIC_BASE_URL}}|$PUBLIC_BASE_URL|g" \

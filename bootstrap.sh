@@ -34,13 +34,13 @@ log "Зависимости ОК"
 # -----------------------------------------------------------
 echo ""
 ask "Директория установки [${DEFAULT_INSTALL_DIR}]:"
-read -r -p "Install dir: " INSTALL_DIR
+read -r -p "Install dir: " INSTALL_DIR < /dev/tty
 INSTALL_DIR="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
 
 if [[ -d "$INSTALL_DIR/.git" ]]; then
     warn "Репозиторий уже существует в $INSTALL_DIR"
     ask "Обновить (git pull) существующую установку? [y/N]:"
-    read -r -p "Обновить? " UPDATE
+    read -r -p "Обновить? " UPDATE < /dev/tty
     if [[ "$UPDATE" =~ ^[Yy]$ ]]; then
         log "Обновление репозитория..."
         git -C "$INSTALL_DIR" pull origin master
