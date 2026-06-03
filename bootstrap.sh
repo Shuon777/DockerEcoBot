@@ -3,16 +3,11 @@
 # bootstrap.sh — точка входа для установки EcoBot на новый сервер
 #
 # Использование (одна команда на сервере):
-#   curl -fsSL https://raw.githubusercontent.com/Shuon777/DockerEcoBot/master/bootstrap.sh | sudo bash
-#
-# Или скопировать файл и запустить:
-#   sudo bash bootstrap.sh
+#   curl -fsSL https://raw.githubusercontent.com/Shuon777/DockerEcoBot/master/bootstrap.sh -o /tmp/bootstrap.sh && sudo bash /tmp/bootstrap.sh
 # =============================================================
 set -euo pipefail
 
 # Переключаем stdin на терминал (нужно при запуске через curl | bash)
-exec < /dev/tty
-
 REPO_URL="https://github.com/Shuon777/DockerEcoBot.git"
 DEFAULT_INSTALL_DIR="/opt/ecoassistant"
 
