@@ -23,6 +23,7 @@ def download_and_save_models(base_path: str = "./local_models"):
     """
     Скачивает модели и сохраняет их локально для работы без интернета.
     """
+    hf_token = os.getenv("HF_TOKEN")
     os.makedirs(base_path, exist_ok=True)
     print(f"📁 Начинаю загрузку моделей в {os.path.abspath(base_path)}...")
 
@@ -34,28 +35,28 @@ def download_and_save_models(base_path: str = "./local_models"):
         try:
             # 1. Текстовые классификаторы (BERT/RoBERTa/DeBERTa)
             if key in ["sentiment", "toxicity", "emotions", "safety"]:
-                tokenizer = AutoTokenizer.from_pretrained(model_id)
-                model = AutoModelForSequenceClassification.from_pretrained(model_id)
+                tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
+                model = AutoModelForSequenceClassification.from_pretrained(model_id, token=hf_token)
                 tokenizer.save_pretrained(target_dir)
                 model.save_pretrained(target_dir)
 
             # 2. Vision Transformer (NSFW)
             elif key == "nsfw":
-                processor = AutoProcessor.from_pretrained(model_id)
-                model = AutoModelForImageClassification.from_pretrained(model_id)
+                processor = AutoProcessor.from_pretrained(model_id, token=hf_token)
+                model = AutoModelForImageClassification.from_pretrained(model_id, token=hf_token)
                 processor.save_pretrained(target_dir)
                 model.save_pretrained(target_dir)
 
             # 3. Мультимодальный CLIP (Карты)
             elif key == "map_clip":
-                processor = AutoProcessor.from_pretrained(model_id)
-                model = CLIPModel.from_pretrained(model_id)
+                processor = AutoProcessor.from_pretrained(model_id, token=hf_token)
+                model = CLIPModel.from_pretrained(model_id, token=hf_token)
                 processor.save_pretrained(target_dir)
                 model.save_pretrained(target_dir)
 
             elif key == "rut5":
-                tokenizer = AutoTokenizer.from_pretrained(model_id)
-                model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
+                tokenizer = AutoTokenizer.from_pretrained(model_id, token=hf_token)
+                model = AutoModelForSeq2SeqLM.from_pretrained(model_id, token=hf_token)
                 tokenizer.save_pretrained(target_dir)
                 model.save_pretrained(target_dir)
 

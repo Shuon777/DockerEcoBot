@@ -22,8 +22,9 @@ def download_model(model_name: str):
 
     os.makedirs(model_path, exist_ok=True)
 
+    hf_token = os.getenv("HF_TOKEN")
     print(f"Загрузка модели {model_name}...")
-    model = SentenceTransformer(model_name)
+    model = SentenceTransformer(model_name, token=hf_token)
     model.save(model_path)
     print(f"Модель успешно сохранена в {model_path}")
     
