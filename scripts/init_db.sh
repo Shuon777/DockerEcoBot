@@ -4,7 +4,7 @@
 # По умолчанию --full (сброс и пересоздание схемы).
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 MODE="${1:---full}"
 
 source "$REPO_ROOT/shared.env" 2>/dev/null || true

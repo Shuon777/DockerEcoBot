@@ -13,6 +13,7 @@ set -euo pipefail
 REPO_URL="https://github.com/Shuon777/DockerEcoBot.git"
 DEFAULT_INSTALL_DIR="/opt/ecoassistant"
 
+
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
 log()  { echo -e "${GREEN}[bootstrap]${NC} $*"; }
 warn() { echo -e "${YELLOW}[bootstrap]${NC} $*"; }
