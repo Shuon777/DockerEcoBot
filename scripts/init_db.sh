@@ -6,8 +6,12 @@ set -euo pipefail
 
 MODE="${1:---full}"
 
-# Читаем PUBLIC_BASE_URL из shared.env на хосте
-PUBLIC_BASE_URL=$(grep "^PUBLIC_BASE_URL=" shared.env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
+# Загружаем shared.env через встроенный source (без внешних утилит)
+set -a
+# shellcheck disable=SC1091
+source shared.env 2>/dev/null || true
+set +a
+
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-http://localhost}"
 
 echo "[init_db] Режим: $MODE"
