@@ -149,7 +149,6 @@ services:
   dsapi:
     build:
       context: ./dsapi
-    container_name: ecoassistant-dsapi-1
     env_file:
       - ./dsapi/.env
     expose:
