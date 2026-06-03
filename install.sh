@@ -81,6 +81,16 @@ fi
 log "shared.env готов"
 
 # -----------------------------------------------------------
+# 3b. Генерация db_custom/.env
+# -----------------------------------------------------------
+if [[ ! -f "$REPO_ROOT/db_custom/.env" ]]; then
+    cp "$REPO_ROOT/db_custom/.env.example" "$REPO_ROOT/db_custom/.env"
+fi
+DB_PASS="${DB_PASSWORD_INPUT:-$(grep '^DB_PASSWORD=' "$REPO_ROOT/shared.env" | cut -d= -f2-)}"
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$DB_PASS|" "$REPO_ROOT/db_custom/.env"
+log "db_custom/.env готов"
+
+# -----------------------------------------------------------
 # 4. AdminPanel — генерация SESSION_SECRET_KEY
 # -----------------------------------------------------------
 if [[ ! -f "$REPO_ROOT/AdminPanel/.env" ]]; then
