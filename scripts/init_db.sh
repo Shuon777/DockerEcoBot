@@ -4,26 +4,26 @@
 # По умолчанию --full (сброс и пересоздание схемы).
 set -euo pipefail
 
-REPO_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 MODE="${1:---full}"
 
-source "$REPO_ROOT/shared.env" 2>/dev/null || true
+# Читаем PUBLIC_BASE_URL из shared.env на хосте
+PUBLIC_BASE_URL=$(grep "^PUBLIC_BASE_URL=" shared.env 2>/dev/null | cut -d= -f2- | tr -d '"' | tr -d "'")
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-http://localhost}"
 
 echo "[init_db] Режим: $MODE"
 echo "[init_db] PUBLIC_BASE_URL: $PUBLIC_BASE_URL"
 
-# Генерируем временный resources_deploy.json с реальным URL
-sed "s|{{PUBLIC_BASE_URL}}|$PUBLIC_BASE_URL|g" \
-    "$REPO_ROOT/salut_bot/json_files/resources.json" \
-    > "$REPO_ROOT/salut_bot/json_files/resources_deploy.json"
-
-cd "$REPO_ROOT"
+# Вся замена и запуск происходит внутри контейнера
 docker compose exec -T backend bash -c "
-    cd knowledge_base_scripts/Relational &&
-    python -m db_importer.main $MODE \
+    sed 's|{{PUBLIC_BASE_URL}}|${PUBLIC_BASE_URL}|g' \
+        /app/json_files/resources.json \
+        > /app/json_files/resources_deploy.json
+
+    cd knowledge_base_scripts/Relational
+    python -m db_importer.main ${MODE} \
         --resources-file /app/json_files/resources_deploy.json
+
+    rm -f /app/json_files/resources_deploy.json
 "
 
-rm -f "$REPO_ROOT/salut_bot/json_files/resources_deploy.json"
 echo "[init_db] Готово"
