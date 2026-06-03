@@ -10,6 +10,9 @@
 # =============================================================
 set -euo pipefail
 
+# Переключаем stdin на терминал (нужно при запуске через curl | bash)
+exec < /dev/tty
+
 REPO_URL="https://github.com/Shuon777/DockerEcoBot.git"
 DEFAULT_INSTALL_DIR="/opt/ecoassistant"
 
