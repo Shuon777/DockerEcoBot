@@ -17,10 +17,7 @@ BOT_TOKEN = get_env_var("BOT_TOKEN")
 USER_SETTINGS_PATH=get_env_var("USER_SETTINGS_PATH")
 USER_LOCK_SETTINGS_PATH=get_env_var("USER_LOCK_SETTINGS_PATH")
 
-# --- GigaChat Fallback API ---
-GIGACHAT_FALLBACK_URL = get_env_var("GIGACHAT_FALLBACK_URL")
-
-# --- Backend EcoBot API (testecobot.ru) ---
+# --- Backend EcoBot API ---
 ECOBOT_API_BASE_URL = get_env_var("ECOBOT_API_BASE_URL")
 
 API_URLS = {

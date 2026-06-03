@@ -39,14 +39,6 @@ services:
       - "host.docker.internal:host-gateway"
     networks: [ecobot_net]
 
-  gigachat:
-    build: ./EcoBotProject/GigaChatAPI
-    restart: always
-    env_file:
-      - ./EcoBotProject/GigaChatAPI/.env
-      - ./shared.env
-    networks: [ecobot_net]
-
   core-api:
     build: ./EcoBotProject/DialogService
     restart: always
@@ -66,35 +58,35 @@ services:
       - db
     networks: [ecobot_net]
 
-  max:
-    build: ./EcoBotProject/DialogService
-    restart: always
-    env_file:
-      - ./EcoBotProject/DialogService/.env
-      - ./shared.env
-    volumes:
-      - ./logs:/app/logs
-      - ./data:/app/data
-    command: python main_max.py
-    expose:
-      - "8080"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - REDIS_HOST=redis
-      - MAX_USE_WEBHOOK=true
-      - MAX_WEBHOOK_PORT=8080
-      - MAX_WEBHOOK_PATH=/max-webhook
-      - MAX_WEBHOOK_SECRET=Ecobot_Wh_2026_K9mPx7nQ3
-      - MAX_WEBHOOK_URL=https://ecoassistant.194-156-118-21.sslip.io/max-webhook
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    depends_on:
-      - backend
-      - core-api
-    networks: [ecobot_net]
+  # max:
+  #   build: ./EcoBotProject/DialogService
+  #   restart: always
+  #   env_file:
+  #     - ./EcoBotProject/DialogService/.env
+  #     - ./shared.env
+  #   volumes:
+  #     - ./logs:/app/logs
+  #     - ./data:/app/data
+  #   command: python main_max.py
+  #   expose:
+  #     - "8080"
+  #   environment:
+  #     - PYTHONUNBUFFERED=1
+  #     - REDIS_HOST=redis
+  #     - MAX_USE_WEBHOOK=false
+  #     - MAX_WEBHOOK_PORT=8080
+  #     - MAX_WEBHOOK_PATH=/max-webhook
+  #     - MAX_WEBHOOK_SECRET=Ecobot_Wh_2026_K9mPx7nQ3
+  #     - MAX_WEBHOOK_URL=https://ecoassistant.194-156-118-21.sslip.io/max-webhook
+  #   extra_hosts:
+  #     - "host.docker.internal:host-gateway"
+  #   dns:
+  #     - 8.8.8.8
+  #     - 8.8.4.4
+  #   depends_on:
+  #     - backend
+  #     - core-api
+  #   networks: [ecobot_net]
 
   admin:
     build: ./AdminPanel
@@ -114,15 +106,6 @@ services:
       - redis
       - backend
     networks: [ecobot_net]
-
-  # telegram-api:
-  #   build: ./EcoBotProject/TelegramBot
-  #   container_name: ecoassistant-telegram-api-1
-  #   command: ["python", "core_api.py"]
-  #   expose:
-  #     - "5001"
-  #   restart: unless-stopped
-  #   networks: [ecobot_net]
 
   nginx:
     image: nginx:alpine
