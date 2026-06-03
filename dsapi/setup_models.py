@@ -15,6 +15,7 @@ MODELS_TO_DOWNLOAD = {
     "emotions": "fyaronskiy/ruRoberta-large-ru-go-emotions",
     "nsfw": "Falconsai/nsfw_image_detection",
     "map_clip": "openai/clip-vit-base-patch32",
+    "safety": "protectai/deberta-v3-base-prompt-injection-v2",
     #"rut5": "cointegrated/rut5-base-paraphraser"
 }
 
@@ -31,8 +32,8 @@ def download_and_save_models(base_path: str = "./local_models"):
         os.makedirs(target_dir, exist_ok=True)
 
         try:
-            # 1. Текстовые классификаторы (BERT/RoBERTa)
-            if key in ["sentiment", "toxicity", "emotions"]:
+            # 1. Текстовые классификаторы (BERT/RoBERTa/DeBERTa)
+            if key in ["sentiment", "toxicity", "emotions", "safety"]:
                 tokenizer = AutoTokenizer.from_pretrained(model_id)
                 model = AutoModelForSequenceClassification.from_pretrained(model_id)
                 tokenizer.save_pretrained(target_dir)

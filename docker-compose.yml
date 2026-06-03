@@ -166,6 +166,7 @@ services:
   images-extractor:
     build:
       context: ./images-extractor
+    profiles: [extractor]
     env_file:
       - ./images-extractor/.env
     environment:
