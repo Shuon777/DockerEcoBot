@@ -7,6 +7,11 @@ services:
     image: redis:alpine
     restart: always
     networks: [ecobot_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   db:
     build: ./db_custom
@@ -16,13 +21,21 @@ services:
       - ./data/postgres_data:/var/lib/postgresql/data
       - ./db_custom/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks: [ecobot_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-eco}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build: ./salut_bot
     restart: always
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - ./salut_bot/.env
       - ./shared.env
@@ -31,6 +44,7 @@ services:
       - ./salut_bot/images:/app/images
       - ./salut_bot/embedding_models:/app/embedding_models:ro
       - ./salut_bot/knowledge_base_scripts/Vector/faiss_index:/app/knowledge_base_scripts/Vector/faiss_index:ro
+      - ./logs:/app/logs
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=db
@@ -53,9 +67,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - redis
-      - backend
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
     networks: [ecobot_net]
 
   # max:
@@ -102,9 +119,12 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     depends_on:
-      - db
-      - redis
-      - backend
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
     networks: [ecobot_net]
 
   nginx:
