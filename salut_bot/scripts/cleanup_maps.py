@@ -9,7 +9,7 @@ import argparse # Для добавления --dry-run
 # --- НАСТРОЙКИ ---
 # Используем Path для работы с путями - это удобнее и безопаснее
 MAPS_DIR = Path("/var/www/map_bot/maps")
-REDIS_HOST = "localhost"
+REDIS_HOST = "redis"
 REDIS_PORT = 6379
 REDIS_DB = 1
 # Префиксы для поиска ключей в Redis

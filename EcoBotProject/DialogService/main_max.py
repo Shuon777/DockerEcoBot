@@ -51,7 +51,12 @@ async def main() -> None:
             host = os.getenv("MAX_WEBHOOK_HOST", "0.0.0.0")
             port = int(os.getenv("MAX_WEBHOOK_PORT", "8080"))
             logger.info(f"Режим webhook: {host}:{port}")
-            await dp.handle_webhook(bot=bot, host=host, port=port)
+            path = os.getenv("MAX_WEBHOOK_PATH", "/")
+            webhook_url = os.getenv("MAX_WEBHOOK_URL", "")
+            webhook_secret = os.getenv("MAX_WEBHOOK_SECRET")
+            if webhook_url:
+                await bot.subscribe_webhook(url=webhook_url, secret=webhook_secret)
+            await dp.handle_webhook(bot=bot, host=host, port=port, path=path, secret=webhook_secret)
         else:
             logger.info("Режим polling")
             await dp.start_polling(bot)

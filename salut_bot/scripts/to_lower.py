@@ -1,6 +1,6 @@
 import json
 
-db_path = "/var/www/salut_bot/json_files/maps_store.json"
+db_path = "json_files/maps_store.json"
 
 with open(db_path, "r", encoding="utf-8") as f:
     data = json.load(f)

@@ -14,7 +14,6 @@ from embedding_config import embedding_config, get_model_dimension
 from langchain_core.documents import Document
 from langchain.embeddings import HuggingFaceEmbeddings
 from langchain.vectorstores import FAISS as LangchainFAISS
-from langchain.vectorstores.utils import DistanceStrategy
 
 class TextResourceIndexer:
     def __init__(self, use_local_model: bool = True):
@@ -48,7 +47,7 @@ class TextResourceIndexer:
             self.embedding_model = HuggingFaceEmbeddings(
                 model_name=self.embedding_model_path,
                 model_kwargs={'device': 'cpu'},
-                encode_kwargs={'normalize_embeddings': True}
+                encode_kwargs={'normalize_embeddings': False}
             )
             
             # Тестируем модель
@@ -421,8 +420,7 @@ class TextResourceIndexer:
             # Создаем векторное хранилище
             vectorstore = LangchainFAISS.from_documents(
                 documents=documents,
-                embedding=self.embedding_model,
-                distance_strategy=DistanceStrategy.MAX_INNER_PRODUCT
+                embedding=self.embedding_model
             )
             
             # Сохраняем индекс
@@ -442,7 +440,7 @@ class TextResourceIndexer:
                 "embedding_model_path": str(self.embedding_model_path) if hasattr(self, 'embedding_model_path') else self.model_name,
                 "use_local_model": self.use_local_model,
                 "chunk_size_limit": 512,
-                "index_created": True,
+                "index_created": True
             }
             
             with open(stats_file, 'w', encoding='utf-8') as f:

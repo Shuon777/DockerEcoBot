@@ -3,9 +3,6 @@ networks:
     driver: bridge
 
 services:
-
-  # ─────────────────────────── ИНФРАСТРУКТУРА ───────────────────────────
-
   redis:
     image: redis:alpine
     restart: always
@@ -15,14 +12,10 @@ services:
     build: ./db_custom
     restart: always
     env_file: ./db_custom/.env
-    ports:
-      - "5432:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
       - ./db_custom/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks: [ecobot_net]
-
-  # ─────────────────────────── BACKEND API ──────────────────────────────
 
   backend:
     build: ./salut_bot
@@ -46,8 +39,6 @@ services:
       - "host.docker.internal:host-gateway"
     networks: [ecobot_net]
 
-  # ─────────────────────────── LLM СЕРВИСЫ ──────────────────────────────
-
   gigachat:
     build: ./EcoBotProject/GigaChatAPI
     restart: always
@@ -55,31 +46,6 @@ services:
       - ./EcoBotProject/GigaChatAPI/.env
       - ./shared.env
     networks: [ecobot_net]
-
-  # rasa-actions:
-  #   build:
-  #     context: ./EcoBotProject/RasaProject
-  #     dockerfile: Dockerfile.actions
-  #   restart: always
-  #   env_file: ./EcoBotProject/RasaProject/.env
-  #   depends_on:
-  #     - backend
-  #     - gigachat
-  #   networks: [ecobot_net]
-
-  # rasa:
-  #   build:
-  #     context: ./EcoBotProject/RasaProject
-  #     dockerfile: Dockerfile
-  #   restart: always
-  #   env_file: ./EcoBotProject/RasaProject/.env
-  #   volumes:
-  #     - ./EcoBotProject/RasaProject/models:/app/models
-  #   depends_on:
-  #     - rasa-actions
-  #   networks: [ecobot_net]
-
-  # ─────────────────────────── DIALOG SERVICE ──────────────────────────
 
   core-api:
     build: ./EcoBotProject/DialogService
@@ -110,17 +76,25 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
     command: python main_max.py
+    expose:
+      - "8080"
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
+      - MAX_USE_WEBHOOK=true
+      - MAX_WEBHOOK_PORT=8080
+      - MAX_WEBHOOK_PATH=/max-webhook
+      - MAX_WEBHOOK_SECRET=Ecobot_Wh_2026_K9mPx7nQ3
+      - MAX_WEBHOOK_URL=https://ecoassistant.194-156-118-21.sslip.io/max-webhook
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     depends_on:
       - backend
       - core-api
     networks: [ecobot_net]
-
-  # ─────────────────────────── ADMIN PANEL ──────────────────────────────
 
   admin:
     build: ./AdminPanel
@@ -141,32 +115,71 @@ services:
       - backend
     networks: [ecobot_net]
 
-  # ─────────────────────────── GATEWAY ──────────────────────────────────
+  # telegram-api:
+  #   build: ./EcoBotProject/TelegramBot
+  #   container_name: ecoassistant-telegram-api-1
+  #   command: ["python", "core_api.py"]
+  #   expose:
+  #     - "5001"
+  #   restart: unless-stopped
+  #   networks: [ecobot_net]
 
   nginx:
     image: nginx:alpine
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /dev/null:/etc/nginx/conf.d/default.conf
       - ./maps:/var/www/maps
       - ./salut_bot/images:/var/www/images
+      - ./certbot/www:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
       - admin
+      - core-api
     networks: [ecobot_net]
 
-  # ─────────────────────────── ТОЛЬКО ДЛЯ РАЗРАБОТКИ ────────────────────
+  dsapi:
+    build:
+      context: ./dsapi
+    container_name: ecoassistant-dsapi-1
+    env_file:
+      - ./dsapi/.env
+    expose:
+      - "5050"
+    volumes:
+      - ./dsapi/local_models:/app/local_models:ro
+      - ./dsapi/doc:/app/doc:ro
+      - ./dsapi/prompts_structure:/app/prompts_structure:ro
+      - ./dsapi/logs:/app/logs
+      - ./dsapi/results:/app/results
+    restart: unless-stopped
+    networks: [ecobot_net]
 
-  testing:
-    build: ./ModulDynamicTestingDSAPIBackend
-    restart: "no"
-    env_file: ./ModulDynamicTestingDSAPIBackend/.env
+  images-extractor:
+    build:
+      context: ./images-extractor
+    env_file:
+      - ./images-extractor/.env
     environment:
-      - PYTHONUNBUFFERED=1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    profiles: [dev]
+      YOLO_CONFIG_DIR: /tmp
+      HF_HOME: /app/.cache/huggingface
+      TORCH_HOME: /app/.cache/torch
+    volumes:
+      - ./images-extractor/objects:/app/objects
+      - ./images-extractor/data:/app/data
+      - ./images-extractor/photos:/app/photos
+      - ./images-extractor/results:/app/results
+      - ./images-extractor/cache:/app/.cache
+      - ./images-extractor/SAM:/app/SAM
+      - ./images-extractor/ViT:/app/ViT
+      - ./images-extractor/local_bioclip_model:/app/local_bioclip_model
+      - ./images-extractor/local_blip_model:/app/local_blip_model
+      - ./images-extractor/local_grounding_dino_tiny_model:/app/local_grounding_dino_tiny_model
+      - ./images-extractor/local_owlv2_model:/app/local_owlv2_model
+    restart: "no"
     networks: [ecobot_net]

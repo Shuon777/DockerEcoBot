@@ -10,7 +10,7 @@ class Slot_validator:
         self.db_config = {
             "dbname": os.getenv("DB_NAME", "eco"),
             "user": os.getenv("DB_USER", "postgres"),
-            "password": os.getenv("DB_PASSWORD"),
+            "password": os.getenv("DB_PASSWORD", "Fdf78yh0a4b!"),
             "host": os.getenv("DB_HOST", "localhost"),
             "port": os.getenv("DB_PORT", "5432")
         }

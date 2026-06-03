@@ -2,7 +2,7 @@ from sentence_transformers import SentenceTransformer
 import os
 import shutil
 
-model_path = '/var/www/salut_bot/embedding_model'
+model_path = 'salut_bot/embedding_model'
 
 if os.path.exists(model_path):
     if os.path.isfile(model_path):

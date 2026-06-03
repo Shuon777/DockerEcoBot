@@ -1,44 +1,102 @@
-# Секреты и конфиги с паролями
-**/.env*
-# Исключение: шаблоны без секретов
+# Secrets and environment files
+.env
+.env.*
+*.env
 !.env.example
-!**/.env.example
 
-# Данные БД и дампы
-data/postgres_data/
-data/eco_dump.dump
-data/admin_db/
-**/*.db
-
-# Большие бинарные файлы моделей (2.2GB+)
-salut_bot/embedding_models/
-
-# Большие датасеты (109MB+)
-salut_bot/json_files/
-
-# FAISS-индексы (генерируются скриптами)
-salut_bot/knowledge_base_scripts/Vector/faiss_index/
-
-# Изображения видов (183MB)
-salut_bot/images/
-
-# Обученные модели Rasa (118MB)
-EcoBotProject/RasaProject/models/
-
-# Runtime-артефакты
+# Logs
 logs/
-maps/
+*.log
+
+# Backups
+backup/
+backups/
+*.bak
+*.backup
+*.tar
+*.tar.gz
+*.zip
+
+# Certbot / SSL certificates
+certbot/
+letsencrypt/
+ssl/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Runtime data / volumes
+data/
+storage/
+volumes/
+
+# Local models / large ML files
+embedding_models/
+*.bin
+*.gguf
+*.pt
+*.pth
+*.onnx
+*.safetensors
+
+# Databases and dumps
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql
 
 # Python
 __pycache__/
-*.py[cod]
-*.pyo
+*.pyc
+.venv/
+venv/
 .pytest_cache/
-.mypy_cache/
 
-# Claude Code
-.claude/
-CLAUDE.md
-tasks/
+# Node.js
+node_modules/
+dist/
+build/
+.next/
 
-/take_screenshot.py
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Nested environment files
+**/.env
+**/.env.*
+!**/.env.example
+
+# Rasa runtime files
+EcoBotProject/RasaProject/.rasa/
+EcoBotProject/RasaProject/models/
+
+# Local embedding models
+salut_bot/embedding_models/
+
+# Python cache everywhere
+**/__pycache__/
+**/*.pyc
+
+# Local databases/cache
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+
+# Archives and model artifacts
+**/*.tar.gz
+**/*.tar
+**/*.zip
+
+# Large image assets
+images/
+
+# Local ML models (full folder, not just model weights)
+dsapi/local_models/
+
+# Shared env with secrets
+shared.env
+compose.full.yml
