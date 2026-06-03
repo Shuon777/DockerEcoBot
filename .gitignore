@@ -1,3 +1,6 @@
+# Временные файлы деплоя
+salut_bot/json_files/resources_deploy.json
+
 # Secrets and environment files
 .env
 .env.*
