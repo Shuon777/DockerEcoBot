@@ -90,6 +90,19 @@ DB_PASS="${DB_PASSWORD_INPUT:-$(grep '^DB_PASSWORD=' "$REPO_ROOT/shared.env" | c
 sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$DB_PASS|" "$REPO_ROOT/db_custom/.env"
 log "db_custom/.env готов"
 
+# Создаём остальные .env из .env.example если не существуют
+for example in \
+    "$REPO_ROOT/salut_bot/.env.example" \
+    "$REPO_ROOT/EcoBotProject/DialogService/.env.example" \
+    "$REPO_ROOT/dsapi/.env.example" \
+    "$REPO_ROOT/images-extractor/.env.example"; do
+    target="${example%.example}"
+    if [[ ! -f "$target" ]]; then
+        cp "$example" "$target"
+        log "Создан $(basename $(dirname $target))/$(basename $target) из шаблона"
+    fi
+done
+
 # -----------------------------------------------------------
 # 4. AdminPanel — генерация SESSION_SECRET_KEY
 # -----------------------------------------------------------
