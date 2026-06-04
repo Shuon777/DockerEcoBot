@@ -95,21 +95,26 @@ def _merge_with_context(new_slots: dict, prev: DialogueTurn, query: str) -> tupl
 
 # ── Проактивность ─────────────────────────────────────────────────────────────
 
-def _build_proactive(slots: dict, result: dict) -> dict[str, str]:
+def _build_proactive(slots: dict, result: dict, has_db_content: bool = True) -> dict[str, str]:
     """
     Определяет что предложить после ответа.
     Не делает доп. запросов — основывается на типе найденных данных и модальности.
     """
     entity = slots.get("synonym")
-    if not entity:
+    if not entity or not has_db_content:
         return {}
 
     modality = slots.get("modality", "Текст")
-    is_off = slots.get("object_type") == "Объект флоры и фауны"
+    object_type = slots.get("object_type")
+    is_off = object_type == "Объект флоры и фауны"
+    is_geo = object_type == "Географический объект"
+    # Фото уместно только для живых существ и географических мест, но не для услуг
+    can_have_photo = is_off or is_geo
     suggest: dict[str, str] = {}
 
     if modality == "Текст" and result.get("answer"):
-        suggest["photo"] = entity
+        if can_have_photo:
+            suggest["photo"] = entity
         if is_off:
             suggest["map"] = entity
 
@@ -252,7 +257,14 @@ class DialogueOrchestrator:
             simplifications = await self._try_simplifications(query, slots, user_id)
             simplifications_ms = _ms(t_simp)
 
-        proactive = _build_proactive(slots, result)
+        search_data = pipeline_result.get("search") or {}
+        has_db_content = bool(
+            search_data.get("objects") or
+            search_data.get("resources") or
+            result.get("images") or
+            result.get("map")
+        )
+        proactive = _build_proactive(slots, result, has_db_content)
 
         if user_id:
             await self._history.add_turn(user_id, DialogueTurn(
