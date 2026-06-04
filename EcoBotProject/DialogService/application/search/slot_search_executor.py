@@ -45,6 +45,8 @@ class SlotSearchExecutor:
     def __init__(self, session: aiohttp.ClientSession = None):
         self._session = session
         self._backend_url = os.getenv("ECOBOT_API_BASE_URL", "http://backend:5555")
+        self._promo_enabled = os.getenv("PROMO_ENABLED", "false").lower() == "true"
+        self._promo_relation_type = os.getenv("PROMO_RELATION_TYPE", "promo")
 
     async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None) -> Dict[str, Any]:
         if self._use_place_endpoint(slots):
@@ -57,7 +59,11 @@ class SlotSearchExecutor:
         if user_id and is_stand_session_active(user_id):
             await self._send_to_stand(search_data)
 
-        result = self._format_result(slots, search_data)
+        promo_objects = []
+        if self._promo_enabled:
+            promo_objects = await self._fetch_promo(search_data.get("objects") or [], query)
+
+        result = self._format_result(slots, search_data, promo_objects)
         return {"slots": slots, "search_request": search_body, "search": search_data, "result": result}
 
     async def _send_to_stand(self, search_data: dict) -> None:
@@ -88,7 +94,7 @@ class SlotSearchExecutor:
 
     # ── Форматирование результата ─────────────────────────────────────────────
 
-    def _format_result(self, slots: Dict[str, Any], search_data: dict) -> dict:
+    def _format_result(self, slots: Dict[str, Any], search_data: dict, promo_objects: list = None) -> dict:
         llm = search_data.get("llm_answer") or {}
         llm_raw = (llm.get("content") or "").strip() if isinstance(llm, dict) else ""
 
@@ -157,6 +163,17 @@ class SlotSearchExecutor:
             result["total_found"] = search_data["total_objects"]
         if "place_name" in search_data:
             result["place"] = search_data["place_name"]
+
+        # ── Промо: связанные услуги/экспозиции ──
+        if promo_objects:
+            result["promo"] = [
+                {
+                    "name": obj.get("name"),
+                    "object_type": obj.get("object_type"),
+                    "promo_text": obj.get("promo_text"),
+                }
+                for obj in promo_objects
+            ]
 
         return result
 
@@ -290,6 +307,29 @@ class SlotSearchExecutor:
             },
             "search_parameters": search_params,
         }
+
+    async def _fetch_promo(self, objects: list, user_query: str = "") -> list:
+        object_ids = [o.get("id") for o in objects if isinstance(o, dict) and o.get("id")]
+        if not object_ids:
+            return []
+        own_session = self._session is None
+        sess = self._session or aiohttp.ClientSession()
+        try:
+            body = {
+                "object_ids": object_ids,
+                "relation_type": self._promo_relation_type,
+                "user_query": user_query,
+            }
+            async with sess.post(f"{self._backend_url}/objects/related", json=body) as resp:
+                if resp.ok:
+                    data = await resp.json()
+                    return data.get("related", [])
+        except Exception as e:
+            logger.warning(f"Promo fetch failed: {e}")
+        finally:
+            if own_session:
+                await sess.close()
+        return []
 
     async def _call_search(self, body: dict) -> dict:
         own_session = self._session is None

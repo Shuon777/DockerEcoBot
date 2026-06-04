@@ -491,6 +491,14 @@ async function renderResult(pipelineData) {
 
     const msgDiv = appendMessage('bot', text.replace(/\n/g, '<br>'));
 
+    // Промо: связанные услуги/экспозиции
+    if (result.promo && result.promo.length > 0) {
+        result.promo.forEach(item => {
+            const text = item.promo_text || item.name || '';
+            appendMessage('bot', `💡 ${text}`);
+        });
+    }
+
     if (buttons.length > 0 && msgDiv) {
         const btnContainer = document.createElement('div');
         btnContainer.className = 'mt-3 d-flex flex-wrap gap-2';

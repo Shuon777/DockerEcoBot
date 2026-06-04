@@ -418,6 +418,41 @@ class SQLAlchemySearchRepository(SearchRepository):
             result = session.execute(sql, {'name': place_name}).first()
             return result.geojson if result else None
 
+    def find_related_objects(self, object_ids: List[int], relation_type: str) -> List[dict]:
+        if not object_ids:
+            return []
+        session = self._session_factory()
+        with session:
+            # Ищем в обоих направлениях: нерпа может быть как object_id, так и related_object_id
+            sql = text("""
+                SELECT DISTINCT o.id, o.db_id, o.object_properties, ot.name as object_type,
+                    array_agg(DISTINCT ons.synonym) FILTER (WHERE ons.synonym IS NOT NULL) as synonyms
+                FROM eco_assistant.object_object_link ool
+                JOIN eco_assistant.object o
+                    ON (ool.object_id = ANY(:object_ids) AND o.id = ool.related_object_id)
+                    OR (ool.related_object_id = ANY(:object_ids) AND o.id = ool.object_id)
+                JOIN eco_assistant.object_type ot ON o.object_type_id = ot.id
+                LEFT JOIN eco_assistant.object_name_synonym_link osl ON o.id = osl.object_id
+                LEFT JOIN eco_assistant.object_name_synonym ons ON osl.synonym_id = ons.id
+                WHERE ool.relation_type = :relation_type
+                AND o.id != ALL(:object_ids)
+                GROUP BY o.id, o.db_id, o.object_properties, ot.name
+            """)
+            rows = session.execute(sql, {
+                'object_ids': object_ids,
+                'relation_type': relation_type,
+            }).fetchall()
+            return [
+                {
+                    'id': r.id,
+                    'db_id': r.db_id,
+                    'object_type': r.object_type,
+                    'name': r.synonyms[0] if r.synonyms else r.db_id,
+                    'synonyms': list(r.synonyms or []),
+                }
+                for r in rows
+            ]
+
     def get_geometry_type_for_place(self, place_name: str) -> Optional[str]:
         session = self._session_factory()
         with session:
