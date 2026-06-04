@@ -377,20 +377,35 @@ class SlotClassifier:
         self.parser = llm.with_structured_output(SlotResult, method="json_mode")
         self._valid_features = valid_features
 
-    async def classify(self, query: str, prev_query: str | None = None) -> dict:
+    async def classify(self, query: str, prev_query: str | None = None, prev_promo: list | None = None) -> dict:
+        context_parts = []
+
         if prev_query:
-            context = (
-                f"\n═══ КОНТЕКСТ ДИАЛОГА ═══\n"
+            context_parts.append(
                 f"Предыдущий запрос пользователя: «{prev_query}»\n"
                 f"Используй его ИСКЛЮЧИТЕЛЬНО чтобы понять на что указывают местоимения "
                 f"(«он», «она», «его», «её», «нём», «ней», «там», «это», «туда» и т.п.). "
-                f"Не переноси слоты из предыдущего запроса — классифицируй только текущий.\n"
+                f"Не переноси слоты из предыдущего запроса — классифицируй только текущий."
             )
+
+        if prev_promo:
+            names = "; ".join(
+                f"«{item.get('name', '')}» (тип: {item.get('object_type', '')})"
+                for item in prev_promo
+            )
+            context_parts.append(
+                f"В предыдущем ответе были рекомендованы объекты: {names}\n"
+                f"Если текущий запрос ссылается на один из них (через «эту», «про неё», «подробнее», «расскажи об этом» и т.п.) — "
+                f"укажи его название в synonym и соответствующий object_type."
+            )
+
+        if context_parts:
+            context = "\n═══ КОНТЕКСТ ДИАЛОГА ═══\n" + "\n".join(context_parts) + "\n"
         else:
             context = ""
 
         prompt = _get_prompt_template().format(context=context, query=query)
-        logger.info(f"🔍 Classifying: '{query}'" + (f" | prev: '{prev_query}'" if prev_query else ""))
+        logger.info(f"🔍 Classifying: '{query}'" + (f" | prev: '{prev_query}'" if prev_query else "") + (f" | promo: {[p.get('name') for p in (prev_promo or [])]}" if prev_promo else ""))
         try:
             result: SlotResult = await self.parser.ainvoke(prompt)
             slots = result.model_dump()

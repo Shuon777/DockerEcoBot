@@ -61,7 +61,8 @@ class SlotSearchExecutor:
 
         promo_objects = []
         use_promo = promo_enabled if promo_enabled is not None else self._promo_enabled
-        if use_promo:
+        # Не показываем промо если запрос уже является переходом по промо-ссылке
+        if use_promo and not slots.get("promo_db_id"):
             promo_objects = await self._fetch_promo(search_data.get("objects") or [], query)
 
         result = self._format_result(slots, search_data, promo_objects)
@@ -172,6 +173,7 @@ class SlotSearchExecutor:
                     "name": obj.get("name"),
                     "object_type": obj.get("object_type"),
                     "promo_text": obj.get("promo_text"),
+                    "db_id": obj.get("db_id"),
                 }
                 for obj in promo_objects
             ]
@@ -278,7 +280,12 @@ class SlotSearchExecutor:
 
         obj = {}
         synonym = slots.get("synonym")
-        if synonym:
+        promo_db_id = slots.get("promo_db_id")
+        promo_name = slots.get("promo_name", "")
+        if promo_db_id:
+            # Запрос ссылается на промо-объект — ищем по db_id напрямую
+            obj["identificator"] = {"db_id": promo_db_id}
+        elif synonym:
             # Синонимы в БД хранятся в нижнем регистре без ё (см. import_objects.py)
             normalized = synonym.lower().strip().replace("ё", "е")
             obj["name_synonyms"] = {"ru": [normalized]}
@@ -299,11 +306,15 @@ class SlotSearchExecutor:
         if slots.get("modality"):
             search_params["modality_type"] = slots["modality"]
 
+        # При промо-переходе подставляем имя объекта в user_query —
+        # векторный поиск в salut_bot использует именно его, а не clean_user_query
+        effective_query = (f"Расскажи про {promo_name}" if promo_name else user_query)
+
         return {
             "system_parameters": {
                 "debug": True,
-                "user_query": user_query,
-                "clean_user_query": user_query,
+                "user_query": effective_query,
+                "clean_user_query": effective_query,
                 "use_llm_answer": True,
             },
             "search_parameters": search_params,

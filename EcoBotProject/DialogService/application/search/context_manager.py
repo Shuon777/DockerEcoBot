@@ -1,6 +1,6 @@
 import json
 import logging
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ class DialogueTurn:
     query: str
     slots: dict[str, Any]
     had_results: bool
+    promo_objects: list = field(default_factory=list)  # [{db_id, name, object_type}]
 
 
 class ConversationHistory:

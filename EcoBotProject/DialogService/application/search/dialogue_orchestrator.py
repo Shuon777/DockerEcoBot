@@ -126,6 +126,29 @@ def _build_proactive(slots: dict, result: dict) -> dict[str, str]:
 
 # ── Вспомогательные ───────────────────────────────────────────────────────────
 
+def _resolve_promo_ref(slots: dict, prev_promo: list) -> dict:
+    """
+    Если synonym из нового запроса является подстрокой имени промо-объекта
+    (или наоборот) — подставляем db_id и тип промо-объекта для точного поиска.
+    """
+    synonym = (slots.get("synonym") or "").lower().strip()
+    if not synonym or not prev_promo:
+        return slots
+    for item in prev_promo:
+        name = (item.get("name") or "").lower()
+        if not name:
+            continue
+        if synonym in name or name in synonym:
+            logger.info(f"[PROMO] Resolved promo ref: synonym={synonym!r} → db_id={item['db_id']!r}")
+            slots = dict(slots)
+            slots["promo_db_id"] = item["db_id"]
+            slots["promo_name"] = item.get("name", "")
+            slots["synonym"] = None
+            slots["object_type"] = item.get("object_type")
+            return slots
+    return slots
+
+
 def _has_content(result: dict) -> bool:
     return bool(
         result.get("answer")
@@ -160,9 +183,10 @@ class DialogueOrchestrator:
         turns = await self._history.get_turns(user_id) if user_id else []
         prev = turns[-1] if turns else None
 
-        # Передаём предыдущий запрос в LLM — для разрешения местоимений
+        # Передаём предыдущий запрос и промо в LLM — для разрешения местоимений
+        prev_promo = prev.promo_objects if prev else []
         t_classify = time.monotonic()
-        slots = await self._classifier.classify(query, prev_query=prev.query if prev else None)
+        slots = await self._classifier.classify(query, prev_query=prev.query if prev else None, prev_promo=prev_promo)
         classify_ms = _ms(t_classify)
 
         is_continuation = False
@@ -173,6 +197,10 @@ class DialogueOrchestrator:
             slots["template"] = _determine_template(slots)
             slots["modality_ambiguous"] = _detect_ambiguity(query, slots["modality"])
             context_ms = _ms(t_ctx)
+
+        # Резолюция ссылок на промо-объекты (после мёрджа контекста)
+        if prev_promo:
+            slots = _resolve_promo_ref(slots, prev_promo)
 
         logger.info(
             f"[CTX] Итог [{user_id}]: "
@@ -231,6 +259,7 @@ class DialogueOrchestrator:
                 query=query,
                 slots=slots,
                 had_results=_has_content(result),
+                promo_objects=result.get("promo") or [],
             ))
 
         pipeline_result["proactive"] = proactive
