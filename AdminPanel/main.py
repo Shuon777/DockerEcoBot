@@ -44,6 +44,7 @@ GEO_OBJECT_TYPE_ID = 2  # «Географический объект»
 SERVICE_OBJECT_TYPE_ID = 3  # «Услуга»
 
 app = FastAPI()
+app.state.promo_enabled = True
 load_dotenv()
 
 app.mount("/admin/static", StaticFiles(directory="static"), name="static")
@@ -234,6 +235,17 @@ _CALLBACK_QUERIES: dict[str, str] = {
 }
 
 
+@app.get("/chat/promo-setting")
+async def get_promo_setting(request: Request):
+    return {"promo_enabled": request.app.state.promo_enabled}
+
+
+@app.post("/chat/promo-setting")
+async def set_promo_setting(request: Request, data: dict = Body(...)):
+    request.app.state.promo_enabled = bool(data.get("enabled", True))
+    return {"promo_enabled": request.app.state.promo_enabled}
+
+
 @app.post("/chat/search")
 async def search_proxy(request: Request, data: dict = Body(...)):
     user_id = request.session.get("user_id")
@@ -246,7 +258,7 @@ async def search_proxy(request: Request, data: dict = Body(...)):
         try:
             response = await client.post(
                 f"{CORE_API_BASE}/search_pipeline",
-                json={"query": query, "user_id": user_id}
+                json={"query": query, "user_id": user_id, "promo_enabled": request.app.state.promo_enabled}
             )
             return response.json()
         except Exception as e:

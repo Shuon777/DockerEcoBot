@@ -107,3 +107,12 @@ async def render_pipeline_result(
         text=text,
         attachments=[builder.as_markup()] if has_buttons else None,
     )
+
+    # ── Промо: связанные услуги/экспозиции ───────────────────────────────────
+    for item in (result.get("promo") or []):
+        promo_text = item.get("promo_text") or item.get("name", "")
+        if promo_text:
+            try:
+                await bot.send_message(chat_id=chat_id, text=f"💡 {promo_text}")
+            except Exception as e:
+                logger.error(f"Promo send failed: {e}")

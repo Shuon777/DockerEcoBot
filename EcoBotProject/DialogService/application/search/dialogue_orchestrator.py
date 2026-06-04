@@ -154,7 +154,7 @@ class DialogueOrchestrator:
         self._history = history
         self._redis = redis_client
 
-    async def process(self, query: str, user_id: str | None = None) -> dict:
+    async def process(self, query: str, user_id: str | None = None, promo_enabled: bool | None = None) -> dict:
         """Полный цикл: классификация → мердж контекста → поиск → проактивность."""
         t0 = time.monotonic()
         turns = await self._history.get_turns(user_id) if user_id else []
@@ -183,7 +183,7 @@ class DialogueOrchestrator:
             f"continuation={is_continuation}"
         )
 
-        result = await self._execute_and_finalize(query, slots, user_id, is_continuation)
+        result = await self._execute_and_finalize(query, slots, user_id, is_continuation, promo_enabled=promo_enabled)
         exec_timing = result.get("timing", {})
         result["timing"] = {
             "classify_ms": classify_ms,
@@ -209,9 +209,10 @@ class DialogueOrchestrator:
         slots: dict,
         user_id: str | None,
         is_continuation: bool,
+        promo_enabled: bool | None = None,
     ) -> dict:
         t_search = time.monotonic()
-        pipeline_result = await self._executor.execute(query, slots, user_id=user_id)
+        pipeline_result = await self._executor.execute(query, slots, user_id=user_id, promo_enabled=promo_enabled)
         search_ms = _ms(t_search)
         result = pipeline_result.get("result", {})
 

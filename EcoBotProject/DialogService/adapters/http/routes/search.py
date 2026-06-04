@@ -45,8 +45,9 @@ async def search_pipeline(request: Request, data: dict = Body(...)):
     if not query:
         raise HTTPException(status_code=400, detail="query required")
     user_id: str | None = data.get("user_id") or None
+    promo_enabled: bool | None = data.get("promo_enabled")
     orchestrator = _make_orchestrator(request)
-    return await orchestrator.process(query, user_id=user_id)
+    return await orchestrator.process(query, user_id=user_id, promo_enabled=promo_enabled)
 
 
 @router.post("/callback_simplify")

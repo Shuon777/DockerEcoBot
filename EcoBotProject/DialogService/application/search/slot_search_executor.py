@@ -48,7 +48,7 @@ class SlotSearchExecutor:
         self._promo_enabled = os.getenv("PROMO_ENABLED", "false").lower() == "true"
         self._promo_relation_type = os.getenv("PROMO_RELATION_TYPE", "promo")
 
-    async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None) -> Dict[str, Any]:
+    async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None, promo_enabled: bool | None = None) -> Dict[str, Any]:
         if self._use_place_endpoint(slots):
             search_body = self._build_place_params(slots, query)
             search_data = await self._call_place(search_body)
@@ -60,7 +60,8 @@ class SlotSearchExecutor:
             await self._send_to_stand(search_data)
 
         promo_objects = []
-        if self._promo_enabled:
+        use_promo = promo_enabled if promo_enabled is not None else self._promo_enabled
+        if use_promo:
             promo_objects = await self._fetch_promo(search_data.get("objects") or [], query)
 
         result = self._format_result(slots, search_data, promo_objects)
