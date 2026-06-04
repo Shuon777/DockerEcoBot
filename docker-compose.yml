@@ -3,41 +3,48 @@ networks:
     driver: bridge
 
 services:
-
-  # ─────────────────────────── ИНФРАСТРУКТУРА ───────────────────────────
-
   redis:
     image: redis:alpine
     restart: always
     networks: [ecobot_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   db:
     build: ./db_custom
     restart: always
     env_file: ./db_custom/.env
-    ports:
-      - "5432:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
       - ./db_custom/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks: [ecobot_net]
-
-  # ─────────────────────────── BACKEND API ──────────────────────────────
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-eco}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build: ./salut_bot
     restart: always
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - ./salut_bot/.env
       - ./shared.env
     volumes:
       - ./maps:/app/maps
       - ./salut_bot/images:/app/images
-      - ./salut_bot/embedding_models:/app/embedding_models:ro
+      - ./salut_bot/embedding_models:/app/embedding_models
       - ./salut_bot/knowledge_base_scripts/Vector/faiss_index:/app/knowledge_base_scripts/Vector/faiss_index:ro
+      - ./logs:/app/logs
     environment:
       - PYTHONUNBUFFERED=1
       - DB_HOST=db
@@ -45,41 +52,6 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks: [ecobot_net]
-
-  # ─────────────────────────── LLM СЕРВИСЫ ──────────────────────────────
-
-  gigachat:
-    build: ./EcoBotProject/GigaChatAPI
-    restart: always
-    env_file:
-      - ./EcoBotProject/GigaChatAPI/.env
-      - ./shared.env
-    networks: [ecobot_net]
-
-  # rasa-actions:
-  #   build:
-  #     context: ./EcoBotProject/RasaProject
-  #     dockerfile: Dockerfile.actions
-  #   restart: always
-  #   env_file: ./EcoBotProject/RasaProject/.env
-  #   depends_on:
-  #     - backend
-  #     - gigachat
-  #   networks: [ecobot_net]
-
-  # rasa:
-  #   build:
-  #     context: ./EcoBotProject/RasaProject
-  #     dockerfile: Dockerfile
-  #   restart: always
-  #   env_file: ./EcoBotProject/RasaProject/.env
-  #   volumes:
-  #     - ./EcoBotProject/RasaProject/models:/app/models
-  #   depends_on:
-  #     - rasa-actions
-  #   networks: [ecobot_net]
-
-  # ─────────────────────────── DIALOG SERVICE ──────────────────────────
 
   core-api:
     build: ./EcoBotProject/DialogService
@@ -95,9 +67,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - redis
-      - backend
-      - db
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_started
     networks: [ecobot_net]
 
   max:
@@ -110,17 +85,20 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
     command: python main_max.py
+    expose:
+      - "8080"
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
+      - MAX_USE_WEBHOOK=true
+      - MAX_WEBHOOK_PORT=8080
+      - MAX_WEBHOOK_PATH=/max-webhook
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - backend
       - core-api
     networks: [ecobot_net]
-
-  # ─────────────────────────── ADMIN PANEL ──────────────────────────────
 
   admin:
     build: ./AdminPanel
@@ -136,37 +114,70 @@ services:
       - DB_HOST=db
       - REDIS_HOST=redis
     depends_on:
-      - db
-      - redis
-      - backend
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
     networks: [ecobot_net]
-
-  # ─────────────────────────── GATEWAY ──────────────────────────────────
 
   nginx:
     image: nginx:alpine
     restart: always
     ports:
       - "80:80"
+      - "443:443"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.https.conf:/etc/nginx/nginx.conf:ro
       - /dev/null:/etc/nginx/conf.d/default.conf
       - ./maps:/var/www/maps
       - ./salut_bot/images:/var/www/images
+      - ./certbot/www:/var/www/certbot
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
       - admin
+      - core-api
     networks: [ecobot_net]
 
-  # ─────────────────────────── ТОЛЬКО ДЛЯ РАЗРАБОТКИ ────────────────────
+  dsapi:
+    build:
+      context: ./dsapi
+    env_file:
+      - ./dsapi/.env
+    expose:
+      - "5050"
+    volumes:
+      - ./dsapi/local_models:/app/local_models:ro
+      - ./dsapi/doc:/app/doc:ro
+      - ./dsapi/prompts_structure:/app/prompts_structure:ro
+      - ./dsapi/logs:/app/logs
+      - ./dsapi/results:/app/results
+    restart: unless-stopped
+    networks: [ecobot_net]
 
-  testing:
-    build: ./ModulDynamicTestingDSAPIBackend
-    restart: "no"
-    env_file: ./ModulDynamicTestingDSAPIBackend/.env
+  images-extractor:
+    build:
+      context: ./images-extractor
+    profiles: [extractor]
+    env_file:
+      - ./images-extractor/.env
     environment:
-      - PYTHONUNBUFFERED=1
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    profiles: [dev]
+      YOLO_CONFIG_DIR: /tmp
+      HF_HOME: /app/.cache/huggingface
+      TORCH_HOME: /app/.cache/torch
+    volumes:
+      - ./images-extractor/objects:/app/objects
+      - ./images-extractor/data:/app/data
+      - ./images-extractor/photos:/app/photos
+      - ./images-extractor/results:/app/results
+      - ./images-extractor/cache:/app/.cache
+      - ./images-extractor/SAM:/app/SAM
+      - ./images-extractor/ViT:/app/ViT
+      - ./images-extractor/local_bioclip_model:/app/local_bioclip_model
+      - ./images-extractor/local_blip_model:/app/local_blip_model
+      - ./images-extractor/local_grounding_dino_tiny_model:/app/local_grounding_dino_tiny_model
+      - ./images-extractor/local_owlv2_model:/app/local_owlv2_model
+    restart: "no"
     networks: [ecobot_net]
