@@ -74,14 +74,6 @@ class SlotSearchExecutor:
                 )
             return {"slots": slots, "search_request": {}, "search": {}, "result": {"answer": "Сервис временно недоступен. Попробуйте позже."}}
 
-        if user_id and self._session and not (search_data.get("objects") or []):
-            await log_zero_results(
-                self._session, query, user_id,
-                action=slots.get("template") or slots.get("modality", "unknown"),
-                search_params=search_body,
-                context=context,
-            )
-
         if user_id and is_stand_session_active(user_id):
             await self._send_to_stand(search_data)
 
@@ -92,7 +84,24 @@ class SlotSearchExecutor:
             promo_objects = await self._fetch_promo(search_data.get("objects") or [], query)
 
         result = self._format_result(slots, search_data, promo_objects)
+
+        if user_id and self._session and self._is_zero_result(slots, result, search_data):
+            await log_zero_results(
+                self._session, query, user_id,
+                action=slots.get("template") or slots.get("modality", "unknown"),
+                search_params=search_body,
+                context=context,
+            )
+
         return {"slots": slots, "search_request": search_body, "search": search_data, "result": result}
+
+    def _is_zero_result(self, slots: Dict[str, Any], result: dict, search_data: dict) -> bool:
+        modality = slots.get("modality", "Текст")
+        if modality == "Изображение":
+            return not result.get("images")
+        if modality == "Геоданные":
+            return not result.get("map") and not result.get("objects")
+        return not (search_data.get("objects") or [])
 
     async def _send_to_stand(self, search_data: dict) -> None:
         resources: List[dict] = search_data.get("resources") or []
