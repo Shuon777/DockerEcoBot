@@ -223,7 +223,7 @@ class DialogueOrchestrator:
             f"continuation={is_continuation}"
         )
 
-        result = await self._execute_and_finalize(query, slots, user_id, is_continuation, promo_enabled=promo_enabled)
+        result = await self._execute_and_finalize(query, slots, user_id, is_continuation, promo_enabled=promo_enabled, prev_query=prev.query if prev else None)
         exec_timing = result.get("timing", {})
         result["timing"] = {
             "classify_ms": classify_ms,
@@ -250,9 +250,11 @@ class DialogueOrchestrator:
         user_id: str | None,
         is_continuation: bool,
         promo_enabled: bool | None = None,
+        prev_query: str | None = None,
     ) -> dict:
         t_search = time.monotonic()
-        pipeline_result = await self._executor.execute(query, slots, user_id=user_id, promo_enabled=promo_enabled)
+        log_context = {"current_query": query, "prev_query": prev_query}
+        pipeline_result = await self._executor.execute(query, slots, user_id=user_id, promo_enabled=promo_enabled, context=log_context)
         search_ms = _ms(t_search)
         result = pipeline_result.get("result", {})
 

@@ -58,7 +58,7 @@ class SlotSearchExecutor:
         self._promo_enabled = os.getenv("PROMO_ENABLED", "false").lower() == "true"
         self._promo_relation_type = os.getenv("PROMO_RELATION_TYPE", "promo")
 
-    async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None, promo_enabled: bool | None = None) -> Dict[str, Any]:
+    async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None, promo_enabled: bool | None = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         try:
             if self._use_place_endpoint(slots):
                 search_body = self._build_place_params(slots, query)
@@ -70,7 +70,7 @@ class SlotSearchExecutor:
             if user_id and self._session:
                 await log_api_fail(
                     self._session, user_id, e.url, e.status, e.response_text, query,
-                    payload=e.payload,
+                    context=context, payload=e.payload,
                 )
             return {"slots": slots, "search_request": {}, "search": {}, "result": {"answer": "Сервис временно недоступен. Попробуйте позже."}}
 
@@ -79,6 +79,7 @@ class SlotSearchExecutor:
                 self._session, query, user_id,
                 action=slots.get("template") or slots.get("modality", "unknown"),
                 search_params=search_body,
+                context=context,
             )
 
         if user_id and is_stand_session_active(user_id):
