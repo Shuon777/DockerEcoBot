@@ -4,6 +4,7 @@ from maxapi.types import MessageCreated
 
 from infrastructure.max_bot.context import ctx
 from adapters.max.presenter import render_pipeline_result
+from utils.error_logger import log_critical
 
 logger = logging.getLogger("MaxMessageHandler")
 
@@ -35,6 +36,7 @@ def register_message_handlers(dp: Dispatcher, bot: Bot) -> None:
 
         except Exception as e:
             logger.error(f"Message handler error: {e}", exc_info=True)
+            await log_critical(ctx.session, text, str(chat_id), e)
             try:
                 await bot.send_message(
                     chat_id=chat_id,

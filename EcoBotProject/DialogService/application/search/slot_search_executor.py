@@ -6,6 +6,16 @@ from typing import Any, Dict, List, Optional
 
 from config import API_URLS, STAND_SECRET_KEY
 from utils.stand_manager import is_stand_session_active
+from utils.error_logger import log_api_fail, log_zero_results
+
+
+class _ApiError(Exception):
+    def __init__(self, status: int, url: str, response_text: str, payload=None):
+        self.status = status
+        self.url = url
+        self.response_text = response_text
+        self.payload = payload
+        super().__init__(f"API {status} at {url}")
 
 _NEAR_RE = re.compile(r"рядом|около|возле|недалеко|поблизости|близ", re.IGNORECASE)
 
@@ -49,12 +59,27 @@ class SlotSearchExecutor:
         self._promo_relation_type = os.getenv("PROMO_RELATION_TYPE", "promo")
 
     async def execute(self, query: str, slots: Dict[str, Any], user_id: str | None = None, promo_enabled: bool | None = None) -> Dict[str, Any]:
-        if self._use_place_endpoint(slots):
-            search_body = self._build_place_params(slots, query)
-            search_data = await self._call_place(search_body)
-        else:
-            search_body = self._build_search_params(slots, query)
-            search_data = await self._call_search(search_body)
+        try:
+            if self._use_place_endpoint(slots):
+                search_body = self._build_place_params(slots, query)
+                search_data = await self._call_place(search_body)
+            else:
+                search_body = self._build_search_params(slots, query)
+                search_data = await self._call_search(search_body)
+        except _ApiError as e:
+            if user_id and self._session:
+                await log_api_fail(
+                    self._session, user_id, e.url, e.status, e.response_text, query,
+                    payload=e.payload,
+                )
+            return {"slots": slots, "search_request": {}, "search": {}, "result": {"answer": "Сервис временно недоступен. Попробуйте позже."}}
+
+        if user_id and self._session and not (search_data.get("objects") or []):
+            await log_zero_results(
+                self._session, query, user_id,
+                action=slots.get("template") or slots.get("modality", "unknown"),
+                search_params=search_body,
+            )
 
         if user_id and is_stand_session_active(user_id):
             await self._send_to_stand(search_data)
@@ -258,9 +283,13 @@ class SlotSearchExecutor:
     async def _call_place(self, body: dict) -> dict:
         own_session = self._session is None
         sess = self._session or aiohttp.ClientSession()
+        url = f"{self._backend_url}/search/place/objects"
         try:
-            async with sess.post(f"{self._backend_url}/search/place/objects", json=body) as resp:
-                return await resp.json()
+            async with sess.post(url, json=body) as resp:
+                if resp.status not in (200, 201):
+                    text = await resp.text()
+                    raise _ApiError(resp.status, url, text[:500], body)
+                return await resp.json(content_type=None)
         finally:
             if own_session:
                 await sess.close()
@@ -346,9 +375,13 @@ class SlotSearchExecutor:
     async def _call_search(self, body: dict) -> dict:
         own_session = self._session is None
         sess = self._session or aiohttp.ClientSession()
+        url = f"{self._backend_url}/search"
         try:
-            async with sess.post(f"{self._backend_url}/search", json=self._strip_nulls(body)) as resp:
-                return await resp.json()
+            async with sess.post(url, json=self._strip_nulls(body)) as resp:
+                if resp.status not in (200, 201):
+                    text = await resp.text()
+                    raise _ApiError(resp.status, url, text[:500], body)
+                return await resp.json(content_type=None)
         finally:
             if own_session:
                 await sess.close()

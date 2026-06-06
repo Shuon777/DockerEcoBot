@@ -5,6 +5,7 @@ from maxapi.types import MessageCallback
 from infrastructure.max_bot.context import ctx
 from adapters.max.presenter import render_pipeline_result
 from utils.stand_manager import end_stand_session
+from utils.error_logger import log_critical
 
 logger = logging.getLogger("MaxCallbackHandler")
 
@@ -59,6 +60,7 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
                 await render_pipeline_result(bot, chat_id, result, ctx.session)
             except Exception as e:
                 logger.error(f"Simplify callback error [{chat_id}]: {e}", exc_info=True)
+                await log_critical(ctx.session, payload, user_id, e)
                 await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте ещё раз.")
             return
 
@@ -81,4 +83,5 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
             await render_pipeline_result(bot, chat_id, result, ctx.session)
         except Exception as e:
             logger.error(f"Callback pipeline error [{chat_id}]: {e}", exc_info=True)
+            await log_critical(ctx.session, query, user_id, e)
             await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте ещё раз.")

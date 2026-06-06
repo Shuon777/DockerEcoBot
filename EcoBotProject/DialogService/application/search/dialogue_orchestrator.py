@@ -9,6 +9,7 @@ from typing import Any
 from application.search.context_manager import ConversationHistory, DialogueTurn
 from application.search.slot_classifier import SlotClassifier, _determine_template, _detect_ambiguity
 from application.search.slot_search_executor import SlotSearchExecutor
+from utils.error_logger import log_nlu_miss
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,12 @@ class DialogueOrchestrator:
         t_classify = time.monotonic()
         slots = await self._classifier.classify(query, prev_query=prev.query if prev else None, prev_promo=prev_promo)
         classify_ms = _ms(t_classify)
+
+        if slots.get("error") and user_id and self._executor._session:
+            await log_nlu_miss(
+                self._executor._session, query, user_id,
+                reason=f"LLM classify error: {slots['error']}",
+            )
 
         is_continuation = False
         context_ms = 0
