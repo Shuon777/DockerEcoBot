@@ -2560,6 +2560,226 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
     })
 
 
+@app.post("/services/auto-annotate-all")
+async def services_auto_annotate_all(
+    request: Request,
+    body: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+
+    dry_run = body.get("dry_run", False)
+    service_ids = (await db.execute(
+        select(Object.id).where(Object.object_type_id == SERVICE_OBJECT_TYPE_ID)
+    )).scalars().all()
+
+    all_links: list[dict] = []
+    for sid in service_ids:
+        links = await _auto_annotate_service(sid, db, dry_run=dry_run)
+        all_links.extend(links)
+
+    return {"ok": True, "processed": len(service_ids), "total_created": len(all_links), "links": all_links}
+
+
+@app.post("/services/save-annotate-links")
+async def services_save_annotate_links(
+    request: Request,
+    body: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+):
+    """Сохраняет pre-computed promo-связи из dry-run без повторного анализа текстов."""
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+
+    links = body.get("links", [])
+    created = 0
+    for link in links:
+        object_id = link.get("object_id")
+        related_id = link.get("related_object_id")
+        if not object_id or not related_id:
+            continue
+        existing = (await db.execute(
+            select(ObjectObjectLink).where(
+                ObjectObjectLink.relation_type == "promo",
+            ).where(
+                sql_text("(object_id = :sid AND related_object_id = :oid) OR (object_id = :oid AND related_object_id = :sid)")
+            ).params(sid=object_id, oid=related_id)
+        )).scalar()
+        if not existing:
+            db.add(ObjectObjectLink(
+                object_id=object_id,
+                related_object_id=related_id,
+                relation_type="promo",
+            ))
+            created += 1
+
+    if created:
+        await db.commit()
+    return {"ok": True, "created": created}
+
+
+async def _auto_annotate_service(object_id: int, db: AsyncSession, dry_run: bool = False) -> list[dict]:
+    """Возвращает список пар {object_id, related_object_id}, созданных (или найденных при dry_run)."""
+    import re
+
+    promo_type = (await db.execute(
+        select(ObjectObjectRelationType).where(ObjectObjectRelationType.name == "promo")
+    )).scalar()
+    if not promo_type and not dry_run:
+        db.add(ObjectObjectRelationType(name="promo"))
+        await db.flush()
+
+    texts_q = (
+        select(TextValue.structured_data)
+        .join(ResourceValue, ResourceValue.value_id == TextValue.id)
+        .join(Resource, Resource.id == ResourceValue.resource_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Текст")
+    )
+    service_texts = []
+    for row in (await db.execute(texts_q)).all():
+        sd = row.structured_data or {}
+        for field in ("description", "content", "text"):
+            val = sd.get(field) if isinstance(sd, dict) else None
+            if val and isinstance(val, str):
+                service_texts.append(val.lower())
+    full_text = " ".join(service_texts)
+    if not full_text.strip():
+        return []
+
+    synonyms_q = await db.execute(sql_text("""
+        SELECT ons.synonym, o.id as object_id
+        FROM eco_assistant.object_name_synonym ons
+        JOIN eco_assistant.object_name_synonym_link onsl ON onsl.synonym_id = ons.id
+        JOIN eco_assistant.object o ON o.id = onsl.object_id
+        JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
+        WHERE ot.name = 'Объект флоры и фауны'
+        AND LENGTH(ons.synonym) >= 6
+        AND o.id != :service_id
+        AND ons.synonym !~* '^(о |об |в |на |про |к |у |по |за |из |со |с )'
+        ORDER BY LENGTH(ons.synonym) DESC
+    """), {"service_id": object_id})
+
+    found_ids = set()
+    links: list[dict] = []
+    for row in synonyms_q.fetchall():
+        syn = row.synonym.lower().strip()
+        if row.object_id in found_ids:
+            continue
+        if re.search(r'\b' + re.escape(syn) + r'\b', full_text):
+            found_ids.add(row.object_id)
+            existing = (await db.execute(
+                select(ObjectObjectLink).where(
+                    ObjectObjectLink.relation_type == "promo",
+                ).where(
+                    sql_text("(object_id = :sid AND related_object_id = :oid) OR (object_id = :oid AND related_object_id = :sid)")
+                ).params(sid=object_id, oid=row.object_id)
+            )).scalar()
+            if not existing:
+                if not dry_run:
+                    db.add(ObjectObjectLink(
+                        object_id=object_id,
+                        related_object_id=row.object_id,
+                        relation_type="promo",
+                    ))
+                links.append({"object_id": object_id, "related_object_id": row.object_id})
+
+    if links and not dry_run:
+        await db.commit()
+    return links
+
+
+@app.post("/service/{object_id}/auto-annotate")
+async def service_auto_annotate(
+    request: Request,
+    object_id: int,
+    body: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ищет упоминания объектов ОФФ/Гео в текстах услуги и создаёт promo-связи."""
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+
+    dry_run = body.get("dry_run", False)
+    import re
+
+    promo_type = (await db.execute(
+        select(ObjectObjectRelationType).where(ObjectObjectRelationType.name == "promo")
+    )).scalar()
+    if not promo_type and not dry_run:
+        db.add(ObjectObjectRelationType(name="promo"))
+        await db.flush()
+
+    texts_q = (
+        select(TextValue.structured_data)
+        .join(ResourceValue, ResourceValue.value_id == TextValue.id)
+        .join(Resource, Resource.id == ResourceValue.resource_id)
+        .join(resource_object_table, resource_object_table.c.resource_id == Resource.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .where(resource_object_table.c.object_id == object_id)
+        .where(Modality.modality_type == "Текст")
+    )
+    service_texts = []
+    for row in (await db.execute(texts_q)).all():
+        sd = row.structured_data or {}
+        for field in ("description", "content", "text"):
+            val = sd.get(field) if isinstance(sd, dict) else None
+            if val and isinstance(val, str):
+                service_texts.append(val.lower())
+    full_text = " ".join(service_texts)
+
+    if not full_text.strip():
+        return {"ok": True, "found": [], "created": [], "message": "Нет текстов для анализа"}
+
+    synonyms_q = await db.execute(sql_text("""
+        SELECT ons.synonym, o.id as object_id, ot.name as object_type
+        FROM eco_assistant.object_name_synonym ons
+        JOIN eco_assistant.object_name_synonym_link onsl ON onsl.synonym_id = ons.id
+        JOIN eco_assistant.object o ON o.id = onsl.object_id
+        JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
+        WHERE ot.name = 'Объект флоры и фауны'
+        AND LENGTH(ons.synonym) >= 6
+        AND o.id != :service_id
+        AND ons.synonym !~* '^(о |об |в |на |про |к |у |по |за |из |со |с )'
+        ORDER BY LENGTH(ons.synonym) DESC
+    """), {"service_id": object_id})
+
+    found_ids = set()
+    found = []
+    created = []
+    for row in synonyms_q.fetchall():
+        syn = row.synonym.lower().strip()
+        if row.object_id in found_ids:
+            continue
+        if re.search(r'\b' + re.escape(syn) + r'\b', full_text):
+            found_ids.add(row.object_id)
+            display = {"object_id": row.object_id, "synonym": row.synonym, "object_type": row.object_type}
+            found.append(display)
+            # Проверяем оба направления чтобы не создавать дубли
+            existing = (await db.execute(
+                select(ObjectObjectLink).where(
+                    ObjectObjectLink.relation_type == "promo",
+                ).where(
+                    sql_text("(object_id = :sid AND related_object_id = :oid) OR (object_id = :oid AND related_object_id = :sid)")
+                ).params(sid=object_id, oid=row.object_id)
+            )).scalar()
+            if not existing:
+                if not dry_run:
+                    db.add(ObjectObjectLink(
+                        object_id=object_id,
+                        related_object_id=row.object_id,
+                        relation_type="promo",
+                    ))
+                created.append({**display, "service_object_id": object_id, "related_object_id": row.object_id})
+
+    if not dry_run:
+        await db.commit()
+    return {"ok": True, "found": found, "created": created}
+
+
 @app.post("/service/{object_id}/add_text")
 async def service_add_text(
     request: Request, object_id: int,

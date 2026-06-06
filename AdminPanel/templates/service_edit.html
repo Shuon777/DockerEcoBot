@@ -443,12 +443,18 @@
                     </div>
                     {% endif %}
 
-                    <div class="text-center mt-2 mb-4">
+                    <div class="text-center mt-2 mb-4 d-flex justify-content-center gap-2 flex-wrap">
                         <button type="button" class="btn fw-bold" style="background:#d97706; color:#fff; border-radius:10px;"
                                 data-bs-toggle="modal" data-bs-target="#addLinkModal">
                             <i class="bi bi-plus-lg me-1"></i> Добавить связь
                         </button>
+                        <button type="button" class="btn btn-outline-secondary fw-bold" style="border-radius:10px;"
+                                id="autoAnnotateBtn" onclick="autoAnnotate({{ entity.id }})">
+                            Авто-аннотировать
+                        </button>
                     </div>
+
+                    <div id="annotateResult" class="mb-3" style="display:none;"></div>
 
                     <hr class="my-3">
 
@@ -1632,5 +1638,83 @@ document.addEventListener('DOMContentLoaded', async function() {
             r2.map(t => `<option value="${t}">${t}</option>`).join('');
     } catch(e) { /* ignore */ }
 });
+
+let _pendingSingleAnnotateLinks = [];
+
+async function autoAnnotate(objectId) {
+    const btn = document.getElementById('autoAnnotateBtn');
+    const resultDiv = document.getElementById('annotateResult');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Анализирую...';
+    resultDiv.style.display = 'none';
+    _pendingSingleAnnotateLinks = [];
+    try {
+        const resp = await fetch(`/admin/service/${objectId}/auto-annotate`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({dry_run: true})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        } else if (!data.found.length) {
+            resultDiv.innerHTML = `<div class="alert alert-secondary">Совпадений не найдено.</div>`;
+        } else if (!data.created.length) {
+            resultDiv.innerHTML = `<div class="alert alert-secondary">Найдено совпадений: ${data.found.length}, но все связи уже существуют.</div>`;
+        } else {
+            _pendingSingleAnnotateLinks = data.created.map(x => ({
+                object_id: x.service_object_id,
+                related_object_id: x.related_object_id,
+            }));
+            const items = data.created.map(x => `<li><b>${x.synonym}</b> <span class="text-muted">(${x.object_type})</span></li>`).join('');
+            const skipped = data.found.length - data.created.length;
+            resultDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <div class="fw-bold mb-2">Найдены объекты для создания связей (${data.created.length}):</div>
+                    <ul class="mb-2 ps-3" style="font-size:0.9rem;">${items}</ul>
+                    ${skipped ? `<div class="text-muted small mb-2">ℹ️ Уже существуют: ${skipped}</div>` : ''}
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-success fw-bold" onclick="autoAnnotateConfirm()">
+                            <i class="bi bi-check-lg me-1"></i> Подтвердить и создать связи
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="autoAnnotateCancel()">Отмена</button>
+                    </div>
+                </div>`;
+        }
+    } catch(e) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Ошибка: ${e.message}</div>`;
+    } finally {
+        resultDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = 'Авто-аннотировать';
+    }
+}
+
+async function autoAnnotateConfirm() {
+    const resultDiv = document.getElementById('annotateResult');
+    resultDiv.innerHTML = '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-1"></span> Сохраняю...</div>';
+    try {
+        const resp = await fetch('/admin/services/save-annotate-links', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({links: _pendingSingleAnnotateLinks})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-success">✅ Создано связей: <b>${data.created}</b></div>`;
+            _pendingSingleAnnotateLinks = [];
+            if (data.created) setTimeout(() => location.reload(), 1500);
+        }
+    } catch(e) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Ошибка: ${e.message}</div>`;
+    }
+}
+
+function autoAnnotateCancel() {
+    _pendingSingleAnnotateLinks = [];
+    document.getElementById('annotateResult').style.display = 'none';
+}
 </script>
 {% endblock %}

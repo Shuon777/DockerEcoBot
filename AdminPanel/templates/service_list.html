@@ -37,11 +37,18 @@
     <p class="text-secondary mb-0" style="font-size:1.05rem; font-weight:500;">
         Управление услугами базы знаний
     </p>
-    <a href="/admin/service/new" class="btn-stats"
-       style="background:#f59e0b; box-shadow:0 4px 6px rgba(245,158,11,0.2);">
-        <i class="bi bi-plus-lg me-1"></i> Добавить
-    </a>
+    <div class="d-flex gap-2">
+        <a href="/admin/service/new" class="btn-stats"
+           style="background:#f59e0b; box-shadow:0 4px 6px rgba(245,158,11,0.2);">
+            <i class="bi bi-plus-lg me-1"></i> Добавить
+        </a>
+        <button id="annotateAllBtn" class="btn-stats" onclick="annotateAll()"
+                style="background:#6b7280; box-shadow:0 4px 6px rgba(107,114,128,0.2);">
+            Аннотировать все
+        </button>
+    </div>
 </div>
+<div id="annotateAllResult" class="mb-3" style="display:none;"></div>
 
 <!-- Статбар -->
 {% set stat_defs = [
@@ -309,6 +316,76 @@ document.getElementById('subtypeSearch').addEventListener('input', function() {
 document.getElementById('searchInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') applyFilters();
 });
+
+let _pendingAnnotateLinks = [];
+
+async function annotateAll() {
+    const btn = document.getElementById('annotateAllBtn');
+    const resultDiv = document.getElementById('annotateAllResult');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Анализирую...';
+    resultDiv.style.display = 'none';
+    _pendingAnnotateLinks = [];
+    try {
+        const resp = await fetch('/admin/services/auto-annotate-all', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({dry_run: true})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        } else if (!data.total_created) {
+            resultDiv.innerHTML = `<div class="alert alert-secondary">Новых связей для создания не найдено (проверено услуг: ${data.processed}).</div>`;
+        } else {
+            _pendingAnnotateLinks = data.links || [];
+            resultDiv.innerHTML = `
+                <div class="alert alert-info">
+                    <div>Анализ завершён. Проверено услуг: <b>${data.processed}</b>. Будет создано новых связей: <b>${data.total_created}</b>.</div>
+                    <div class="mt-2 d-flex gap-2">
+                        <button class="btn btn-sm btn-success fw-bold" onclick="annotateAllConfirm()">
+                            <i class="bi bi-check-lg me-1"></i> Подтвердить и сохранить
+                        </button>
+                        <button class="btn btn-sm btn-secondary" onclick="annotateAllCancel()">Отмена</button>
+                    </div>
+                </div>`;
+        }
+    } catch(e) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Ошибка: ${e.message}</div>`;
+    } finally {
+        resultDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = 'Аннотировать все';
+    }
+}
+
+async function annotateAllConfirm() {
+    const resultDiv = document.getElementById('annotateAllResult');
+    resultDiv.innerHTML = '<div class="alert alert-info"><span class="spinner-border spinner-border-sm me-1"></span> Сохраняю...</div>';
+    try {
+        const resp = await fetch('/admin/services/save-annotate-links', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({links: _pendingAnnotateLinks})
+        });
+        const data = await resp.json();
+        if (!data.ok) {
+            resultDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+        } else {
+            resultDiv.innerHTML = `<div class="alert alert-success">
+                ✅ Создано связей: <b>${data.created}</b>
+            </div>`;
+            _pendingAnnotateLinks = [];
+        }
+    } catch(e) {
+        resultDiv.innerHTML = `<div class="alert alert-danger">Ошибка: ${e.message}</div>`;
+    }
+}
+
+function annotateAllCancel() {
+    _pendingAnnotateLinks = [];
+    document.getElementById('annotateAllResult').style.display = 'none';
+}
 </script>
 
 {% endblock %}
