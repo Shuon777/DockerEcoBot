@@ -494,8 +494,24 @@ async function renderResult(pipelineData) {
     // Промо: связанные услуги/экспозиции
     if (result.promo && result.promo.length > 0) {
         result.promo.forEach(item => {
-            const text = item.promo_text || item.name || '';
-            appendMessage('bot', `💡 ${text}`);
+            const promoText = item.promo_text || item.name || '';
+            const promoName = item.name || '';
+            const promoDiv = appendMessage('bot', `💡 ${promoText}`);
+            if (promoName && promoDiv) {
+                const btnContainer = document.createElement('div');
+                btnContainer.className = 'mt-2';
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-sm btn-outline-secondary shadow-sm px-3 py-1';
+                btn.style.borderRadius = '10px';
+                btn.innerText = '📋 Подробнее';
+                btn.onclick = () => {
+                    appendMessage('user', '📋 Подробнее');
+                    btnContainer.remove();
+                    sendCallback(`text:${promoName.substring(0, 100)}`);
+                };
+                btnContainer.appendChild(btn);
+                promoDiv.querySelector('.message-bubble').appendChild(btnContainer);
+            }
         });
     }
 

@@ -83,7 +83,7 @@ class LLMAnswerGenerator:
         if resources:
             parts.append(f"Найдено ресурсов: {len(resources)}")
             for r in resources[:5]:
-                content_preview = str(r.content)[:200] if r.content else "Нет данных"
+                content_preview = str(r.content)[:2000] if r.content else "Нет данных"
                 parts.append(f"- {r.title} ({r.modality_type}): {content_preview}")
         return "\n".join(parts) if parts else "Нет релевантной информации."
 

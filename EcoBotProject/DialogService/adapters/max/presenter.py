@@ -111,8 +111,16 @@ async def render_pipeline_result(
     # ── Промо: связанные услуги/экспозиции ───────────────────────────────────
     for item in (result.get("promo") or []):
         promo_text = item.get("promo_text") or item.get("name", "")
+        name = item.get("name", "")
         if promo_text:
             try:
-                await bot.send_message(chat_id=chat_id, text=f"💡 {promo_text}")
+                promo_builder = InlineKeyboardBuilder()
+                if name:
+                    promo_builder.row(CallbackButton(text="📋 Подробнее", payload=f"text:{name[:100]}"))
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=f"💡 {promo_text}",
+                    attachments=[promo_builder.as_markup()] if name else None,
+                )
             except Exception as e:
                 logger.error(f"Promo send failed: {e}")
