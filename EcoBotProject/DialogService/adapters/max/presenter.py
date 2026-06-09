@@ -83,7 +83,7 @@ async def render_pipeline_result(
         has_buttons = True
 
     # ── Неопределённая модальность (Сценарий 2) ───────────────────────────────
-    if modality_ambiguous and slots.get("synonym") and not proactive.get("map"):
+    if modality_ambiguous and slots.get("synonym") and not proactive.get("map") and not map_data:
         builder.row(CallbackButton(
             text="🗺 Показать на карте",
             payload=f"map:{slots['synonym'][:50]}",

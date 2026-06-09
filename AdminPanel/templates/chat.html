@@ -64,11 +64,6 @@
                 <input class="form-check-input" type="checkbox" id="setting-debug">
                 <label class="form-check-label fw-bold" for="setting-debug">🐞 Debug Mode</label>
             </div>
-            <!-- Promo -->
-            <div class="form-check form-switch text-success">
-                <input class="form-check-input" type="checkbox" id="setting-promo">
-                <label class="form-check-label fw-bold" for="setting-promo">💡 Промо</label>
-            </div>
         </div>
         <div>
             <span class="text-muted small">ID: <b>{{ request.session.user_id }}</b></span>
@@ -477,7 +472,7 @@ async function renderResult(pipelineData) {
     if (proactive.map)   buttons.push({ type: 'callback', text: '🗺 Карта ареала', payload: `map:${proactive.map.substring(0, 50)}` });
     if (proactive.text)  buttons.push({ type: 'callback', text: '📖 Подробнее', payload: `text:${proactive.text.substring(0, 50)}` });
 
-    if (modality_ambiguous && slots.synonym && !proactive.map) {
+    if (modality_ambiguous && slots.synonym && !proactive.map && !result.map) {
         buttons.push({ type: 'callback', text: '🗺 Показать на карте', payload: `map:${slots.synonym.substring(0, 50)}` });
     }
 
@@ -563,23 +558,5 @@ document.getElementById('user-input').addEventListener('keypress', (e) => {
     if (e.key === 'Enter') sendMessage();
 });
 
-// Загрузить текущее состояние промо и повесить обработчик
-(async () => {
-    try {
-        const resp = await fetch('/admin/chat/promo-setting');
-        const data = await resp.json();
-        document.getElementById('setting-promo').checked = data.promo_enabled;
-    } catch {}
-})();
-
-document.getElementById('setting-promo').addEventListener('change', async (e) => {
-    try {
-        await fetch('/admin/chat/promo-setting', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled: e.target.checked }),
-        });
-    } catch {}
-});
 </script>
 {% endblock %}

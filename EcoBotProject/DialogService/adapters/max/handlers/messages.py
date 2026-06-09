@@ -31,7 +31,9 @@ def register_message_handlers(dp: Dispatcher, bot: Bot) -> None:
             except Exception:
                 pass
 
-            result = await ctx.orchestrator.process(text, user_id=str(chat_id))
+            promo_val = await ctx.redis_client.get("settings:promo_enabled")
+            promo_enabled = promo_val != "0"
+            result = await ctx.orchestrator.process(text, user_id=str(chat_id), promo_enabled=promo_enabled)
             await render_pipeline_result(bot, chat_id, result, ctx.session)
 
         except Exception as e:

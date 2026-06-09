@@ -37,6 +37,7 @@ from models.eco_assistant_models import (
 )
 from heartbeat import BotHeartbeat
 from dotenv import load_dotenv, dotenv_values, set_key
+import redis.asyncio as aioredis
 
 # Константы типов объектов в eco_assistant.object_type
 BIO_OBJECT_TYPE_ID = 1  # «Объект флоры и фауны»
@@ -44,14 +45,24 @@ GEO_OBJECT_TYPE_ID = 2  # «Географический объект»
 SERVICE_OBJECT_TYPE_ID = 3  # «Услуга»
 
 app = FastAPI()
-app.state.promo_enabled = True
 load_dotenv()
 
 app.mount("/admin/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["tojson"] = lambda value, indent=None, **_: json.dumps(value, ensure_ascii=False, indent=indent)
 hb = BotHeartbeat(host=os.getenv('REDIS_HOST', 'redis'), port=int(os.getenv('REDIS_PORT', 6379)), db=2)
+settings_redis = aioredis.Redis(
+    host=os.getenv('REDIS_HOST', 'redis'),
+    port=int(os.getenv('REDIS_PORT', 6379)),
+    db=0,
+    decode_responses=True,
+)
 app.add_middleware(SessionMiddleware, secret_key=os.getenv('SESSION_SECRET_KEY', 'super-secret-key-for-admins'))
+
+
+@app.on_event("startup")
+async def _init_redis_settings():
+    await settings_redis.set("settings:promo_enabled", "1", nx=True)
 CORE_API_BASE = os.getenv("CORE_API_BASE", "http://core-api:5001")
 SHARED_ENV_PATH = Path("/app/shared.env")
 ADMIN_ENV_PATH = Path("/app/.env")
@@ -237,13 +248,15 @@ _CALLBACK_QUERIES: dict[str, str] = {
 
 @app.get("/chat/promo-setting")
 async def get_promo_setting(request: Request):
-    return {"promo_enabled": request.app.state.promo_enabled}
+    val = await settings_redis.get("settings:promo_enabled")
+    return {"promo_enabled": val != "0"}
 
 
 @app.post("/chat/promo-setting")
 async def set_promo_setting(request: Request, data: dict = Body(...)):
-    request.app.state.promo_enabled = bool(data.get("enabled", True))
-    return {"promo_enabled": request.app.state.promo_enabled}
+    enabled = bool(data.get("enabled", True))
+    await settings_redis.set("settings:promo_enabled", "1" if enabled else "0")
+    return {"promo_enabled": enabled}
 
 
 @app.post("/chat/search")
@@ -254,11 +267,13 @@ async def search_proxy(request: Request, data: dict = Body(...)):
     query = data.get("text", "").strip()
     if not query:
         return {"error": "пустой запрос"}
+    promo_val = await settings_redis.get("settings:promo_enabled")
+    promo_enabled = promo_val != "0"
     async with httpx.AsyncClient(timeout=httpx.Timeout(150.0)) as client:
         try:
             response = await client.post(
                 f"{CORE_API_BASE}/search_pipeline",
-                json={"query": query, "user_id": user_id, "promo_enabled": request.app.state.promo_enabled}
+                json={"query": query, "user_id": user_id, "promo_enabled": promo_enabled}
             )
             return response.json()
         except Exception as e:
@@ -271,6 +286,8 @@ async def callback_proxy(request: Request, data: dict = Body(...)):
     if not user_id:
         return {"error": "не авторизован"}
     payload = data.get("payload", "")
+    promo_val = await settings_redis.get("settings:promo_enabled")
+    promo_enabled = promo_val != "0"
     async with httpx.AsyncClient(timeout=httpx.Timeout(150.0)) as client:
         try:
             if payload.startswith("simplify:"):
@@ -286,7 +303,7 @@ async def callback_proxy(request: Request, data: dict = Body(...)):
                     return {"error": "Неизвестный тип кнопки"}
                 response = await client.post(
                     f"{CORE_API_BASE}/search_pipeline",
-                    json={"query": template.format(name), "user_id": user_id}
+                    json={"query": template.format(name), "user_id": user_id, "promo_enabled": promo_enabled}
                 )
             return response.json()
         except Exception as e:
@@ -3044,9 +3061,14 @@ async def _load_object_links(db: AsyncSession, object_id: int) -> list:
             }
             seen.add(nr["id"])
 
+    seen_links: set[tuple] = set()
     links = []
     for r in raw:
         lid  = r["linked_id"]
+        key = (lid, r["relation_type"])
+        if key in seen_links:
+            continue
+        seen_links.add(key)
         info = names.get(lid, {})
         links.append({
             "related_id":     lid,

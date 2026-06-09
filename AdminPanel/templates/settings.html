@@ -272,6 +272,25 @@
 
     <!-- ═══════════════════════════════ БОТ ═══════════════════════════════ -->
     <div class="tab-pane fade" id="tab-bot">
+
+      <!-- Глобальные переключатели (Redis, мгновенно) -->
+      <div class="instant-notice">
+        <i class="bi bi-lightning-fill"></i>
+        <span>Изменения применяются <strong>мгновенно</strong> — без перезапуска контейнеров.</span>
+      </div>
+      <div class="settings-section">
+        <div class="section-label">Поведение бота</div>
+        <div class="d-flex align-items-center gap-3">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="global-promo-toggle" style="width:2.5em; height:1.3em;">
+            <label class="form-check-label fw-bold ms-1" for="global-promo-toggle">💡 Промо-реплики</label>
+          </div>
+          <span class="text-muted" style="font-size:0.82rem;">Добавлять рекламные вставки к ответам бота (Max + тестовый чат)</span>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
       <div class="restart-notice">
         <i class="bi bi-arrow-clockwise" style="color:#ea580c; font-size:1.1rem;"></i>
         <span>Изменения применяются после перезапуска:</span>
@@ -500,5 +519,28 @@ function showToast(msg, type) {
   document.getElementById('toastMessage').innerText = msg;
   new bootstrap.Toast(toast).show();
 }
+
+// Глобальный тумблер промо
+(async () => {
+  try {
+    const resp = await fetch('/admin/chat/promo-setting');
+    const data = await resp.json();
+    const toggle = document.getElementById('global-promo-toggle');
+    if (toggle) toggle.checked = data.promo_enabled;
+  } catch {}
+})();
+
+document.getElementById('global-promo-toggle')?.addEventListener('change', async (e) => {
+  try {
+    await fetch('/admin/chat/promo-setting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: e.target.checked }),
+    });
+    showToast(e.target.checked ? '💡 Промо включено' : 'Промо отключено', 'success');
+  } catch {
+    showToast('Ошибка при сохранении', 'danger');
+  }
+});
 </script>
 {% endblock %}

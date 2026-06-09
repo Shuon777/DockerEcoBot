@@ -79,7 +79,8 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
             pass
 
         try:
-            result = await ctx.orchestrator.process(query, user_id=user_id)
+            promo_val = await ctx.redis_client.get("settings:promo_enabled")
+            result = await ctx.orchestrator.process(query, user_id=user_id, promo_enabled=promo_val != "0")
             await render_pipeline_result(bot, chat_id, result, ctx.session)
         except Exception as e:
             logger.error(f"Callback pipeline error [{chat_id}]: {e}", exc_info=True)
