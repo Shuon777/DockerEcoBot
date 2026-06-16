@@ -120,22 +120,22 @@
             {% if entity.db_id %}<p class="text-muted small mb-3"><code>{{ entity.db_id }}</code></p>{% endif %}
 
             {% set props = entity.object_properties or {} %}
-            {% if props.region %}
+            {% if props.get('Географическая зона') %}
             <div class="mb-2">
                 <p class="text-muted small fw-bold mb-1">РЕГИОН</p>
-                <p class="mb-0">{{ props.region }}</p>
+                <p class="mb-0">{{ props.get('Географическая зона') }}</p>
             </div>
             {% endif %}
-            {% if props.exact_location %}
+            {% if props.get('Детальное расположение') %}
             <div class="mb-2">
                 <p class="text-muted small fw-bold mb-1">ТОЧНАЯ ЛОКАЦИЯ</p>
-                <p class="mb-0" style="font-size: 0.9rem;">{{ props.exact_location }}</p>
+                <p class="mb-0" style="font-size: 0.9rem;">{{ props.get('Детальное расположение') }}</p>
             </div>
             {% endif %}
-            {% if props.baikal_relation %}
+            {% if props.get('Расположение относительно Байкала') %}
             <div class="mb-2">
                 <p class="text-muted small fw-bold mb-1">ОТНОШЕНИЕ К БАЙКАЛУ</p>
-                <p class="mb-0">{{ props.baikal_relation }}</p>
+                <p class="mb-0">{{ props.get('Расположение относительно Байкала') }}</p>
             </div>
             {% endif %}
 
@@ -916,9 +916,9 @@
                 {% for prop in available_properties %}
                 <div class="mb-3">
                     <label class="form-label fw-bold small text-secondary">{{ prop.name | upper }}</label>
-                    {% if prop.name == 'subtypes' %}
+                    {% if prop.name == 'подтип объекта' %}
                     <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2">
-                        {% set cur_sub = (entity.object_properties or {}).get('subtypes', []) %}
+                        {% set cur_sub = (entity.object_properties or {}).get('Подтип объекта', []) %}
                         {% if cur_sub is string %}{% set cur_sub = [cur_sub] %}{% endif %}
                         {% for s in cur_sub %}
                         <span class="badge bg-light text-dark border d-flex align-items-center gap-1" style="font-size:0.85rem;">
@@ -1597,11 +1597,11 @@ async function saveResourceFeatures(resourceId) {
 async function saveProperties(objectId) {
     const props = {};
     {% for prop in available_properties %}
-    {% if prop.name == 'subtypes' %}
+    {% if prop.name == 'подтип объекта' %}
     {
         const chips = document.querySelectorAll('#subtypes-chips .badge');
         const subtypesList = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
-        if (subtypesList.length > 0) props['subtypes'] = subtypesList;
+        if (subtypesList.length > 0) props['Подтип объекта'] = subtypesList;
     }
     {% else %}
     {

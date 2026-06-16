@@ -32,6 +32,7 @@ from .interfaces import (
     ResourceResourceRelationTypeRepository,
     ObjectObjectRelationTypeRepository,
     ResourceObjectRelationTypeRepository,
+    CaseNormalizer,
 )
 
 
@@ -50,6 +51,7 @@ class ImportResourcesUseCase:
     object_object_relation_type_repo: ObjectObjectRelationTypeRepository
     resource_object_relation_type_repo: ResourceObjectRelationTypeRepository
     client: DatabaseClient
+    case_normalizer: CaseNormalizer
     missing_geometry_file: Path = Path(__file__).parent.parent.parent / 'missing_geometry.json'
 
     _logger = logging.getLogger(__name__)
@@ -205,8 +207,22 @@ class ImportResourcesUseCase:
         metadata = SupportMetadata(parameters=metadata_params)
         metadata_id = self.metadata_repo.get_or_create(metadata)
 
+        # modality_id нужен заранее (до сборки features_json), чтобы нормализация
+        # регистра значений признаков шла в том же "пространстве" (modality_id,
+        # feature_name), в котором потом ищет дубли каталог resource_feature.
+        modality_data = resource_data.get('modality', {})
+        modality_type = modality_data.get('type')
+        modality_value = modality_data.get('value', {})
+
+        modality_id = None
+        if modality_type:
+            modality_id = self._get_or_create_modality_by_type(modality_type)
+
         features = resource_data.get('features', [])
-        features_json = self._build_features_json(features)
+        # Нормализуем регистр один раз здесь: дальше нормализованные значения уходят
+        # и в resource.features, и в каталог resource_feature - так они не расходятся
+        # между собой (см. tasks/normalizaciya-registra-v-katalogah.md).
+        features_json, extracted_features = self._process_features(modality_id, features)
 
         resource = Resource(
             title=title,
@@ -218,18 +234,11 @@ class ImportResourcesUseCase:
         )
         resource_id = self.resource_repo.save_resource(resource)
 
-        modality_data = resource_data.get('modality', {})
-        modality_type = modality_data.get('type')
-        modality_value = modality_data.get('value', {})
-
-        modality_id = None
         if modality_type:
-            modality_id = self._get_or_create_modality_by_type(modality_type)
             self._process_modality(resource_id, modality_type, modality_value)
 
-        if features and modality_id:
-            extracted = self._extract_features(features)
-            for feat_name, values in extracted:
+        if modality_id:
+            for feat_name, values in extracted_features:
                 self.feature_repo.add_or_update_feature(modality_id, feat_name, values)
         
         self._current_resource_text_id = None
@@ -313,14 +322,64 @@ class ImportResourcesUseCase:
                 if modality.id is not None:
                     self.modality_repo.link_resource_value(resource_id, modality.id, None)
                 
-    def _build_features_json(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
-        result = {}
+    def _process_features(
+        self, modality_id: Optional[int], features: List[Dict[str, Any]], max_depth: int = 2
+    ) -> Tuple[Dict[str, Any], List[Tuple[str, List[str]]]]:
+        """Строит features_json (для resource.features) и параллельно список
+        (feature_name, values) для каталога resource_feature.
+
+        Нормализация регистра строковых значений выполняется только если известен
+        modality_id (без него каталог resource_feature не наполняется вовсе, как и в
+        прежней реализации) - оба результата используют один и тот же
+        case_normalizer, поэтому канонический регистр в resource.features всегда
+        совпадает с тем, что лежит в каталоге.
+        """
+        extracted: List[Tuple[str, List[str]]] = []
+
+        def process(prefix: str, value: Any, depth: int) -> Any:
+            if modality_id is None or depth > max_depth:
+                return value
+
+            if isinstance(value, dict):
+                return {
+                    k: process(f"{prefix}.{k}" if prefix else k, v, depth + 1)
+                    for k, v in value.items()
+                }
+
+            if isinstance(value, list):
+                normalized_list = []
+                catalog_values = []
+                for item in value:
+                    if item is None:
+                        continue
+                    normalized_item = (
+                        self.case_normalizer.normalize_resource_feature_value(modality_id, prefix, item)
+                        if isinstance(item, str) else item
+                    )
+                    normalized_list.append(normalized_item)
+                    catalog_values.append(str(normalized_item))
+                if catalog_values:
+                    extracted.append((prefix, catalog_values))
+                return normalized_list
+
+            if value is None:
+                return value
+
+            normalized_value = (
+                self.case_normalizer.normalize_resource_feature_value(modality_id, prefix, value)
+                if isinstance(value, str) else value
+            )
+            extracted.append((prefix, [str(normalized_value)]))
+            return normalized_value
+
+        features_json: Dict[str, Any] = {}
         for feature in features:
             name = feature.get('name')
             value = feature.get('value')
             if name and value is not None:
-                result[name] = value
-        return result
+                features_json[name] = process(name, value, 1)
+
+        return features_json, extracted
 
     def _calculate_hash(self, resource: Dict[str, Any]) -> str:
         data = {
@@ -335,33 +394,6 @@ class ImportResourcesUseCase:
             json.dumps(data, sort_keys=True, ensure_ascii=False).encode('utf-8')
         ).hexdigest()
 
-    def _extract_features(self, features: List[Dict[str, Any]], max_depth: int = 2) -> List[Tuple[str, List[str]]]:
-        result = []
-
-        def extract(prefix: str, value: Any, depth: int) -> None:
-            if depth > max_depth:
-                return
-            if isinstance(value, dict):
-                for k, v in value.items():
-                    new_prefix = f"{prefix}.{k}" if prefix else k
-                    extract(new_prefix, v, depth + 1)
-            elif isinstance(value, list):
-                str_values = [str(item) for item in value if item is not None]
-                if str_values:
-                    result.append((prefix, str_values))
-            else:
-                if value is not None:
-                    result.append((prefix, [str(value)]))
-
-        for feat in features:
-            name = feat.get('name')
-            value = feat.get('value')
-            if not name:
-                continue
-            extract(name, value, 1)
-
-        return result
-    
     def ensure_geometries_for_geo_objects(self) -> Dict[str, int]:
         """Создает ресурсы с геометрией для географических объектов, у которых их нет.
         

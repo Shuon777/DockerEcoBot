@@ -148,6 +148,24 @@ class SpeciesNameNormalizer(ABC):
         pass
 
 
+class CaseNormalizer(ABC):
+    """Регистронезависимое слияние значений каталогов object_property/resource_feature.
+
+    Гарантия: для одного и того же (scope_id, name) повторный вызов с значением,
+    отличающимся от уже виденного только регистром, вернёт уже устоявшуюся форму.
+    """
+
+    @abstractmethod
+    def normalize_object_property_value(self, object_type_id: int, property_name: str,
+                                          value: str) -> str:
+        pass
+
+    @abstractmethod
+    def normalize_resource_feature_value(self, modality_id: int, feature_name: str,
+                                          value: str) -> str:
+        pass
+
+
 class SchemaRepository(ABC):
     @abstractmethod
     def drop_all(self) -> None:
