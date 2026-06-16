@@ -922,12 +922,12 @@
                     <select class="form-select" id="prop_{{ prop.name }}">
                         <option value="">— не указано —</option>
                         {% for v in prop['values'] %}
-                        <option value="{{ v }}" {% if (entity.object_properties or {}).get(prop.name) == v %}selected{% endif %}>{{ v }}</option>
+                        <option value="{{ v }}" {% if (entity.object_properties or {}).get(prop.json_key) == v %}selected{% endif %}>{{ v }}</option>
                         {% endfor %}
                     </select>
                     {% else %}
                     <input type="text" class="form-control" id="prop_{{ prop.name }}"
-                           value="{{ (entity.object_properties or {}).get(prop.name, '') }}">
+                           value="{{ (entity.object_properties or {}).get(prop.json_key, '') }}">
                     {% endif %}
                 </div>
                 {% else %}
@@ -1372,7 +1372,7 @@ async function saveProperties(objectId) {
         if (list.length>0) props['Подтип объекта']=list;
     }
     {% else %}
-    { const el=document.getElementById('prop_{{ prop.name }}'); if (el&&el.value) props['{{ prop.name }}']=el.value; }
+    { const el=document.getElementById('prop_{{ prop.name }}'); if (el&&el.value) props['{{ prop.json_key }}']=el.value; }
     {% endif %}
     {% endfor %}
     try {

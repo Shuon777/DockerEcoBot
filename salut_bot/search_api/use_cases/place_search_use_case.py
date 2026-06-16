@@ -28,8 +28,11 @@ class PlaceSearchUseCase:
         props = {}
         if hasattr(obj, 'object_properties') and obj.object_properties:
             props = obj.object_properties
-        region_name = props.get('region', '')
-        exact_location = props.get('exact_location', '')
+        # Ключи - кириллица, как у db_importer/DialogService (раньше тут были
+        # английские region/exact_location, которые никогда не совпадали с реальным
+        # JSONB-ключом - см. tasks/normalizaciya_registra_v_katalogah.md).
+        region_name = props.get('Географическая зона', '')
+        exact_location = props.get('Детальное расположение', '')
         for syn in synonyms:
             if self._is_cyrillic(syn):
                 return syn.capitalize()

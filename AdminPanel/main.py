@@ -852,7 +852,12 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         .order_by(ObjectProperty.property_name)
     )).scalars().all()
     available_properties = [
-        {"id": p.id, "name": p.property_name, "values": list(p.property_values or [])}
+        {
+            "id": p.id,
+            "name": p.property_name,
+            "values": list(p.property_values or []),
+            "json_key": _resolve_json_key(entity["object_properties"], p.property_name),
+        }
         for p in avail_props_rows
     ]
     text_features = await _get_modality_features(db, "Текст")
@@ -1189,6 +1194,24 @@ async def get_property_values(db: AsyncSession, object_type_id: int, property_na
     )
     row = (await db.execute(q)).first()
     return list(row[0]) if row and row[0] else []
+
+
+def _resolve_json_key(object_properties: dict | None, catalog_name: str) -> str:
+    """Найти реальный регистр ключа в object.object_properties по имени свойства из
+    каталога (там оно всегда в нижнем регистре, см. object_property_repository.py в
+    db_importer). Нужно для generic-виджета редактирования произвольных свойств
+    каталога в *_edit.html: без этого чтение/запись шли бы по catalog_name буквально
+    (нижний регистр) и создавали бы дублирующий ключ рядом с уже существующим
+    (например, "вид (латинское название)" рядом с "Вид (латинское название)") -
+    см. tasks/normalizaciya_registra_v_katalogah.md.
+
+    Если у конкретного объекта такого свойства ещё нет - возвращает catalog_name как
+    есть (а не угадывает регистр, которым ещё ни разу не пользовались)."""
+    target = catalog_name.strip().lower()
+    for k in (object_properties or {}).keys():
+        if k.strip().lower() == target:
+            return k
+    return catalog_name
 
 
 async def get_property_counts(db: AsyncSession, object_type_id: int, property_name: str,
@@ -1857,7 +1880,12 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         .order_by(ObjectProperty.property_name)
     )).scalars().all()
     available_properties = [
-        {"id": p.id, "name": p.property_name, "values": list(p.property_values or [])}
+        {
+            "id": p.id,
+            "name": p.property_name,
+            "values": list(p.property_values or []),
+            "json_key": _resolve_json_key(entity["object_properties"], p.property_name),
+        }
         for p in avail_props_rows
     ]
     text_features = await _get_modality_features(db, "Текст")
@@ -2597,7 +2625,12 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
         select(ObjectProperty).where(ObjectProperty.object_type_id == SERVICE_OBJECT_TYPE_ID).order_by(ObjectProperty.property_name)
     )).scalars().all()
     available_properties = [
-        {"id": p.id, "name": p.property_name, "values": list(p.property_values or [])}
+        {
+            "id": p.id,
+            "name": p.property_name,
+            "values": list(p.property_values or []),
+            "json_key": _resolve_json_key(entity["object_properties"], p.property_name),
+        }
         for p in avail_props_rows
     ]
     text_features = await _get_modality_features(db, "Текст")
