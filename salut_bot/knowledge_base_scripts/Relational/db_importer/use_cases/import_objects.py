@@ -16,6 +16,7 @@ from .interfaces import (
     SynonymRepository,
     ObjectPropertyRepository,
     ObjectObjectRelationTypeRepository,
+    CaseNormalizer,
 )
 
 
@@ -26,6 +27,7 @@ class ImportObjectsUseCase:
     synonym_repo: SynonymRepository
     property_repo: ObjectPropertyRepository
     object_object_relation_type_repo: ObjectObjectRelationTypeRepository
+    case_normalizer: CaseNormalizer
 
     _logger = logging.getLogger(__name__)
 
@@ -57,8 +59,17 @@ class ImportObjectsUseCase:
                 name_synonyms = obj_data.get('name_synonyms', {})
                 primary_name = self._get_primary_name(name_synonyms)
 
+                # Нормализуем регистр значений один раз здесь: дальше нормализованный
+                # словарь уходит и в object.object_properties, и в каталог
+                # object_property — так они не расходятся между собой (см.
+                # tasks/normalizaciya-registra-v-katalogah.md).
+                raw_properties = obj_data.get('properties', {})
+                normalized_properties, extracted_props = self._process_properties(
+                    object_type.id, raw_properties
+                )
+
                 if existing:
-                    existing.object_properties = obj_data.get('properties', {})
+                    existing.object_properties = normalized_properties
                     existing.object_type_id = object_type.id
                     updated_obj = self.object_repo.save(existing)
                     object_id = updated_obj.id
@@ -68,7 +79,7 @@ class ImportObjectsUseCase:
                     object_obj = Object(
                         db_id=db_id,
                         object_type_id=object_type.id,
-                        object_properties=obj_data.get('properties', {})
+                        object_properties=normalized_properties
                     )
                     saved_obj = self.object_repo.save(object_obj)
                     object_id = saved_obj.id
@@ -78,11 +89,8 @@ class ImportObjectsUseCase:
                 if primary_name:
                     self._process_synonyms(object_id, name_synonyms, primary_name)
 
-                properties = obj_data.get('properties', {})
-                if properties:
-                    extracted_props = self._extract_properties(properties)
-                    for prop_name, values in extracted_props:
-                        self.property_repo.add_or_update_property(object_type.id, prop_name, values)
+                for prop_name, values in extracted_props:
+                    self.property_repo.add_or_update_property(object_type.id, prop_name, values)
 
                 # Process object relations and add relation types to dictionary
                 for relation in obj_data.get('object_relations', []):
@@ -149,25 +157,57 @@ class ImportObjectsUseCase:
                     synonym = self.synonym_repo.get_or_create(normalized_name, 'en')
                     self.object_repo.add_synonym_link(object_id, synonym.id)
 
-    def _extract_properties(self, properties: Dict[str, Any], max_depth: int = 2) -> List[Tuple[str, List[str]]]:
-        result = []
+    def _process_properties(
+        self, object_type_id: int, properties: Dict[str, Any], max_depth: int = 2
+    ) -> Tuple[Dict[str, Any], List[Tuple[str, List[str]]]]:
+        """Строит нормализованную копию `properties` (для object.object_properties) и
+        параллельно собирает список (prop_name, values) для каталога object_property.
 
-        def extract(prefix: str, value: Any, depth: int) -> None:
+        Нормализация регистра применяется только к строковым листьям; типы данных
+        (числа, bool) не трогаются. Оба результата используют один и тот же
+        case_normalizer, поэтому канонический регистр в object_properties всегда
+        совпадает с тем, что лежит в каталоге.
+        """
+        extracted: List[Tuple[str, List[str]]] = []
+
+        def process(prefix: str, value: Any, depth: int) -> Any:
             if depth > max_depth:
-                return
+                return value
+
             if isinstance(value, dict):
-                for k, v in value.items():
-                    new_prefix = f"{prefix}.{k}" if prefix else k
-                    extract(new_prefix, v, depth + 1)
-            elif isinstance(value, list):
-                str_values = [str(item) for item in value if item is not None]
-                if str_values:
-                    result.append((prefix, str_values))
-            else:
-                if value is not None:
-                    result.append((prefix, [str(value)]))
+                return {
+                    k: process(f"{prefix}.{k}" if prefix else k, v, depth + 1)
+                    for k, v in value.items()
+                }
 
-        for key, val in properties.items():
-            extract(key, val, 1)
+            if isinstance(value, list):
+                normalized_list = []
+                catalog_values = []
+                for item in value:
+                    if item is None:
+                        continue
+                    normalized_item = (
+                        self.case_normalizer.normalize_object_property_value(object_type_id, prefix, item)
+                        if isinstance(item, str) else item
+                    )
+                    normalized_list.append(normalized_item)
+                    catalog_values.append(str(normalized_item))
+                if catalog_values:
+                    extracted.append((prefix, catalog_values))
+                return normalized_list
 
-        return result
+            if value is None:
+                return value
+
+            normalized_value = (
+                self.case_normalizer.normalize_object_property_value(object_type_id, prefix, value)
+                if isinstance(value, str) else value
+            )
+            extracted.append((prefix, [str(normalized_value)]))
+            return normalized_value
+
+        normalized_properties = {
+            key: process(key, val, 1) for key, val in properties.items()
+        }
+
+        return normalized_properties, extracted

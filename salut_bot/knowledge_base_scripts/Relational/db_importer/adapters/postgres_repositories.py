@@ -176,16 +176,17 @@ class PostgresObjectTypeRepository(ObjectTypeRepository):
         self._cache: Dict[str, ObjectType] = {}
 
     def get_or_create(self, name: str) -> ObjectType:
-        if name in self._cache:
-            return self._cache[name]
+        cache_key = name.strip().lower()
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         row = self._client.fetchone(
-            "SELECT id, name, schema FROM eco_assistant.object_type WHERE name = %s",
+            "SELECT id, name, schema FROM eco_assistant.object_type WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
             obj_type = ObjectType(id=row[0], name=row[1], schema=row[2])
-            self._cache[name] = obj_type
+            self._cache[cache_key] = obj_type
             return obj_type
 
         row = self._client.fetchone(
@@ -194,7 +195,7 @@ class PostgresObjectTypeRepository(ObjectTypeRepository):
         )
         obj_type = ObjectType(id=row[0], name=name, schema={})
         self._client.commit()
-        self._cache[name] = obj_type
+        self._cache[cache_key] = obj_type
         return obj_type
 
 
@@ -320,15 +321,19 @@ class PostgresBibliographicRepository(BibliographicRepository):
     def get_or_create_author(self, name: str) -> int:
         if not name:
             return None
-        if name in self._author_cache:
-            return self._author_cache[name]
+        cache_key = name.strip().lower()
+        if cache_key in self._author_cache:
+            return self._author_cache[cache_key]
 
+        # Регистронезависимый поиск: "Иванов" и "иванов" должны быть одной записью,
+        # а не двумя - иначе справочник авторов начнёт плодить дубли (см.
+        # tasks/normalizaciya-registra-v-katalogah.md).
         row = self._client.fetchone(
-            "SELECT id FROM eco_assistant.author WHERE name = %s",
+            "SELECT id FROM eco_assistant.author WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
-            self._author_cache[name] = row[0]
+            self._author_cache[cache_key] = row[0]
             return row[0]
 
         row = self._client.fetchone(
@@ -336,21 +341,22 @@ class PostgresBibliographicRepository(BibliographicRepository):
             (name,)
         )
         self._client.commit()
-        self._author_cache[name] = row[0]
+        self._author_cache[cache_key] = row[0]
         return row[0]
 
     def get_or_create_source(self, name: str) -> int:
         if not name:
             return None
-        if name in self._source_cache:
-            return self._source_cache[name]
+        cache_key = name.strip().lower()
+        if cache_key in self._source_cache:
+            return self._source_cache[cache_key]
 
         row = self._client.fetchone(
-            "SELECT id FROM eco_assistant.source WHERE name = %s",
+            "SELECT id FROM eco_assistant.source WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
-            self._source_cache[name] = row[0]
+            self._source_cache[cache_key] = row[0]
             return row[0]
 
         row = self._client.fetchone(
@@ -358,21 +364,22 @@ class PostgresBibliographicRepository(BibliographicRepository):
             (name,)
         )
         self._client.commit()
-        self._source_cache[name] = row[0]
+        self._source_cache[cache_key] = row[0]
         return row[0]
 
     def get_or_create_reliability_level(self, name: str) -> int:
         if not name:
             return None
-        if name in self._reliability_cache:
-            return self._reliability_cache[name]
+        cache_key = name.strip().lower()
+        if cache_key in self._reliability_cache:
+            return self._reliability_cache[cache_key]
 
         row = self._client.fetchone(
-            "SELECT id FROM eco_assistant.reliability_level WHERE name = %s",
+            "SELECT id FROM eco_assistant.reliability_level WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
-            self._reliability_cache[name] = row[0]
+            self._reliability_cache[cache_key] = row[0]
             return row[0]
 
         row = self._client.fetchone(
@@ -380,7 +387,7 @@ class PostgresBibliographicRepository(BibliographicRepository):
             (name,)
         )
         self._client.commit()
-        self._reliability_cache[name] = row[0]
+        self._reliability_cache[cache_key] = row[0]
         return row[0]
 
     def get_or_create(self, bibliographic: BibliographicData) -> int:
@@ -531,16 +538,17 @@ class PostgresResourceResourceRelationTypeRepository(ResourceResourceRelationTyp
     def get_or_create(self, name: str) -> int:
         if not name:
             raise ValueError("Relation type name cannot be empty")
-        
-        if name in self._cache:
-            return self._cache[name]
+
+        cache_key = name.strip().lower()
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         row = self._client.fetchone(
-            "SELECT id FROM eco_assistant.resource_resource_relation_type WHERE name = %s",
+            "SELECT id FROM eco_assistant.resource_resource_relation_type WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
-            self._cache[name] = row[0]
+            self._cache[cache_key] = row[0]
             return row[0]
 
         row = self._client.fetchone(
@@ -548,7 +556,7 @@ class PostgresResourceResourceRelationTypeRepository(ResourceResourceRelationTyp
             (name,)
         )
         self._client.commit()
-        self._cache[name] = row[0]
+        self._cache[cache_key] = row[0]
         return row[0]
 
 
@@ -560,16 +568,17 @@ class PostgresObjectObjectRelationTypeRepository(ObjectObjectRelationTypeReposit
     def get_or_create(self, name: str) -> int:
         if not name:
             raise ValueError("Relation type name cannot be empty")
-        
-        if name in self._cache:
-            return self._cache[name]
+
+        cache_key = name.strip().lower()
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         row = self._client.fetchone(
-            "SELECT id FROM eco_assistant.object_object_relation_type WHERE name = %s",
+            "SELECT id FROM eco_assistant.object_object_relation_type WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
-            self._cache[name] = row[0]
+            self._cache[cache_key] = row[0]
             return row[0]
 
         row = self._client.fetchone(
@@ -577,7 +586,7 @@ class PostgresObjectObjectRelationTypeRepository(ObjectObjectRelationTypeReposit
             (name,)
         )
         self._client.commit()
-        self._cache[name] = row[0]
+        self._cache[cache_key] = row[0]
         return row[0]
 
 
@@ -589,16 +598,17 @@ class PostgresResourceObjectRelationTypeRepository(ResourceObjectRelationTypeRep
     def get_or_create(self, name: str) -> int:
         if not name:
             raise ValueError("Relation type name cannot be empty")
-        
-        if name in self._cache:
-            return self._cache[name]
+
+        cache_key = name.strip().lower()
+        if cache_key in self._cache:
+            return self._cache[cache_key]
 
         row = self._client.fetchone(
-            "SELECT id FROM eco_assistant.resource_object_relation_type WHERE name = %s",
+            "SELECT id FROM eco_assistant.resource_object_relation_type WHERE lower(name) = lower(%s)",
             (name,)
         )
         if row:
-            self._cache[name] = row[0]
+            self._cache[cache_key] = row[0]
             return row[0]
 
         row = self._client.fetchone(
@@ -606,5 +616,5 @@ class PostgresResourceObjectRelationTypeRepository(ResourceObjectRelationTypeRep
             (name,)
         )
         self._client.commit()
-        self._cache[name] = row[0]
+        self._cache[cache_key] = row[0]
         return row[0]

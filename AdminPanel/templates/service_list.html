@@ -176,11 +176,11 @@
                 </td>
                 <td class="td-reg">
                     {% set p = e.object_properties or {} %}
-                    {% if p.region %}<div>{{ p.region }}</div>{% endif %}
-                    {% if p.exact_location %}
-                        <div style="font-size:0.76rem; color:#94a3b8;">{{ p.exact_location | truncate(52) }}</div>
+                    {% if p.get('Географическая зона') %}<div>{{ p.get('Географическая зона') }}</div>{% endif %}
+                    {% if p.get('Детальное расположение') %}
+                        <div style="font-size:0.76rem; color:#94a3b8;">{{ p.get('Детальное расположение') | truncate(52) }}</div>
                     {% endif %}
-                    {% if not p.region and not p.exact_location %}<span style="color:#cbd5e1;">—</span>{% endif %}
+                    {% if not p.get('Географическая зона') and not p.get('Детальное расположение') %}<span style="color:#cbd5e1;">—</span>{% endif %}
                 </td>
                 <td class="td-res">
                     <span class="res-badge {% if e.text_count == 0 %}zero{% endif %}" style="{% if e.text_count > 0 %}color:#1d4ed8{% endif %}" title="Тексты">

@@ -24,15 +24,20 @@ from .adapters import (
     PostgresObjectObjectRelationTypeRepository,
     PostgresResourceObjectRelationTypeRepository,
 )
-from .services import JsonSpeciesNormalizer, GeodataProvider
+from .services import JsonSpeciesNormalizer, GeodataProvider, CatalogCaseNormalizer
 from .use_cases import ImportObjectsUseCase, ImportResourcesUseCase
 from .infrastructure.logging_setup import setup_logging
 
 
-def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Path):
-    client = PostgresClient(config)
-    client.connect()
+def create_use_cases(client: PostgresClient, synonyms_path: Path, geodb_path: Path):
+    """Собирает репозитории и use case'ы на уже подключённом клиенте.
 
+    Важно вызывать ПОСЛЕ recreate_schema() при --full: CatalogCaseNormalizer читает
+    текущее состояние object_property/resource_feature один раз при создании, и если
+    собрать use case'ы до сброса схемы, нормализатор унесёт в память уже удалённые
+    "грязные" варианты регистра и при свежем импорте будет ошибочно считать их
+    каноническими.
+    """
     resource_repo = PostgresResourceRepository(client)
     object_repo = PostgresObjectRepository(client)
     object_type_repo = PostgresObjectTypeRepository(client)
@@ -51,15 +56,20 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
     
     species_normalizer = JsonSpeciesNormalizer(synonyms_path)
     geodata_provider = GeodataProvider(geodb_path)
+    # Один общий нормализатор регистра на весь прогон импорта: загружает текущее
+    # состояние object_property/resource_feature один раз и далее держит его в
+    # памяти, чтобы новые значения сверялись с уже накопленными вариантами написания.
+    case_normalizer = CatalogCaseNormalizer(client)
 
     import_objects = ImportObjectsUseCase(
         object_repo=object_repo,
         object_type_repo=object_type_repo,
         synonym_repo=synonym_repo,
         property_repo=property_repo,
-        object_object_relation_type_repo=object_object_relation_type_repo
+        object_object_relation_type_repo=object_object_relation_type_repo,
+        case_normalizer=case_normalizer
     )
-    
+
     import_resources = ImportResourcesUseCase(
         resource_repo=resource_repo,
         object_repo=object_repo,
@@ -73,10 +83,11 @@ def create_use_cases(config: DatabaseConfig, synonyms_path: Path, geodb_path: Pa
         resource_resource_relation_type_repo=resource_resource_relation_type_repo,
         object_object_relation_type_repo=object_object_relation_type_repo,
         resource_object_relation_type_repo=resource_object_relation_type_repo,
-        client=client
+        client=client,
+        case_normalizer=case_normalizer
     )
-    
-    return client, import_objects, import_resources
+
+    return import_objects, import_resources
 
 
 def recreate_schema(client: PostgresClient, schema_file: Path) -> None:
@@ -117,12 +128,19 @@ def main() -> None:
             print(f"Error: Schema file not found: {schema_file}", file=sys.stderr)
             sys.exit(1)
 
-        client, import_objects, import_resources = create_use_cases(config, synonyms_path, geodb_path)
+        client = PostgresClient(config)
+        client.connect()
 
         if args.full:
             print("Recreating schema...")
             recreate_schema(client, schema_file)
             print("Schema recreated successfully")
+
+        # create_use_cases() строго после возможного recreate_schema(): CatalogCaseNormalizer
+        # читает object_property/resource_feature один раз при создании, и должен видеть
+        # уже сброшенную (для --full) или актуальную (без --full) схему, а не состояние
+        # до сброса.
+        import_objects, import_resources = create_use_cases(client, synonyms_path, geodb_path)
 
         print(f"Loading objects from {objects_path}")
         if objects_path.exists():

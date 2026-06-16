@@ -44,6 +44,24 @@ BIO_OBJECT_TYPE_ID = 1  # «Объект флоры и фауны»
 GEO_OBJECT_TYPE_ID = 2  # «Географический объект»
 SERVICE_OBJECT_TYPE_ID = 3  # «Услуга»
 
+# Канонические имена свойств subtypes/region/exact_location/baikal_relation - раньше
+# AdminPanel хранила их по-английски, а DialogService/search_api/db_importer всегда
+# работали с кириллицей ("Подтип объекта" и т.п.) - объекты, созданные через админку,
+# были не видны живому боту при поиске. Приведено к единому виду (см.
+# tasks/normalizaciya_registra_v_katalogah.md).
+#
+# PROP_* - ключ в самом JSON object.object_properties (регистр как у db_importer:
+# первая буква заглавная). CATALOG_* - property_name в справочнике object_property
+# (там он всегда в нижнем регистре, см. object_property_repository.py в db_importer).
+PROP_SUBTYPES = "Подтип объекта"
+PROP_REGION = "Географическая зона"
+PROP_EXACT_LOCATION = "Детальное расположение"
+PROP_BAIKAL_RELATION = "Расположение относительно Байкала"
+CATALOG_SUBTYPES = PROP_SUBTYPES.lower()
+CATALOG_REGION = PROP_REGION.lower()
+CATALOG_EXACT_LOCATION = PROP_EXACT_LOCATION.lower()
+CATALOG_BAIKAL_RELATION = PROP_BAIKAL_RELATION.lower()
+
 app = FastAPI()
 load_dotenv()
 
@@ -657,9 +675,9 @@ async def biological_new(request: Request, db: AsyncSession = Depends(get_db)):
         return RedirectResponse(url="/login")
     bot_online = await is_bot_online_redis()
 
-    subtypes_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, "subtypes")
-    region_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, "region")
-    baikal_relation_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, "baikal_relation")
+    subtypes_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, CATALOG_SUBTYPES)
+    region_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, CATALOG_REGION)
+    baikal_relation_options = await get_property_values(db, BIO_OBJECT_TYPE_ID, CATALOG_BAIKAL_RELATION)
     authors = (await db.execute(select(Author.name).order_by(Author.name))).scalars().all()
     sources = (await db.execute(select(Source.name).order_by(Source.name))).scalars().all()
     reliability_options = (await db.execute(select(ReliabilityLevel.name).order_by(ReliabilityLevel.name))).scalars().all()
@@ -761,7 +779,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
         "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
         "conservation_status": props.get("conservation_status", "") if isinstance(props, dict) else "",
-        "subtypes": props.get("subtypes", []) if isinstance(props, dict) else [],
+        "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else [],
     }
 
     texts_q = (
@@ -1173,16 +1191,26 @@ async def get_property_values(db: AsyncSession, object_type_id: int, property_na
     return list(row[0]) if row and row[0] else []
 
 
-async def get_property_counts(db: AsyncSession, object_type_id: int, property_name: str) -> list[tuple[str, int]]:
+async def get_property_counts(db: AsyncSession, object_type_id: int, property_name: str,
+                               json_key: str | None = None) -> list[tuple[str, int]]:
     """
     Для справочника (object_type_id, property_name) вернуть список (value, count),
     где count — реальное количество объектов, у которых это значение встречается в
-    object.object_properties->property_name (JSONB массив).
+    object.object_properties->json_key (JSONB массив).
     Значения, не встречающиеся ни разу, включаются с count=0.
+
+    property_name - имя в каталоге object_property (там оно всегда в нижнем
+    регистре). json_key - реальный ключ в object.object_properties (регистр как у
+    db_importer, например "Подтип объекта") - если не передан, берётся равным
+    property_name, но для полей из PROP_*/CATALOG_* пар их нужно передавать явно,
+    иначе регистр не совпадёт и счётчики всегда будут нулевыми (см.
+    tasks/normalizaciya_registra_v_katalogah.md).
     """
     allowed = await get_property_values(db, object_type_id, property_name)
     if not allowed:
         return []
+    if json_key is None:
+        json_key = property_name
 
     q = sql_text(
         """
@@ -1193,7 +1221,7 @@ async def get_property_counts(db: AsyncSession, object_type_id: int, property_na
         GROUP BY v
         """
     )
-    res = await db.execute(q, {"otid": object_type_id, "pname": property_name})
+    res = await db.execute(q, {"otid": object_type_id, "pname": json_key})
     counts = {row.value: row.cnt for row in res}
     return [(val, counts.get(val, 0)) for val in allowed]
 
@@ -1222,8 +1250,17 @@ async def _get_modality_features(db: AsyncSession, modality_type: str) -> list:
 
 
 async def get_or_create(db: AsyncSession, model, **kwargs):
-    """Найти существующую запись по kwargs или создать новую. Применяется для простых справочников (Author, Source, ReliabilityLevel)."""
-    q = select(model).filter_by(**kwargs)
+    """Найти существующую запись по kwargs или создать новую. Применяется для простых справочников (Author, Source, ReliabilityLevel).
+
+    Поле name ищем без учёта регистра (func.lower) - иначе "Иванов" и "иванов",
+    введённые через форму в разное время, создают две разные записи в справочнике
+    вместо одной (см. tasks/normalizaciya-registra-v-katalogah.md).
+    """
+    name_value = kwargs.get('name')
+    if name_value is not None and len(kwargs) == 1:
+        q = select(model).where(func.lower(model.name) == func.lower(name_value))
+    else:
+        q = select(model).filter_by(**kwargs)
     inst = (await db.execute(q)).scalar_one_or_none()
     if inst:
         return inst
@@ -1242,16 +1279,21 @@ def _parse_subtypes(raw: str | None) -> list[str]:
 
 def _build_object_properties(subtypes: list[str], region: str | None,
                              exact_location: str | None, baikal_relation: str | None) -> dict:
-    """Собрать словарь object.object_properties, отбрасывая пустые поля."""
+    """Собрать словарь object.object_properties, отбрасывая пустые поля.
+
+    Ключи - кириллица (PROP_*), как у db_importer/DialogService/search_api: иначе
+    объекты, созданные через админку, не находились бы живым ботом при поиске (см.
+    tasks/normalizaciya_registra_v_katalogah.md).
+    """
     props: dict = {}
     if subtypes:
-        props["subtypes"] = subtypes
+        props[PROP_SUBTYPES] = subtypes
     if region:
-        props["region"] = region
+        props[PROP_REGION] = region
     if exact_location:
-        props["exact_location"] = exact_location
+        props[PROP_EXACT_LOCATION] = exact_location
     if baikal_relation:
-        props["baikal_relation"] = baikal_relation
+        props[PROP_BAIKAL_RELATION] = baikal_relation
     return props
 
 
@@ -1367,18 +1409,23 @@ def _primary_synonym(synonyms: list[str]) -> str:
 def _build_bio_object_properties(type_: str, subtypes: list[str], scientific_name: str | None,
                                   conservation_status: str | None, region: str | None,
                                   baikal_relation: str | None) -> dict:
-    """Собрать словарь object.object_properties для биологического объекта."""
+    """Собрать словарь object.object_properties для биологического объекта.
+
+    subtypes/region/baikal_relation - кириллица (PROP_*), как у db_importer/
+    DialogService/search_api (см. tasks/normalizaciya_registra_v_katalogah.md).
+    scientific_name/conservation_status оставлены как есть - бот по ним не ищет.
+    """
     props: dict = {"Тип ОФФ": type_}
     if subtypes:
-        props["subtypes"] = subtypes
+        props[PROP_SUBTYPES] = subtypes
     if scientific_name:
         props["scientific_name"] = scientific_name
     if conservation_status:
         props["conservation_status"] = conservation_status
     if region:
-        props["region"] = region
+        props[PROP_REGION] = region
     if baikal_relation:
-        props["baikal_relation"] = baikal_relation
+        props[PROP_BAIKAL_RELATION] = baikal_relation
     return props
 
 
@@ -1496,7 +1543,7 @@ async def geographical_list(
         query = query.where(
             func.jsonb_path_exists(
                 Object.object_properties,
-                sql_text("'$.subtypes[*] ? (@ == $val)'"),
+                sql_text(f'\'$."{PROP_SUBTYPES}"[*] ? (@ == $val)\''),
                 func.jsonb_build_object("val", st),
             )
         )
@@ -1564,14 +1611,14 @@ async def geographical_list(
             "name_ru": _primary_synonym(synonyms),
             "synonyms": synonyms,
             "object_properties": props,
-            "subtypes": props.get("subtypes", []) if isinstance(props, dict) else[],
+            "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else[],
             "text_count": c["text"],
             "image_count": c["image"],
             "geo_count": c["geo"],
             "total_resources": int(row.total_resources or 0),
         })
 
-    subtypes_stats = await get_property_counts(db, GEO_OBJECT_TYPE_ID, "subtypes")
+    subtypes_stats = await get_property_counts(db, GEO_OBJECT_TYPE_ID, CATALOG_SUBTYPES, json_key=PROP_SUBTYPES)
     subtypes_stats.sort(key=lambda x: (-x[1], x[0].lower()))
 
     return templates.TemplateResponse("geographical_list.html", {
@@ -1600,10 +1647,10 @@ async def geographical_new(request: Request, db: AsyncSession = Depends(get_db))
     bot_online = await is_bot_online_redis()
 
     # Опции для полей формы — из справочника object_property и существующих записей
-    subtypes_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "subtypes")
-    region_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "region")
-    exact_location_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "exact_location")
-    baikal_relation_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, "baikal_relation")
+    subtypes_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, CATALOG_SUBTYPES)
+    region_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, CATALOG_REGION)
+    exact_location_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, CATALOG_EXACT_LOCATION)
+    baikal_relation_options = await get_property_values(db, GEO_OBJECT_TYPE_ID, CATALOG_BAIKAL_RELATION)
 
     authors = (await db.execute(select(Author.name).order_by(Author.name))).scalars().all()
     sources = (await db.execute(select(Source.name).order_by(Source.name))).scalars().all()
@@ -1713,7 +1760,7 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         "name_ru": _primary_synonym(list(synonyms)),
         "synonyms": list(synonyms),
         "object_properties": obj.object_properties or {},
-        "subtypes": (obj.object_properties or {}).get("subtypes", []),
+        "subtypes": (obj.object_properties or {}).get(PROP_SUBTYPES, []),
         "feature_data": obj.object_properties or {},
     }
 
@@ -2299,7 +2346,7 @@ async def service_list(
         query = query.where(
             func.jsonb_path_exists(
                 Object.object_properties,
-                sql_text("'$.subtypes[*] ? (@ == $val)'"),
+                sql_text(f'\'$."{PROP_SUBTYPES}"[*] ? (@ == $val)\''),
                 func.jsonb_build_object("val", st),
             )
         )
@@ -2360,14 +2407,14 @@ async def service_list(
             "name_ru": _primary_synonym(synonyms),
             "synonyms": synonyms,
             "object_properties": props,
-            "subtypes": props.get("subtypes", []) if isinstance(props, dict) else [],
+            "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else [],
             "text_count": c["text"],
             "image_count": c["image"],
             "geo_count": c["geo"],
             "total_resources": int(row.total_resources or 0),
         })
 
-    subtypes_stats = await get_property_counts(db, SERVICE_OBJECT_TYPE_ID, "subtypes")
+    subtypes_stats = await get_property_counts(db, SERVICE_OBJECT_TYPE_ID, CATALOG_SUBTYPES, json_key=PROP_SUBTYPES)
     subtypes_stats.sort(key=lambda x: (-x[1], x[0].lower()))
 
     return templates.TemplateResponse("service_list.html", {
@@ -2392,10 +2439,10 @@ async def service_new(request: Request, db: AsyncSession = Depends(get_db)):
     if not request.session.get("user_id"):
         return RedirectResponse(url="/login")
     bot_online = await is_bot_online_redis()
-    subtypes_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "subtypes")
-    region_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "region")
-    exact_location_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "exact_location")
-    baikal_relation_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, "baikal_relation")
+    subtypes_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, CATALOG_SUBTYPES)
+    region_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, CATALOG_REGION)
+    exact_location_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, CATALOG_EXACT_LOCATION)
+    baikal_relation_options = await get_property_values(db, SERVICE_OBJECT_TYPE_ID, CATALOG_BAIKAL_RELATION)
     authors = (await db.execute(select(Author.name).order_by(Author.name))).scalars().all()
     sources = (await db.execute(select(Source.name).order_by(Source.name))).scalars().all()
     reliability_options = (await db.execute(select(ReliabilityLevel.name).order_by(ReliabilityLevel.name))).scalars().all()
@@ -2482,7 +2529,7 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
         "name_ru": _primary_synonym(list(synonyms)),
         "synonyms": list(synonyms),
         "object_properties": obj.object_properties or {},
-        "subtypes": (obj.object_properties or {}).get("subtypes", []),
+        "subtypes": (obj.object_properties or {}).get(PROP_SUBTYPES, []),
         "feature_data": obj.object_properties or {},
     }
     texts_q = (
