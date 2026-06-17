@@ -865,8 +865,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
     geo_features = await _get_modality_features(db, "Геоданные")
 
     links = await _load_object_links(db, object_id)
-    res_obj_links = await _load_res_obj_links(db, object_id)
-    res_res_links = await _load_res_res_links(db, object_id)
+
     return templates.TemplateResponse("biological_edit.html", {
         "request": request,
         "active_page": "biological",
@@ -880,8 +879,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         "image_features": image_features,
         "geo_features": geo_features,
         "links": links,
-        "res_obj_links": res_obj_links,
-        "res_res_links": res_res_links,
+
     })
 
 
@@ -1893,8 +1891,7 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
     geo_features = await _get_modality_features(db, "Геоданные")
 
     links = await _load_object_links(db, object_id)
-    res_obj_links = await _load_res_obj_links(db, object_id)
-    res_res_links = await _load_res_res_links(db, object_id)
+
     return templates.TemplateResponse("geographical_edit.html", {
         "request": request,
         "active_page": "geographical",
@@ -1908,8 +1905,7 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         "image_features": image_features,
         "geo_features": geo_features,
         "links": links,
-        "res_obj_links": res_obj_links,
-        "res_res_links": res_res_links,
+
     })
 
 
@@ -2637,8 +2633,7 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
     image_features = await _get_modality_features(db, "Изображение")
     geo_features = await _get_modality_features(db, "Геоданные")
     links = await _load_object_links(db, object_id)
-    res_obj_links = await _load_res_obj_links(db, object_id)
-    res_res_links = await _load_res_res_links(db, object_id)
+
     return templates.TemplateResponse("service_edit.html", {
         "request": request,
         "active_page": "service",
@@ -2652,8 +2647,7 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
         "image_features": image_features,
         "geo_features": geo_features,
         "links": links,
-        "res_obj_links": res_obj_links,
-        "res_res_links": res_res_links,
+
     })
 
 
@@ -3161,55 +3155,6 @@ async def _load_object_links(db: AsyncSession, object_id: int) -> list:
         })
     return links
 
-
-async def _load_res_obj_links(db: AsyncSession, object_id: int) -> list:
-    """Ресурсы этого объекта, привязанные также и к другим объектам."""
-    rows = await db.execute(sql_text("""
-        SELECT DISTINCT ON (rot.resource_id, rot.object_id)
-            rot.resource_id,
-            r.title AS resource_title,
-            rot.object_id AS other_object_id,
-            rot.relation_type,
-            ons.synonym AS other_object_name,
-            ot.name AS other_object_type
-        FROM eco_assistant.resource_object rot
-        JOIN eco_assistant.resource r ON r.id = rot.resource_id
-        JOIN eco_assistant.object o ON o.id = rot.object_id
-        JOIN eco_assistant.object_name_synonym_link onsl ON onsl.object_id = o.id
-        JOIN eco_assistant.object_name_synonym ons ON ons.id = onsl.synonym_id
-        JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
-        WHERE rot.resource_id IN (
-            SELECT resource_id FROM eco_assistant.resource_object WHERE object_id = :oid
-        )
-        AND rot.object_id != :oid
-        ORDER BY rot.resource_id, rot.object_id, LENGTH(ons.synonym) DESC
-    """), {"oid": object_id})
-    return [dict(r) for r in rows.mappings().all()]
-
-
-async def _load_res_res_links(db: AsyncSession, object_id: int) -> list:
-    """Связи ресурс-ресурс, затрагивающие ресурсы данного объекта."""
-    rows = await db.execute(sql_text("""
-        WITH obj_res AS (
-            SELECT resource_id FROM eco_assistant.resource_object WHERE object_id = :oid
-        )
-        SELECT DISTINCT ON (rrl.resource_id, rrl.related_resource_id, rrl.relation_type)
-            rrl.resource_id,
-            r1.title AS resource_title,
-            rrl.related_resource_id,
-            r2.title AS related_resource_title,
-            rrl.relation_type,
-            rrl.created_at,
-            CASE WHEN rrl.resource_id IN (SELECT resource_id FROM obj_res)
-                 THEN 'outgoing' ELSE 'incoming' END AS direction
-        FROM eco_assistant.resource_resource_link rrl
-        JOIN eco_assistant.resource r1 ON r1.id = rrl.resource_id
-        JOIN eco_assistant.resource r2 ON r2.id = rrl.related_resource_id
-        WHERE rrl.resource_id IN (SELECT resource_id FROM obj_res)
-           OR rrl.related_resource_id IN (SELECT resource_id FROM obj_res)
-        ORDER BY rrl.resource_id, rrl.related_resource_id, rrl.relation_type, rrl.created_at DESC
-    """), {"oid": object_id})
-    return [dict(r) for r in rows.mappings().all()]
 
 
 @app.get("/object/search")
