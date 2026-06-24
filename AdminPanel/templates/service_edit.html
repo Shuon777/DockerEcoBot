@@ -4,32 +4,10 @@
 
 {% block content %}
 <style>
-    .feature-object, .feature-array {
-        list-style: none;
-        padding-left: 20px;
-        margin: 5px 0;
-        border-left: 1px dashed #cbd5e1;
-    }
-    .feature-object > li, .feature-array > li {
-        margin: 4px 0;
-    }
-    .feature-value {
-        color: #d97706;
-    }
-    #mapModalBody {
-        padding: 0;
-        overflow: hidden;
-        height: 600px;
-    }
-    #mapModalBody iframe,
-    #mapModalBody .folium-map,
-    #mapModalBody > div {
-        width: 100% !important;
-        height: 100% !important;
-        border: none;
-    }
-    .link-row { transition: background 0.1s; }
+    /* Семантический цвет значений для услуг (amber вместо зелёного из style.css) */
+    .feature-value { color: #d97706; }
     .link-row:hover { background: #fffbeb; }
+    [data-theme="dark"] .link-row:hover { background: var(--bg-hover) !important; }
 </style>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />

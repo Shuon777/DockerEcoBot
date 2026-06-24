@@ -4,32 +4,9 @@
 
 {% block content %}
 <style>
-    /* Стили для дерева признаков */
-    .feature-object, .feature-array {
-        list-style: none;
-        padding-left: 20px;
-        margin: 5px 0;
-        border-left: 1px dashed #cbd5e1;
-    }
-    .feature-object > li, .feature-array > li {
-        margin: 4px 0;
-    }
-    .feature-value {
-        color: #2563eb;
-    }
-    /* Чтобы карта занимала всю модалку */
-    #mapModalBody {
-        padding: 0;
-        overflow: hidden;
-        height: 600px;
-    }
-    #mapModalBody iframe,
-    #mapModalBody .folium-map,
-    #mapModalBody > div {
-        width: 100% !important;
-        height: 100% !important;
-        border: none;
-    }
+    /* Семантический цвет значений для достопримечательностей */
+    .feature-value { color: #2563eb; }
+    [data-theme="dark"] .feature-value { color: #60a5fa; }
 </style>
 
 <!-- Leaflet + Leaflet-Geoman для интерактивного рисования геометрий -->
