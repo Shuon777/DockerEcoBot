@@ -1159,7 +1159,9 @@ function openEditFeatures(resourceId, modality, title, currentFeatures) {
     if (catalog.length===0) { body.innerHTML='<p class="text-muted">Признаки для этой модальности не определены в каталоге.</p>'; }
     else {
         body.innerHTML=catalog.map(feat => {
-            const cur=(currentFeatures||{})[feat.name]||'';
+            const cf=currentFeatures||{};
+            const cap=feat.name.charAt(0).toUpperCase()+feat.name.slice(1).toLowerCase();
+            const cur=cf[feat.name]||cf[cap]||'';
             const label=`<label class="form-label fw-bold small text-secondary">${feat.name.toUpperCase()}</label>`;
             if (feat.values&&feat.values.length>0) {
                 const opts=feat.values.map(v=>`<option value="${v}"${cur===v?' selected':''}>${v}</option>`).join('');
