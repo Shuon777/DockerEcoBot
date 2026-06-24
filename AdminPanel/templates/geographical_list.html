@@ -25,14 +25,24 @@
 ] %}
 <div class="d-flex flex-wrap gap-2 mb-3">
     {% for key, fval, clr, bg, label, icon in stat_defs %}
-    {% set is_active = filter_resources == fval and fval != '' %}
-    <a class="stat-pill {% if is_active %}active{% endif %}"
-       href="?{% if fval %}filter_resources={{ fval }}{% endif %}{% if search %}&search={{ search }}{% endif %}{% for s in active_subtypes %}&filter_subtype={{ s }}{% endfor %}{% if sort_by and sort_by != 'default' %}&sort_by={{ sort_by }}{% endif %}"
-       style="background:{{ '#1e293b' if is_active else bg }}; color:{{ '#fff' if is_active else clr }}; border-color:{{ clr }}20;">
+    {% set is_active = fval != '' and fval in filter_resources %}
+    {% if fval == '' %}
+    <a class="stat-pill {% if not filter_resources %}active{% endif %}"
+       href="?{% if search %}search={{ search }}{% endif %}{% for s in active_subtypes %}&filter_subtype={{ s }}{% endfor %}{% if sort_by and sort_by != 'default' %}&sort_by={{ sort_by }}{% endif %}"
+       style="background:{{ '#1e293b' if not filter_resources else bg }}; color:{{ '#fff' if not filter_resources else clr }}; border-color:{{ clr }}20;">
         <i class="bi {{ icon }}"></i>
         {{ label }}
         <strong>{{ stats[key] }}</strong>
     </a>
+    {% else %}
+    <span class="stat-pill {% if is_active %}active{% endif %}"
+       onclick="toggleFilter('{{ fval }}')"
+       style="cursor:pointer; background:{{ '#1e293b' if is_active else bg }}; color:{{ '#fff' if is_active else clr }}; border-color:{{ clr }}20;">
+        <i class="bi {{ icon }}"></i>
+        {{ label }}
+        <strong>{{ stats[key] }}</strong>
+    </span>
+    {% endif %}
     {% endfor %}
     {% if filter_resources %}
     <a class="stat-pill"

@@ -421,7 +421,7 @@ async def _biological_list_impl(
     active_page: str,
     forced_bio_type: str | None,
     search: str | None,
-    filter_resources: str | None,
+    filter_resources: list[str],
     sort_by: str,
     page: int,
 ):
@@ -543,23 +543,25 @@ async def _biological_list_impl(
                 )
             )
 
-    if filter_resources == "none":
-        query = query.where(
-            Object.id.notin_(select(resource_object_table.c.object_id).distinct())
-        )
-    elif filter_resources in ("has_text", "has_image", "has_geo"):
-        key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
-        ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
-        query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
-    elif filter_resources == "has_links":
-        query = query.where(
-            select(ObjectObjectLink.object_id).where(
-                or_(
-                    ObjectObjectLink.object_id == Object.id,
-                    ObjectObjectLink.related_object_id == Object.id,
-                )
-            ).correlate(Object).exists()
-        )
+    _KEY_MAP = {"has_text": "text", "has_image": "image", "has_geo": "geo"}
+    for fr in filter_resources:
+        if fr == "none":
+            query = query.where(
+                Object.id.notin_(select(resource_object_table.c.object_id).distinct())
+            )
+        elif fr in _KEY_MAP:
+            key = _KEY_MAP[fr]
+            ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
+            query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+        elif fr == "has_links":
+            query = query.where(
+                select(ObjectObjectLink.object_id).where(
+                    or_(
+                        ObjectObjectLink.object_id == Object.id,
+                        ObjectObjectLink.related_object_id == Object.id,
+                    )
+                ).correlate(Object).exists()
+            )
 
     if search:
         matching_ids = (
@@ -624,7 +626,7 @@ async def _biological_list_impl(
         "entities": entities,
         "search": search or "",
         "filter_type": forced_bio_type or "all",
-        "filter_resources": filter_resources or "",
+        "filter_resources": filter_resources,
         "sort_by": sort_by,
         "stats": stats,
         "page": page,
@@ -638,7 +640,7 @@ async def biological_list(
     request: Request,
     search: str = None,
     filter_type: str = None,
-    filter_resources: str = None,
+    filter_resources: List[str] = Query(default=[]),
     sort_by: str = "default",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
@@ -652,7 +654,7 @@ async def biological_list(
 async def flora_list(
     request: Request,
     search: str = None,
-    filter_resources: str = None,
+    filter_resources: List[str] = Query(default=[]),
     sort_by: str = "default",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
@@ -666,7 +668,7 @@ async def flora_list(
 async def fauna_list(
     request: Request,
     search: str = None,
-    filter_resources: str = None,
+    filter_resources: List[str] = Query(default=[]),
     sort_by: str = "default",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
@@ -680,7 +682,7 @@ async def fauna_list(
 async def unclassified_list(
     request: Request,
     search: str = None,
-    filter_resources: str = None,
+    filter_resources: List[str] = Query(default=[]),
     sort_by: str = "default",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
@@ -1489,7 +1491,7 @@ async def geographical_list(
     request: Request,
     search: str = None,
     filter_subtype: List[str] = Query(default=[]),
-    filter_resources: str = None,
+    filter_resources: List[str] = Query(default=[]),
     sort_by: str = "default",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
@@ -1590,23 +1592,25 @@ async def geographical_list(
             )
         )
 
-    if filter_resources == "none":
-        query = query.where(
-            Object.id.notin_(select(resource_object_table.c.object_id).distinct())
-        )
-    elif filter_resources in ("has_text", "has_image", "has_geo"):
-        key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
-        ids_with =[oid for oid, c in resource_counts.items() if c[key] > 0]
-        query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
-    elif filter_resources == "has_links":
-        query = query.where(
-            select(ObjectObjectLink.object_id).where(
-                or_(
-                    ObjectObjectLink.object_id == Object.id,
-                    ObjectObjectLink.related_object_id == Object.id,
-                )
-            ).correlate(Object).exists()
-        )
+    _KEY_MAP_GEO = {"has_text": "text", "has_image": "image", "has_geo": "geo"}
+    for fr in filter_resources:
+        if fr == "none":
+            query = query.where(
+                Object.id.notin_(select(resource_object_table.c.object_id).distinct())
+            )
+        elif fr in _KEY_MAP_GEO:
+            key = _KEY_MAP_GEO[fr]
+            ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
+            query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+        elif fr == "has_links":
+            query = query.where(
+                select(ObjectObjectLink.object_id).where(
+                    or_(
+                        ObjectObjectLink.object_id == Object.id,
+                        ObjectObjectLink.related_object_id == Object.id,
+                    )
+                ).correlate(Object).exists()
+            )
 
     if search:
         matching_ids = (
@@ -1670,7 +1674,7 @@ async def geographical_list(
         "entities": entities,
         "search": search or "",
         "active_subtypes": active_subtypes,
-        "filter_resources": filter_resources or "",
+        "filter_resources": filter_resources,
         "sort_by": sort_by,
         "subtypes_stats": subtypes_stats,
         "stats": stats,
@@ -2300,7 +2304,7 @@ async def service_list(
     request: Request,
     search: str = None,
     filter_subtype: List[str] = Query(default=[]),
-    filter_resources: str = None,
+    filter_resources: List[str] = Query(default=[]),
     sort_by: str = "default",
     page: int = 1,
     db: AsyncSession = Depends(get_db),
@@ -2396,21 +2400,23 @@ async def service_list(
             )
         )
 
-    if filter_resources == "none":
-        query = query.where(Object.id.notin_(select(resource_object_table.c.object_id).distinct()))
-    elif filter_resources in ("has_text", "has_image", "has_geo"):
-        key = {"has_text": "text", "has_image": "image", "has_geo": "geo"}[filter_resources]
-        ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
-        query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
-    elif filter_resources == "has_links":
-        query = query.where(
-            select(ObjectObjectLink.object_id).where(
-                or_(
-                    ObjectObjectLink.object_id == Object.id,
-                    ObjectObjectLink.related_object_id == Object.id,
-                )
-            ).correlate(Object).exists()
-        )
+    _KEY_MAP_SVC = {"has_text": "text", "has_image": "image", "has_geo": "geo"}
+    for fr in filter_resources:
+        if fr == "none":
+            query = query.where(Object.id.notin_(select(resource_object_table.c.object_id).distinct()))
+        elif fr in _KEY_MAP_SVC:
+            key = _KEY_MAP_SVC[fr]
+            ids_with = [oid for oid, c in resource_counts.items() if c[key] > 0]
+            query = query.where(Object.id.in_(ids_with) if ids_with else sql_text("false"))
+        elif fr == "has_links":
+            query = query.where(
+                select(ObjectObjectLink.object_id).where(
+                    or_(
+                        ObjectObjectLink.object_id == Object.id,
+                        ObjectObjectLink.related_object_id == Object.id,
+                    )
+                ).correlate(Object).exists()
+            )
 
     if search:
         matching_ids = (
@@ -2469,7 +2475,7 @@ async def service_list(
         "entities": entities,
         "search": search or "",
         "active_subtypes": active_subtypes,
-        "filter_resources": filter_resources or "",
+        "filter_resources": filter_resources,
         "sort_by": sort_by,
         "subtypes_stats": subtypes_stats,
         "stats": stats,

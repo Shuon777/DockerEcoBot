@@ -48,14 +48,14 @@
         ('none',      'no_resources', '#dc2626', '#fef2f2', 'Без ресурсов', 'bi-exclamation-circle'),
     ] %}
     {% for fval, stat_key, clr, bg, label, icon in res_defs %}
-    {% set is_active = filter_resources == fval %}
-    <a class="stat-pill {% if is_active %}active{% endif %}"
-       href="?filter_resources={{ fval }}{% if search %}&search={{ search }}{% endif %}{% if filter_type and filter_type != 'all' %}&filter_type={{ filter_type }}{% endif %}{% if sort_by and sort_by != 'default' %}&sort_by={{ sort_by }}{% endif %}"
-       style="background:{{ '#1e293b' if is_active else bg }}; color:{{ '#fff' if is_active else clr }}; border-color:{{ clr }}20;">
+    {% set is_active = fval in filter_resources %}
+    <span class="stat-pill {% if is_active %}active{% endif %}"
+       onclick="toggleFilter('{{ fval }}')"
+       style="cursor:pointer; background:{{ '#1e293b' if is_active else bg }}; color:{{ '#fff' if is_active else clr }}; border-color:{{ clr }}20;">
         <i class="bi {{ icon }}"></i>
         {{ label }}
         <strong>{{ stats[stat_key] }}</strong>
-    </a>
+    </span>
     {% endfor %}
 
     {% if filter_resources or (filter_type and filter_type != 'all') %}
