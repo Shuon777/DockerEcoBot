@@ -361,3 +361,15 @@ h1 { font-size: 2rem; font-weight: 800; letter-spacing: -0.5px; }
     background: var(--bg-card) !important;
     border-top-color: var(--border-color) !important;
 }
+
+/* Bootstrap text utility overrides */
+[data-theme="dark"] .text-dark { color: var(--text-primary) !important; }
+[data-theme="dark"] .text-black { color: var(--text-primary) !important; }
+
+/* Subtype remove links (hardcoded colors in list templates) */
+[data-theme="dark"] a[style*="color:#3730a3"] { color: #818cf8 !important; }
+[data-theme="dark"] a[style*="color:#92400e"] { color: #fbbf24 !important; }
+
+/* Chat performance bar: dark fill blocks */
+[data-theme="dark"] span[style*="color:#1f2937"] { color: #334155 !important; }
+[data-theme="dark"] span[style*="color:#374151"] { color: #475569 !important; }
