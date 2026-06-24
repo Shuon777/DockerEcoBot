@@ -1,0 +1,119 @@
+{
+  "tabs": [
+    {
+      "id": "llm",
+      "title": "LLM / AI",
+      "badge": "core-api · max",
+      "fields": [
+        {
+          "key": "LLM_PROVIDER",
+          "label": "Провайдер",
+          "desc": "Идентификатор провайдера: qwen (Ollama/OpenAI-compatible)",
+          "type": "text",
+          "reload": "instant"
+        },
+        {
+          "key": "LLM_BASE_URL",
+          "label": "Базовый URL",
+          "desc": "API endpoint языковой модели (напр. http://host.docker.internal:11434/v1)",
+          "type": "text",
+          "reload": "instant"
+        },
+        {
+          "key": "LLM_MODEL",
+          "label": "Модель",
+          "desc": "Идентификатор модели (напр. qwen2.5:14b, qwen2.5:7b)",
+          "type": "text",
+          "reload": "instant"
+        },
+        {
+          "key": "LLM_API_KEY",
+          "label": "API ключ",
+          "desc": "Ключ доступа — для Ollama используйте ollama",
+          "type": "password",
+          "reload": "instant"
+        },
+        {
+          "key": "GIGACHAT_CREDENTIALS",
+          "label": "GigaChat Credentials",
+          "desc": "Base64-encoded ключ авторизации Sber (используется при LLM_PROVIDER=gigachat)",
+          "type": "password",
+          "reload": "instant"
+        },
+        {
+          "key": "GIGACHAT_MODEL",
+          "label": "GigaChat модель",
+          "desc": "Идентификатор модели GigaChat (напр. GigaChat-2-Max)",
+          "type": "text",
+          "reload": "instant"
+        }
+      ]
+    },
+    {
+      "id": "bot",
+      "title": "Бот",
+      "badge": "core-api · max",
+      "restart_cmd": "docker compose restart core-api max",
+      "fields": [
+        {
+          "key": "promo_enabled",
+          "label": "Промо-реплики",
+          "desc": "Добавлять рекламные вставки к ответам бота",
+          "type": "toggle",
+          "source": "redis",
+          "redis_key": "settings:promo_enabled",
+          "reload": "instant"
+        },
+        {
+          "key": "MAX_BOT_TOKEN",
+          "label": "Токен MAX бота",
+          "desc": "Токен бота платформы MAX — получается в личном кабинете MAX",
+          "type": "password",
+          "reload": "restart"
+        },
+        {
+          "key": "STAND_ENDPOINT",
+          "label": "STAND API Endpoint",
+          "desc": "URL внешнего сервиса достопримечательностей",
+          "type": "text",
+          "reload": "restart"
+        },
+        {
+          "key": "STAND_SECRET_KEY",
+          "label": "STAND Secret Key",
+          "desc": "Ключ аутентификации STAND API",
+          "type": "password",
+          "reload": "restart"
+        }
+      ]
+    },
+    {
+      "id": "network",
+      "title": "Сеть",
+      "badge": "backend · admin",
+      "restart_cmd": "docker compose restart backend admin",
+      "fields": [
+        {
+          "key": "PUBLIC_BASE_URL",
+          "label": "Публичный URL",
+          "desc": "Домен приложения — используется в ссылках на карты и изображения для пользователей",
+          "type": "text",
+          "reload": "restart"
+        },
+        {
+          "key": "BASE_URL_MAPS",
+          "label": "URL карт",
+          "desc": "Базовый URL для раздачи картографических файлов (напр. http://домен/maps/)",
+          "type": "text",
+          "reload": "restart"
+        }
+      ]
+    },
+    {
+      "id": "prompts",
+      "title": "Промпты",
+      "badge": "мгновенно",
+      "fields": []
+    }
+  ]
+}

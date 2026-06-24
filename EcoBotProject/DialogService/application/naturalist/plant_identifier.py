@@ -1,5 +1,8 @@
 import logging
 import aiohttp
+from utils.bot_messages import (
+    PLANT_RESULT_GENUS, PLANT_RESULT_SPECIES, PLANT_RESULT_BEST_MATCH, PLANT_RESULT_PARSE_ERROR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +35,7 @@ def format_plant_info(data: dict) -> str:
                 species_info = results[0].get("species", {})
                 genus = species_info.get("genus", {}).get("scientificNameWithoutAuthor", "Неизвестно")
                 family = species_info.get("family", {}).get("scientificNameWithoutAuthor", "Неизвестно")
-                return f"Перед вами растение рода {genus} семейства {family}."
+                return PLANT_RESULT_GENUS.format(genus=genus, family=family)
         else:
             results = data.get("results", [])
             for result in results:
@@ -40,8 +43,8 @@ def format_plant_info(data: dict) -> str:
                     species_info = result["species"]
                     genus = species_info.get("genus", {}).get("scientificNameWithoutAuthor", "Неизвестно")
                     family = species_info.get("family", {}).get("scientificNameWithoutAuthor", "Неизвестно")
-                    return f"Перед вами растение {best_match} (род {genus}, семейство {family})."
-            return f"Перед вами растение {best_match}."
+                    return PLANT_RESULT_SPECIES.format(best_match=best_match, genus=genus, family=family)
+            return PLANT_RESULT_BEST_MATCH.format(best_match=best_match)
     except (KeyError, IndexError, TypeError) as e:
         logger.error(f"Error parsing PlantNet response: {e}")
-        return "Не удалось определить растение. Попробуйте другое фото."
+        return PLANT_RESULT_PARSE_ERROR

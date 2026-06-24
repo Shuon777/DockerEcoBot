@@ -16,14 +16,14 @@ class LLMFactory(ILLMProvider):
         if provider == "qwen":
             return ChatOpenAI(
                 base_url=os.getenv("LLM_BASE_URL", "http://host.docker.internal:11434/v1"),
-                api_key="ollama",
-                model="qwen2.5:14b",
+                api_key=os.getenv("LLM_API_KEY", "ollama"),
+                model=os.getenv("LLM_MODEL", "qwen2.5:14b"),
                 temperature=0.1,
             )
         if provider == "gigachat":
             return GigaChat(
                 credentials=os.getenv("GIGACHAT_CREDENTIALS"),
-                model="GigaChat-2-Max",
+                model=os.getenv("GIGACHAT_MODEL", "GigaChat-2-Max"),
                 verify_ssl_certs=False,
             )
         raise ValueError(f"Unknown provider: {provider}")

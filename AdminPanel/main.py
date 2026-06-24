@@ -328,6 +328,16 @@ async def callback_proxy(request: Request, data: dict = Body(...)):
             return {"error": f"Ошибка Core API: {str(e)}"}
 
 
+_CONFIG_SCHEMA_PATH = Path(__file__).parent / "config_schema.json"
+
+def _load_config_schema() -> dict:
+    try:
+        return json.loads(_CONFIG_SCHEMA_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[Settings] Ошибка загрузки схемы конфига: {e}")
+        return {"tabs": []}
+
+
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):
     if not request.session.get("user_id"):
@@ -345,7 +355,8 @@ async def settings_page(request: Request):
             print(f"Ошибка загрузки промптов: {e}")
 
     shared = dict(dotenv_values(SHARED_ENV_PATH)) if SHARED_ENV_PATH.exists() else {}
-    admin_config = dict(dotenv_values(ADMIN_ENV_PATH)) if ADMIN_ENV_PATH.exists() else {}
+    promo_val = await settings_redis.get("settings:promo_enabled")
+    promo_enabled = promo_val != "0"
 
     return templates.TemplateResponse("settings.html", {
         "request": request,
@@ -353,7 +364,8 @@ async def settings_page(request: Request):
         "bot_online": bot_online,
         "prompts": prompts,
         "shared": shared,
-        "admin_config": admin_config,
+        "promo_enabled": promo_enabled,
+        "schema": _load_config_schema(),
     })
 
 
@@ -369,14 +381,23 @@ async def save_prompts(request: Request, data: dict = Body(...)):
 
 @app.post("/settings/shared")
 async def save_shared(request: Request, data: dict = Body(...)):
-    """Сохраняем общие настройки в shared.env"""
+    """Сохраняем общие настройки в shared.env и сигнализируем core-api о перезагрузке конфига"""
     if not request.session.get("user_id"):
         raise HTTPException(status_code=401)
     if not SHARED_ENV_PATH.exists():
         SHARED_ENV_PATH.touch()
     for key, value in data.items():
         set_key(str(SHARED_ENV_PATH), key, str(value))
-    return {"status": "success", "message": "Настройки сохранены. Перезапустите затронутые сервисы для применения."}
+    reload_ok = False
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.post(f"{CORE_API_BASE}/reload")
+            reload_ok = resp.status_code == 200
+    except Exception as e:
+        print(f"[Settings] Hot-reload signal failed: {e}")
+    if reload_ok:
+        return {"status": "success", "message": "Настройки сохранены и применены (LLM параметры — мгновенно, остальные — после перезапуска)"}
+    return {"status": "success", "message": "Настройки сохранены. LLM параметры применятся после перезапуска core-api (сигнал не прошёл)."}
 
 
 @app.post("/settings/admin")

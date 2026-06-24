@@ -1,5 +1,7 @@
+import os
 import logging
 import aiohttp
+import redis.asyncio as aioredis
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
@@ -18,9 +20,16 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     app.state.session = aiohttp.ClientSession()
     app.state.valid_features = await load_valid_features()
+    app.state.redis = aioredis.Redis(
+        host=os.getenv("REDIS_HOST", "redis"),
+        port=int(os.getenv("REDIS_PORT", "6379")),
+        db=0,
+        decode_responses=True,
+    )
     logger.info("Core API: сессия открыта.")
     yield
     await app.state.session.close()
+    await app.state.redis.aclose()
     logger.info("Core API: сессия закрыта.")
 
 

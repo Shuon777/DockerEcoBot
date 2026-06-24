@@ -5,6 +5,7 @@ from maxapi.types import MessageCreated
 from infrastructure.max_bot.context import ctx
 from adapters.max.presenter import render_pipeline_result
 from utils.error_logger import log_critical
+from utils.bot_messages import ERR_REQUEST
 
 logger = logging.getLogger("MaxMessageHandler")
 
@@ -42,7 +43,7 @@ def register_message_handlers(dp: Dispatcher, bot: Bot) -> None:
             try:
                 await bot.send_message(
                     chat_id=chat_id,
-                    text="Произошла ошибка при обработке запроса. Попробуйте ещё раз.",
+                    text=ERR_REQUEST,
                 )
             except Exception:
                 pass

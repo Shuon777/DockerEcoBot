@@ -6,6 +6,7 @@ from infrastructure.max_bot.context import ctx
 from adapters.max.presenter import render_pipeline_result
 from utils.stand_manager import end_stand_session
 from utils.error_logger import log_critical
+from utils.bot_messages import STAND_DISCONNECTED, ERR_SEARCH_OUTDATED, ERR_GENERIC
 
 logger = logging.getLogger("MaxCallbackHandler")
 
@@ -35,7 +36,7 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
         # ── Стенд ────────────────────────────────────────────────────────────
         if payload == "stand_detach":
             await end_stand_session(user_id, ctx.session, ctx.redis_client)
-            await bot.send_message(chat_id=chat_id, text="Вы отключились от стенда.")
+            await bot.send_message(chat_id=chat_id, text=STAND_DISCONNECTED)
             return
 
         # ── Упрощение поиска (Сценарий 4) ────────────────────────────────────
@@ -47,7 +48,7 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
                 return
             item = await ctx.orchestrator.load_simplification(user_id, idx)
             if not item:
-                await bot.send_message(chat_id=chat_id, text="Вариант поиска устарел. Повторите запрос.")
+                await bot.send_message(chat_id=chat_id, text=ERR_SEARCH_OUTDATED)
                 return
             try:
                 await bot.send_action(chat_id=chat_id, action="typing_on")
@@ -61,7 +62,7 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
             except Exception as e:
                 logger.error(f"Simplify callback error [{chat_id}]: {e}", exc_info=True)
                 await log_critical(ctx.session, payload, user_id, e)
-                await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте ещё раз.")
+                await bot.send_message(chat_id=chat_id, text=ERR_GENERIC)
             return
 
         # ── Стандартные проактивные кнопки ────────────────────────────────────

@@ -1,3 +1,4 @@
+import os
 import logging
 import re
 from pathlib import Path
@@ -373,9 +374,16 @@ def _determine_template(slots: dict) -> Optional[str]:
 
 class SlotClassifier:
     def __init__(self, provider: str = "qwen", valid_features: Optional[Dict[str, Set[str]]] = None):
+        self._provider = provider
+        self._valid_features = valid_features
         llm = LLMFactory.get_model(provider)
         self.parser = llm.with_structured_output(SlotResult, method="json_mode")
-        self._valid_features = valid_features
+
+    def reload(self) -> None:
+        provider = os.getenv("LLM_PROVIDER", self._provider)
+        llm = LLMFactory.get_model(provider)
+        self.parser = llm.with_structured_output(SlotResult, method="json_mode")
+        self._provider = provider
 
     async def classify(self, query: str, prev_query: str | None = None, prev_promo: list | None = None) -> dict:
         context_parts = []

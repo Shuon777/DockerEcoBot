@@ -3,6 +3,7 @@ import asyncio
 import logging
 import aiohttp
 import redis.asyncio as redis
+from dotenv import load_dotenv
 
 from utils.logging_config import setup_logging
 from infrastructure.max_bot.setup import bot, dp
@@ -18,6 +19,18 @@ from adapters.max.handlers.attachments import register_attachment_handlers
 
 setup_logging()
 logger = logging.getLogger("MaxBotApp")
+
+_SHARED_ENV_PATH = "/app/shared.env"
+
+
+async def _config_reload_listener() -> None:
+    pubsub = ctx.redis_client.pubsub()
+    await pubsub.subscribe("config:reload")
+    async for msg in pubsub.listen():
+        if msg["type"] == "message":
+            load_dotenv(_SHARED_ENV_PATH, override=True)
+            ctx.classifier.reload()
+            logger.info("Конфиг LLM перезагружен через Redis сигнал")
 
 
 async def main() -> None:
@@ -38,6 +51,8 @@ async def main() -> None:
         history=ctx.history,
         redis_client=ctx.redis_client,
     )
+
+    asyncio.create_task(_config_reload_listener())
 
     register_command_handlers(dp, bot)
     register_message_handlers(dp, bot)
