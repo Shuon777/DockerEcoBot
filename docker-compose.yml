@@ -60,6 +60,8 @@ services:
       - ./EcoBotProject/DialogService/.env
       - ./shared.env
     command: python api.py
+    volumes:
+      - ./shared.env:/app/shared.env:ro
     environment:
       - PYTHONUNBUFFERED=1
       - REDIS_HOST=redis
@@ -84,6 +86,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./shared.env:/app/shared.env:ro
     command: python main_max.py
     expose:
       - "8080"
@@ -129,7 +132,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx/nginx.https.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /dev/null:/etc/nginx/conf.d/default.conf
       - ./maps:/var/www/maps
       - ./salut_bot/images:/var/www/images
