@@ -798,8 +798,11 @@
                         </span>
                         {% endfor %}
                     </div>
+                    <datalist id="subtypes-datalist">
+                        {% for v in prop['values'] %}<option value="{{ v }}">{% endfor %}
+                    </datalist>
                     <div class="input-group">
-                        <input type="text" class="form-control" id="subtypesInput" placeholder="Добавить подтип...">
+                        <input type="text" class="form-control" id="subtypesInput" placeholder="Добавить подтип..." list="subtypes-datalist" oninput="onSubtypeInput(this)" onkeydown="if(event.key==='Enter'){addSubtypeChip();event.preventDefault()}">
                         <button class="btn btn-outline-secondary" type="button" onclick="addSubtypeChip()">Добавить</button>
                     </div>
                     {% elif prop['values'] | length > 0 %}
@@ -1195,10 +1198,10 @@ async function saveProperties(objectId) {
     {
         const chips=document.querySelectorAll('#subtypes-chips .badge');
         const list=Array.from(chips).map(c=>c.childNodes[0].textContent.trim()).filter(Boolean);
-        if (list.length>0) props['Подтип объекта']=list;
+        props['Подтип объекта']=list;
     }
     {% else %}
-    { const el=document.getElementById('prop_{{ prop.name }}'); if (el&&el.value) props['{{ prop.json_key }}']=el.value; }
+    { const el=document.getElementById('prop_{{ prop.name }}'); if (el) props['{{ prop.json_key }}']=el.value; }
     {% endif %}
     {% endfor %}
     try {
@@ -1213,6 +1216,8 @@ function addSubtypeChip() {
     const input=document.getElementById('subtypesInput');
     const val=input.value.trim(); if (!val) return;
     const container=document.getElementById('subtypes-chips');
+    const existing=Array.from(container.querySelectorAll('.badge')).map(c=>c.childNodes[0].textContent.trim());
+    if (existing.includes(val)) { input.value=''; return; }
     const span=document.createElement('span');
     span.className='badge bg-light text-dark border d-flex align-items-center gap-1';
     span.style.fontSize='0.85rem';
@@ -1221,6 +1226,13 @@ function addSubtypeChip() {
     btn.type='button'; btn.className='btn-close'; btn.style.fontSize='0.6rem';
     btn.onclick=function(){removeSubtypeChip(this);};
     span.appendChild(btn); container.appendChild(span); input.value='';
+}
+
+function onSubtypeInput(el) {
+    const datalist=document.getElementById('subtypes-datalist');
+    if (!datalist) return;
+    const options=Array.from(datalist.options).map(o=>o.value);
+    if (options.includes(el.value.trim())) addSubtypeChip();
 }
 
 function removeSubtypeChip(btn) { btn.closest('.badge').remove(); }
