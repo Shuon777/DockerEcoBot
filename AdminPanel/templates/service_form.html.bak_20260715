@@ -18,22 +18,16 @@
             <div class="row mb-4">
                 <div class="col-md-12">
                     <label class="form-label fw-bold text-secondary small">ПОДТИПЫ</label>
-                    <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2"></div>
+                    <input type="text" class="form-control form-control-lg" name="subtypes"
+                           list="subtypesList"
+                           placeholder="Через запятую, напр: Экскурсии, Туризм">
                     <datalist id="subtypesList">
                         {% for s in subtypes_options %}
                         <option value="{{ s }}"></option>
                         {% endfor %}
                     </datalist>
-                    <div class="input-group">
-                        <input type="text" class="form-control form-control-lg" id="subtypesInput"
-                               list="subtypesList"
-                               placeholder="Начните вводить для поиска..."
-                               onkeydown="if(event.key==='Enter'){addSubtypeChip();event.preventDefault()}">
-                        <button class="btn btn-outline-secondary" type="button" onclick="addSubtypeChip()">Добавить</button>
-                    </div>
-                    <input type="hidden" name="subtypes" id="subtypesHidden">
                     <div class="form-text text-muted mt-1">
-                        <i class="bi bi-info-circle"></i> Выберите один или несколько подтипов из справочника.
+                        <i class="bi bi-info-circle"></i> Можно выбирать из списка существующих значений или вводить новые. Несколько подтипов разделяйте запятыми.
                     </div>
                 </div>
             </div>
@@ -141,42 +135,4 @@
         </form>
     </div>
 </div>
-
-<script>
-function addSubtypeChip() {
-    const input = document.getElementById('subtypesInput');
-    const val = input.value.trim();
-    if (!val) return;
-    const datalist = document.getElementById('subtypesList');
-    const allowed = datalist ? Array.from(datalist.options).map(o => o.value) : [];
-    if (!allowed.includes(val)) { alert('Такого подтипа нет в справочнике — выберите значение из списка подсказок'); return; }
-    const container = document.getElementById('subtypes-chips');
-    const existing = Array.from(container.querySelectorAll('.badge')).map(c => c.childNodes[0].textContent.trim());
-    if (existing.includes(val)) { input.value = ''; return; }
-    const span = document.createElement('span');
-    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1';
-    span.style.fontSize = '0.85rem';
-    span.appendChild(document.createTextNode(val + ' '));
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'btn-close';
-    closeBtn.style.fontSize = '0.6rem';
-    closeBtn.onclick = function() { removeSubtypeChip(this); };
-    span.appendChild(closeBtn);
-    container.appendChild(span);
-    input.value = '';
-    syncSubtypesHidden();
-}
-
-function removeSubtypeChip(btn) {
-    btn.closest('.badge').remove();
-    syncSubtypesHidden();
-}
-
-function syncSubtypesHidden() {
-    const chips = document.querySelectorAll('#subtypes-chips .badge');
-    const list = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
-    document.getElementById('subtypesHidden').value = list.join(',');
-}
-</script>
 {% endblock %}

@@ -844,11 +844,11 @@
                         </span>
                         {% endfor %}
                     </div>
-                    <datalist id="subtypes-datalist">
-                        {% for v in prop['values'] %}<option value="{{ v }}">{% endfor %}
-                    </datalist>
                     <div class="input-group">
-                        <input type="text" class="form-control" id="subtypesInput" placeholder="Начните вводить для поиска..." list="subtypes-datalist" oninput="onSubtypeInput(this)" onkeydown="if(event.key==='Enter'){addSubtypeChip();event.preventDefault()}">
+                        <select class="form-select" id="subtypesInput">
+                            <option value="">Выберите подтип...</option>
+                            {% for v in prop['values'] %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+                        </select>
                         <button class="btn btn-outline-secondary" type="button" onclick="addSubtypeChip()">Добавить</button>
                     </div>
                     {% elif prop['values'] | length > 0 %}
@@ -1408,9 +1408,6 @@ function addSubtypeChip() {
     const input = document.getElementById('subtypesInput');
     const val = input.value.trim();
     if (!val) return;
-    const datalist = document.getElementById('subtypes-datalist');
-    const allowed = datalist ? Array.from(datalist.options).map(o => o.value) : [];
-    if (!allowed.includes(val)) { alert('Такого подтипа нет в справочнике — выберите значение из списка подсказок'); return; }
     const container = document.getElementById('subtypes-chips');
     const existing = Array.from(container.querySelectorAll('.badge')).map(c => c.childNodes[0].textContent.trim());
     if (existing.includes(val)) { input.value = ''; return; }
