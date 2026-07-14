@@ -57,12 +57,10 @@ PROP_SUBTYPES = "Подтип объекта"
 PROP_REGION = "Географическая зона"
 PROP_EXACT_LOCATION = "Детальное расположение"
 PROP_BAIKAL_RELATION = "Расположение относительно Байкала"
-PROP_BIO_TYPE = "Тип ОФФ"
 CATALOG_SUBTYPES = PROP_SUBTYPES.lower()
 CATALOG_REGION = PROP_REGION.lower()
 CATALOG_EXACT_LOCATION = PROP_EXACT_LOCATION.lower()
 CATALOG_BAIKAL_RELATION = PROP_BAIKAL_RELATION.lower()
-CATALOG_BIO_TYPE = PROP_BIO_TYPE.lower()
 
 app = FastAPI()
 load_dotenv()
@@ -881,8 +879,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
             "id": p.id,
             "name": p.property_name,
             "values": list(p.property_values or []),
-            "json_key": PROP_BIO_TYPE if p.property_name.strip().lower() == CATALOG_BIO_TYPE
-                        else _resolve_json_key(entity["object_properties"], p.property_name),
+            "json_key": _resolve_json_key(entity["object_properties"], p.property_name),
         }
         for p in avail_props_rows
     ]
