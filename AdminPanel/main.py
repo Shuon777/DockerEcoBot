@@ -616,7 +616,6 @@ async def _biological_list_impl(
         })
 
     template_map = {
-        "biological":   "biological_list.html",
         "flora":        "flora_list.html",
         "fauna":        "fauna_list.html",
         "unclassified": "unclassified_list.html",
@@ -635,21 +634,6 @@ async def _biological_list_impl(
         "total_pages": total_pages,
         "total_items": total_items,
     })
-
-
-@app.get("/biological", response_class=HTMLResponse)
-async def biological_list(
-    request: Request,
-    search: str = None,
-    filter_type: str = None,
-    filter_resources: List[str] = Query(default=[]),
-    sort_by: str = "default",
-    page: int = 1,
-    db: AsyncSession = Depends(get_db),
-):
-    if not request.session.get("user_id"):
-        return RedirectResponse(url="/login")
-    return await _biological_list_impl(request, db, "biological", filter_type, search, filter_resources, sort_by, page)
 
 
 @app.get("/flora", response_class=HTMLResponse)
@@ -820,12 +804,13 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
     texts = []
     for row in (await db.execute(texts_q)).all():
         sd = row.structured_data or {}
-        content = sd.get("description") if isinstance(sd, dict) else None
+        disp = _text_value_display(sd)
         texts.append({
             "id": row.resource_id,
             "title": row.title or "Без заголовка",
-            "content": content,
-            "structured_data": sd if isinstance(sd, dict) and not (len(sd) == 1 and "description" in sd) else None,
+            "content": disp["content"],
+            "content_key": disp["content_key"],
+            "structured_data": disp["structured_data"],
             "feature_data": row.features or {},
         })
 
@@ -1053,7 +1038,9 @@ async def edit_biological_text_resource(
     resource_id: int,
     entity_id: int = Form(...),
     title: str = Form(...),
-    content: str = Form(...),
+    content: str = Form(None),
+    content_key: str = Form(None),
+    structured_json: str = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     if not request.session.get("user_id"):
@@ -1066,7 +1053,7 @@ async def edit_biological_text_resource(
     if rv:
         tv = (await db.execute(select(TextValue).where(TextValue.id == rv.value_id))).scalar()
         if tv:
-            tv.structured_data = {"description": content}
+            _apply_text_value_edit(tv, content, content_key, structured_json)
     await db.commit()
     return RedirectResponse(url=f"/biological/{entity_id}", status_code=303)
 
@@ -1386,6 +1373,43 @@ async def _create_resource_scaffold(db: AsyncSession, *, title: str, author_name
     db.add(res)
     await db.flush()
     return res
+
+
+def _text_value_display(sd: dict) -> dict:
+    """
+    Классифицирует содержимое TextValue.structured_data для отображения.
+    "Обычный текст" - словарь ровно с одним ключом, значение которого - строка
+    (имя ключа не важно: "description", "content" и т.п.). Всё остальное
+    (несколько ключей и/или вложенные объекты) - "структурированные данные".
+    """
+    if isinstance(sd, dict) and len(sd) == 1:
+        only_key = next(iter(sd))
+        only_val = sd[only_key]
+        if isinstance(only_val, str):
+            return {"content": only_val, "content_key": only_key, "structured_data": None}
+    return {"content": None, "content_key": None, "structured_data": sd if isinstance(sd, dict) else None}
+
+
+def _apply_text_value_edit(tv: "TextValue", content: str | None, content_key: str | None,
+                            structured_json: str | None) -> None:
+    """
+    Применяет правки из формы редактирования текстового ресурса к TextValue.
+    Если пришёл structured_json - сохраняет разобранный JSON как есть (используется
+    для ресурсов со структурированными данными, чтобы не терять их форму).
+    Иначе сохраняет обычный текст под исходным ключом (content_key), чтобы не
+    переименовывать существующий ключ ("description", "content" и т.д.).
+    """
+    if structured_json is not None and structured_json.strip():
+        try:
+            parsed = json.loads(structured_json)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Некорректный JSON структурированных данных")
+        if not isinstance(parsed, dict) or not parsed:
+            raise HTTPException(status_code=400, detail="Структурированные данные должны быть непустым объектом")
+        tv.structured_data = parsed
+    else:
+        key = (content_key or "").strip() or "description"
+        tv.structured_data = {key: content or ""}
 
 
 async def _attach_text_to_object(db: AsyncSession, object_id: int, resource: Resource,
@@ -1832,12 +1856,13 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
     texts = []
     for row in (await db.execute(texts_q)).all():
         sd = row.structured_data or {}
-        content = sd.get("description") if isinstance(sd, dict) else None
+        disp = _text_value_display(sd)
         texts.append({
             "id": row.resource_id,
             "title": row.title or "Без заголовка",
-            "content": content,
-            "structured_data": sd if isinstance(sd, dict) and not (len(sd) == 1 and "description" in sd) else None,
+            "content": disp["content"],
+            "content_key": disp["content_key"],
+            "structured_data": disp["structured_data"],
             "feature_data": row.features or {},
         })
 
@@ -2220,7 +2245,9 @@ async def edit_geographical_text_resource(
     resource_id: int,
     entity_id: int = Form(...),
     title: str = Form(...),
-    content: str = Form(...),
+    content: str = Form(None),
+    content_key: str = Form(None),
+    structured_json: str = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Обновить заголовок и содержимое текстового ресурса."""
@@ -2234,7 +2261,7 @@ async def edit_geographical_text_resource(
     if rv:
         tv = (await db.execute(select(TextValue).where(TextValue.id == rv.value_id))).scalar()
         if tv:
-            tv.structured_data = {"description": content}
+            _apply_text_value_edit(tv, content, content_key, structured_json)
     await db.commit()
     return RedirectResponse(url=f"/geographical/{entity_id}", status_code=303)
 
@@ -2599,12 +2626,13 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
     texts = []
     for row in (await db.execute(texts_q)).all():
         sd = row.structured_data or {}
-        content = sd.get("description") if isinstance(sd, dict) else None
+        disp = _text_value_display(sd)
         texts.append({
             "id": row.resource_id,
             "title": row.title or "Без заголовка",
-            "content": content,
-            "structured_data": sd if isinstance(sd, dict) and not (len(sd) == 1 and "description" in sd) else None,
+            "content": disp["content"],
+            "content_key": disp["content_key"],
+            "structured_data": disp["structured_data"],
             "feature_data": row.features or {},
         })
     images_q = (
@@ -3011,7 +3039,8 @@ async def delete_service_geo_resource(
 @app.post("/service/resource/edit/text/{resource_id}")
 async def edit_service_text_resource(
     request: Request, resource_id: int,
-    entity_id: int = Form(...), title: str = Form(...), content: str = Form(...),
+    entity_id: int = Form(...), title: str = Form(...), content: str = Form(None),
+    content_key: str = Form(None), structured_json: str = Form(None),
     db: AsyncSession = Depends(get_db),
 ):
     if not request.session.get("user_id"):
@@ -3024,7 +3053,7 @@ async def edit_service_text_resource(
     if rv:
         tv = (await db.execute(select(TextValue).where(TextValue.id == rv.value_id))).scalar()
         if tv:
-            tv.structured_data = {"description": content}
+            _apply_text_value_edit(tv, content, content_key, structured_json)
     await db.commit()
     return RedirectResponse(url=f"/service/{entity_id}", status_code=303)
 

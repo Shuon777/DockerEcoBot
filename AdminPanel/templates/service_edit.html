@@ -195,6 +195,8 @@
                                             data-resource-id="{{ t.id }}"
                                             data-title="{{ t.title | default('', true) | replace('"', '&quot;') }}"
                                             data-content="{{ t.content | default('', true) | replace('"', '&quot;') }}"
+                                            data-content-key="{{ t.content_key or 'description' }}"
+                                            data-structured='{{ (t.structured_data | tojson | safe) if t.structured_data else "" }}'
                                             onclick="openEditText(this)"><i class="bi bi-pencil"></i></button>
                                     <button class="btn btn-sm btn-outline-success border-0"
                                             data-resource-id="{{ t.id }}"
@@ -212,9 +214,15 @@
                                     </form>
                                 </div>
                             </div>
+                            {% if t.content %}
                             <p class="mb-0 text-secondary" style="font-size: 0.9rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
-                                {{ (t.content or '') }}
+                                {{ t.content }}
                             </p>
+                            {% else %}
+                            <p class="mb-0 text-muted fst-italic" style="font-size: 0.85rem;">
+                                <i class="bi bi-diagram-3"></i> Структурированные данные — см. «Просмотр»
+                            </p>
+                            {% endif %}
                         </div>
 
                         <div class="modal fade" id="viewTextModal{{ t.id }}" tabindex="-1">
@@ -229,9 +237,7 @@
                                         {% if t.structured_data %}
                                         <div class="p-4 bg-light border rounded-3" style="max-height: 40vh; overflow-y: auto;">
                                             <h6 class="fw-bold text-info mb-3">Структурированные данные</h6>
-                                            {% for key, val in t.structured_data.items() %}
-                                                <div class="mb-2"><strong>{{ key|capitalize }}:</strong> {{ val }}</div>
-                                            {% endfor %}
+                                            {{ render_feature_value(t.structured_data) }}
                                         </div>
                                         {% endif %}
                                     </div>
@@ -684,14 +690,22 @@
             </div>
             <form id="editTextForm" method="post" action="">
                 <input type="hidden" name="entity_id" value="{{ entity.id }}">
+                <input type="hidden" name="content_key" id="editTextContentKey" value="">
+                <input type="hidden" name="structured_json" id="editTextStructuredJson" value="">
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-secondary">ЗАГОЛОВОК *</label>
                         <input type="text" class="form-control" name="title" id="editTextTitle" required>
                     </div>
-                    <div class="mb-3">
+                    <div id="editTextPlainWrap" class="mb-3">
                         <label class="form-label fw-bold small text-secondary">СОДЕРЖАНИЕ *</label>
-                        <textarea class="form-control" name="content" id="editTextContent" rows="8" required></textarea>
+                        <textarea class="form-control" name="content" id="editTextContent" rows="8"></textarea>
+                    </div>
+                    <div id="editTextStructuredWrap" class="d-none">
+                        <div class="alert alert-light border small text-secondary mb-3">
+                            <i class="bi bi-info-circle"></i> Это структурированный ресурс — отредактируйте отдельные поля ниже, структура сохранится.
+                        </div>
+                        <div id="editTextStructuredFields"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -984,9 +998,114 @@ document.addEventListener('DOMContentLoaded', function() {
 function openEditText(btn) {
     document.getElementById('editTextForm').action = `/admin/service/resource/edit/text/${btn.dataset.resourceId}`;
     document.getElementById('editTextTitle').value = btn.dataset.title || '';
-    document.getElementById('editTextContent').value = btn.dataset.content || '';
+    const structuredRaw = btn.dataset.structured || '';
+    const plainWrap = document.getElementById('editTextPlainWrap');
+    const structWrap = document.getElementById('editTextStructuredWrap');
+    const contentInput = document.getElementById('editTextContent');
+    const contentKeyInput = document.getElementById('editTextContentKey');
+    const structuredJsonInput = document.getElementById('editTextStructuredJson');
+    if (structuredRaw) {
+        let data = {};
+        try { data = JSON.parse(structuredRaw); } catch (e) { data = {}; }
+        plainWrap.classList.add('d-none');
+        structWrap.classList.remove('d-none');
+        contentInput.value = '';
+        contentInput.removeAttribute('required');
+        contentKeyInput.value = '';
+        structuredJsonInput.value = '';
+        buildStructuredEditor(document.getElementById('editTextStructuredFields'), data);
+    } else {
+        structWrap.classList.add('d-none');
+        plainWrap.classList.remove('d-none');
+        document.getElementById('editTextStructuredFields').innerHTML = '';
+        contentInput.value = btn.dataset.content || '';
+        contentInput.setAttribute('required', 'required');
+        contentKeyInput.value = btn.dataset.contentKey || 'description';
+        structuredJsonInput.value = '';
+    }
     new bootstrap.Modal(document.getElementById('editTextModal')).show();
 }
+
+function humanizeFieldKey(key) {
+    const labels = {
+        description: 'Описание', content: 'Текст',
+        diet: 'Питание', behavior: 'Поведение', lifespan: 'Продолжительность жизни', reproduction: 'Размножение',
+        predators: 'Хищники', ecological_role: 'Роль в экосистеме', depth_distribution: 'Распределение по глубине',
+        genus: 'Род', family: 'Семейство', species: 'Вид',
+        coloration: 'Окраска', size_weight: 'Размер и вес', body_structure: 'Строение тела',
+        general_description: 'Общее описание', special_adaptations: 'Особые адаптации', special_adapters: 'Особые адаптации',
+        threats: 'Угрозы', red_book_status: 'Статус в Красной книге', protection_status: 'Статус охраны',
+        protected_areas: 'Охраняемые территории', geographical_range: 'Ареал', baikal_region_status: 'Статус в регионе Байкал',
+        practical_use: 'Практическое значение', scientific_value: 'Научная ценность',
+        biology: 'Биология', ecology: 'Экология', taxonomy: 'Таксономия', morphology: 'Морфология',
+        conservation: 'Охрана', distribution: 'Распространение', significance: 'Значение',
+    };
+    if (labels[key]) return labels[key];
+    return (key + '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+}
+
+function buildStructuredEditor(container, data, pathPrefix) {
+    pathPrefix = pathPrefix || [];
+    container.innerHTML = '';
+    Object.keys(data).forEach(function(key) {
+        const val = data[key];
+        const path = pathPrefix.concat([key]);
+        if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+            const fieldset = document.createElement('fieldset');
+            fieldset.className = 'border rounded-3 p-3 mb-3';
+            const legend = document.createElement('legend');
+            legend.className = 'fs-6 fw-bold text-secondary px-2 w-auto float-none';
+            legend.textContent = humanizeFieldKey(key);
+            fieldset.appendChild(legend);
+            buildStructuredEditor(fieldset, val, path);
+            container.appendChild(fieldset);
+        } else {
+            const wrap = document.createElement('div');
+            wrap.className = 'mb-3';
+            const label = document.createElement('label');
+            label.className = 'form-label fw-bold text-secondary small';
+            label.textContent = humanizeFieldKey(key);
+            const textarea = document.createElement('textarea');
+            textarea.className = 'form-control';
+            const isArray = Array.isArray(val);
+            const strVal = isArray ? val.join(', ') : (val === null || val === undefined ? '' : String(val));
+            textarea.rows = strVal.length > 100 ? 3 : 1;
+            textarea.dataset.path = path.join('.');
+            textarea.dataset.isArray = isArray ? '1' : '0';
+            textarea.value = strVal;
+            wrap.appendChild(label);
+            wrap.appendChild(textarea);
+            container.appendChild(wrap);
+        }
+    });
+}
+
+function collectStructuredData(container) {
+    const result = {};
+    container.querySelectorAll('[data-path]').forEach(function(inp) {
+        const path = inp.dataset.path.split('.');
+        let obj = result;
+        for (let i = 0; i < path.length - 1; i++) {
+            if (!(path[i] in obj) || typeof obj[path[i]] !== 'object') obj[path[i]] = {};
+            obj = obj[path[i]];
+        }
+        const leaf = path[path.length - 1];
+        obj[leaf] = inp.dataset.isArray === '1'
+            ? inp.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+            : inp.value;
+    });
+    return result;
+}
+
+document.getElementById('editTextForm').addEventListener('submit', function() {
+    const structWrap = document.getElementById('editTextStructuredWrap');
+    const structuredJsonInput = document.getElementById('editTextStructuredJson');
+    if (structWrap && !structWrap.classList.contains('d-none')) {
+        structuredJsonInput.value = JSON.stringify(collectStructuredData(document.getElementById('editTextStructuredFields')));
+    } else {
+        structuredJsonInput.value = '';
+    }
+});
 
 function openEditImage(btn) {
     document.getElementById('editImageForm').action = `/admin/service/resource/edit/image/${btn.dataset.resourceId}`;
