@@ -1,0 +1,502 @@
+{% extends "base.html" %}
+{% block title %}Тестовый чат (Core API Link){% endblock %}
+
+{% block content %}
+<div class="card shadow-sm mb-3" style="border-radius: 16px;">
+    <div class="card-body d-flex align-items-center justify-content-between py-2 px-4 bg-light" style="border-radius: 16px;">
+        <div class="d-flex gap-4">
+            <!-- Debug -->
+            <div class="form-check form-switch text-danger">
+                <input class="form-check-input" type="checkbox" id="setting-debug">
+                <label class="form-check-label fw-bold" for="setting-debug">🐞 Debug Mode</label>
+            </div>
+        </div>
+        <div>
+            <span class="text-muted small">ID: <b>{{ request.session.user_id }}</b></span>
+            <a href="/admin/logout" class="btn btn-sm btn-link text-danger ms-2">Выйти</a>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow-sm" style="height: calc(100vh - 180px); display: flex; flex-direction: column; border-radius: 16px;">
+    <!-- Окно сообщений -->
+    <div id="chat-window">
+        <div class="message bot-message">
+            <div class="message-bubble shadow-sm">
+                Привет! Я подключен напрямую к <b>Core API</b>. Можете проверять логику здесь.
+            </div>
+        </div>
+    </div>
+    
+    <!-- Индикатор загрузки -->
+    <div id="loading-indicator" class="px-4 py-2 d-none">
+        <span class="badge bg-light text-primary border">
+            <span class="spinner-border spinner-border-sm me-2"></span> Мозг бота думает...
+        </span>
+    </div>
+
+    <!-- Поле ввода -->
+    <div class="chat-input-area">
+        <div class="input-group">
+            <input type="text" id="user-input" class="form-control border-2" placeholder="Спросите что-нибудь..." 
+                   style="border-radius: 12px 0 0 12px; padding: 14px; border-right: none;">
+            <button class="btn btn-primary px-4" onclick="sendMessage()" style="border-radius: 0 12px 12px 0;">
+                <i class="bi bi-send-fill"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+async function sendMessage(overrideText = null, isCallback = false) {
+    const input = document.getElementById('user-input');
+    const text = overrideText || input.value.trim();
+    if (!text) return;
+
+    // Не выводим в чат технические callback_data (содержащие двоеточие)
+    if (!isCallback || !text.includes(':')) {
+        appendMessage('user', text);
+    }
+
+    if (!overrideText) input.value = '';
+
+    const loading = document.getElementById('loading-indicator');
+    loading.classList.remove('d-none');
+
+    try {
+        const response = await fetch('/admin/chat/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: text })
+        });
+        const data = await response.json();
+        const isDebug = document.getElementById('setting-debug').checked;
+        if (isDebug) renderClassification(data.slots || data);
+        if (isDebug && data.search_request) renderSearchRequest(data.search_request);
+        if (isDebug && data.search) renderSearchDebug(data.search);
+        if (isDebug && data.timing) renderTiming(data.timing);
+        await renderResult(data);
+        if (data.error) appendMessage('bot', `❌ ${data.error}`);
+    } catch (e) {
+        console.error("Ошибка:", e);
+        appendMessage('bot', '❌ Ошибка сети или Core API не отвечает.');
+    } finally {
+        loading.classList.add('d-none');
+    }
+}
+
+function renderResponse(resp) {
+    let msgDiv = null;
+    const type = resp.type;
+    const chat = document.getElementById('chat-window');
+
+    if (type === 'debug') {
+        const div = document.createElement('div');
+        div.className = 'message system-message';
+        
+        // Так как бот теперь присылает склеенную красивую строку с <b> тегами и отступами,
+        // нам не нужно пытаться парсить её как JSON.
+        // Мы просто подсветим то, что внутри обратных кавычек ` ` (URL и Payload)
+        let displayContent = resp.content
+            .replace(/`([^`]+)`/g, '<span style="color: #34d399;">$1</span>') // светло-зеленый цвет для кода/URL
+            .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>'); // на всякий случай, если где-то остался markdown **
+            
+        div.innerHTML = `
+            <div class="debug-header"><i class="bi bi-terminal-fill"></i> System Debug Log</div>
+            <pre class="debug-block" style="white-space: pre-wrap;">${displayContent}</pre>
+        `;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+        return div;
+    }
+    else if (type === 'text' || type === 'clarification') {
+        msgDiv = appendMessage('bot', resp.content);
+    } 
+    else if (type === 'image' || type === 'photo') {
+        msgDiv = appendImage('bot', resp.content);
+    } 
+    else if (type === 'map' || type === 'clarification_map') {
+        let mapHtml = '';
+        
+        // Если есть текст (в clarification_map он всегда есть), выводим его
+        if (resp.content) {
+            // Обрабатываем жирный текст из Markdown в HTML
+            let formattedContent = resp.content.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+            mapHtml += `<div>${formattedContent}</div><br>`;
+        }
+
+        // Выводим саму картинку карты
+        let mapImg = resp.static_map || (type === 'map' ? resp.content : null);
+        if (mapImg) {
+            mapHtml += `<img src="${mapImg}" class="chat-img shadow-sm mb-2">`;
+        }
+        
+        msgDiv = appendMessage('bot', mapHtml);
+    }
+
+    // --- УЛУЧШЕННЫЙ БЛОК КНОПОК ---
+    const buttons = resp.buttons || (resp.reply_markup ? resp.reply_markup.inline_keyboard : null);
+    
+    if (buttons && buttons.length > 0 && msgDiv) {
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'mt-3 d-flex flex-wrap gap-2';
+        
+        buttons.flat().forEach(btn => {
+            // Если у кнопки есть URL — это ссылка
+            if (btn.url) {
+                const link = document.createElement('a');
+                link.href = btn.url;
+                link.target = "_blank"; // Открывать в новой вкладке
+                link.className = 'btn btn-sm btn-success shadow-sm px-3 py-2'; // Зеленый цвет для ссылок
+                link.style.borderRadius = '10px';
+                link.style.textDecoration = 'none';
+                link.innerHTML = `<i class="bi bi-geo-alt-fill me-1"></i> ${btn.text}`;
+                btnContainer.appendChild(link);
+            } 
+            // Иначе — это обычная кнопка (уточнение или команда)
+            else {
+                const b = document.createElement('button');
+                b.className = 'btn btn-sm btn-outline-primary shadow-sm px-3 py-2';
+                b.style.borderRadius = '10px';
+                b.innerText = btn.text;
+                b.onclick = () => {
+                    btnContainer.remove(); 
+                    sendMessage(btn.callback_data || btn.text, true);
+                };
+                btnContainer.appendChild(b);
+            }
+        });
+        
+        msgDiv.querySelector('.message-bubble').appendChild(btnContainer);
+    }
+}
+
+function appendMessage(sender, text) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = `message ${sender}-message`;
+    div.innerHTML = `<div class="message-bubble shadow-sm">${text}</div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div; // Важно!
+}
+
+function appendImage(sender, url) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = `message ${sender}-message`;
+    div.innerHTML = `<div class="message-bubble shadow-sm"><img src="${url}" class="chat-img" onerror="this.src='https://placehold.co/400x300?text=Ошибка+загрузки+фото'"></div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div; // Важно!
+}
+
+function renderClassification(data) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'message system-message';
+
+    // Подсветка JSON: ключи зелёным, строки янтарным, null серым
+    const pretty = JSON.stringify(data, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span style="color:#10b981">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
+        .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
+        .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
+
+    const template = data.template
+        ? `<span style="color:#a78bfa;font-weight:bold"> → ${data.template}</span>`
+        : '';
+
+    div.innerHTML = `
+        <div class="debug-header">
+            <i class="bi bi-search"></i> Slot Classification${template}
+        </div>
+        <pre class="debug-block">${pretty}</pre>
+    `;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function renderSearchRequest(req) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'message system-message';
+
+    const rawId = `req-raw-${Date.now()}`;
+    const rawJson = JSON.stringify(req, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span style="color:#10b981">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
+        .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
+        .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
+
+    div.innerHTML = `
+        <div class="debug-header" style="cursor:pointer;user-select:none" onclick="document.getElementById('${rawId}').classList.toggle('d-none')">
+            <i class="bi bi-arrow-up-right-square"></i> Search Request
+            <i class="bi bi-chevron-down ms-1" style="font-size:0.75rem;opacity:0.6"></i>
+        </div>
+        <pre id="${rawId}" class="debug-block d-none">${rawJson}</pre>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+
+async function resolveDeadHosts(urls) {
+    const deadOrigins = new Set();
+    for (const url of urls) {
+        if (!url) continue;
+        try {
+            const hostname = new URL(url).hostname;
+            if (LOCAL_HOSTS.has(hostname)) deadOrigins.add(new URL(url).origin);
+        } catch {}
+    }
+    return deadOrigins;
+}
+
+function fixUrl(url, deadOrigins) {
+    if (!url) return url;
+    try {
+        const u = new URL(url);
+        if (deadOrigins.has(u.origin)) {
+            u.protocol = window.location.protocol;
+            u.host = window.location.host;
+            return u.toString();
+        }
+    } catch {}
+    return url;
+}
+
+function appendMapLink(sender, url) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = `message ${sender}-message`;
+    div.innerHTML = `<div class="message-bubble shadow-sm">
+        <a href="${url}" target="_blank" class="btn btn-sm btn-success shadow-sm px-3 py-2" style="border-radius:10px;text-decoration:none">
+            <i class="bi bi-geo-alt-fill me-1"></i> Открыть интерактивную карту
+        </a>
+    </div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function renderSearchDebug(searchData) {
+    const chat = document.getElementById('chat-window');
+    const allResources = searchData.resources || [];
+    const objects = searchData.objects || [];
+
+    const rawId = `search-raw-${Date.now()}`;
+    const rawJson = JSON.stringify(searchData, null, 2)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span style="color:#10b981">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span style="color:#fbbf24">"$1"</span>')
+        .replace(/: (null)/g, ': <span style="color:#94a3b8">$1</span>')
+        .replace(/: (true|false)/g, ': <span style="color:#60a5fa">$1</span>');
+    const countLabel = `<span style="color:#60a5fa">(объектов: ${objects.length}, ресурсов: ${allResources.length})</span>`;
+
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'message system-message';
+    headerDiv.innerHTML = `
+        <div class="debug-header" style="cursor:pointer;user-select:none" onclick="document.getElementById('${rawId}').classList.toggle('d-none')">
+            <i class="bi bi-database"></i> Search Results
+            ${countLabel}
+            <i class="bi bi-chevron-down ms-1" style="font-size:0.75rem;opacity:0.6"></i>
+        </div>
+        <pre id="${rawId}" class="debug-block d-none">${rawJson}</pre>`;
+    chat.appendChild(headerDiv);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+function renderTiming(timing) {
+    const chat = document.getElementById('chat-window');
+    const div = document.createElement('div');
+    div.className = 'message system-message';
+
+    const STAGES = [
+        { key: 'classify_ms',       label: 'Классификация (LLM)' },
+        { key: 'context_ms',        label: 'Контекст' },
+        { key: 'search_ms',         label: 'Поиск (backend)' },
+        { key: 'simplifications_ms', label: 'Упрощения' },
+    ].filter(s => timing[s.key] != null);
+
+    const total = timing.total_ms;
+    const maxVal = Math.max(...STAGES.map(s => timing[s.key] || 0), 1);
+
+    function msColor(ms) {
+        if (ms < 100) return '#10b981';
+        if (ms < 500) return '#fbbf24';
+        return '#f87171';
+    }
+
+    function bar(ms) {
+        const filled = Math.max(0, Math.round((ms / maxVal) * 12));
+        return '<span style="color:#10b981">' + '█'.repeat(filled) + '</span>'
+             + '<span style="color:#1f2937">' + '█'.repeat(12 - filled) + '</span>';
+    }
+
+    const COL = 24;
+    const lines = STAGES.map(s => {
+        const ms = timing[s.key] || 0;
+        const pad = ' '.repeat(Math.max(0, COL - s.label.length));
+        return `  <span style="color:#94a3b8">${s.label}${pad}</span>`
+             + `<span style="color:${msColor(ms)};font-weight:bold">${String(ms).padStart(5)} ms</span>`
+             + `  ${bar(ms)}`;
+    });
+
+    if (total != null) {
+        lines.push(`  <span style="color:#374151">${'─'.repeat(50)}</span>`);
+        const totPad = ' '.repeat(Math.max(0, COL - 5));
+        lines.push(`  <span style="color:#94a3b8">Итого${totPad}</span>`
+                 + `<span style="color:${msColor(total)};font-weight:bold">${String(total).padStart(5)} ms</span>`);
+    }
+
+    div.innerHTML = `
+        <div class="debug-header"><i class="bi bi-stopwatch"></i> Pipeline Timing</div>
+        <pre class="debug-block">${lines.join('\n')}</pre>
+    `;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function renderResult(pipelineData) {
+    if (!pipelineData || pipelineData.error) return;
+
+    const result = pipelineData.result || {};
+    const proactive = pipelineData.proactive || {};
+    const modality_ambiguous = pipelineData.modality_ambiguous || false;
+    const simplifications = pipelineData.simplifications || [];
+    const slots = pipelineData.slots || {};
+
+    const urlsToCheck = [
+        ...(result.images || []),
+        result.map?.static,
+        result.map?.interactive,
+    ].filter(Boolean);
+    const deadOrigins = await resolveDeadHosts(urlsToCheck);
+
+    // Изображения (до 3) — как в MAX
+    for (const url of (result.images || []).slice(0, 3)) {
+        appendImage('bot', fixUrl(url, deadOrigins));
+    }
+
+    // Статическая карта как картинка
+    if (result.map?.static) {
+        appendImage('bot', fixUrl(result.map.static, deadOrigins));
+    }
+
+    // Кнопки
+    const buttons = [];
+
+    if (result.map?.interactive) {
+        buttons.push({ type: 'link', text: 'Открыть интерактивную карту', url: fixUrl(result.map.interactive, deadOrigins) });
+    }
+    if (proactive.photo) buttons.push({ type: 'callback', text: '🖼 Фото', payload: `photo:${proactive.photo.substring(0, 50)}` });
+    if (proactive.map)   buttons.push({ type: 'callback', text: '🗺 Карта ареала', payload: `map:${proactive.map.substring(0, 50)}` });
+    if (proactive.text)  buttons.push({ type: 'callback', text: '📖 Подробнее', payload: `text:${proactive.text.substring(0, 50)}` });
+
+    if (modality_ambiguous && slots.synonym && !proactive.map && !result.map) {
+        buttons.push({ type: 'callback', text: '🗺 Показать на карте', payload: `map:${slots.synonym.substring(0, 50)}` });
+    }
+
+    // Текст ответа
+    let text = result.answer || 'По вашему запросу ничего не найдено.';
+    if (result.total_found != null && result.place) {
+        text += `\n\nНайдено объектов: ${result.total_found} (место: ${result.place})`;
+    }
+
+    if (simplifications.length > 0) {
+        text += '\n\nМожно расширить поиск:';
+        simplifications.forEach((s, i) => {
+            buttons.push({ type: 'callback', text: s.label, payload: `simplify:${i}` });
+        });
+    }
+
+    const msgDiv = appendMessage('bot', text.replace(/\n/g, '<br>'));
+
+    // Промо: связанные услуги/экспозиции
+    if (result.promo && result.promo.length > 0) {
+        result.promo.forEach(item => {
+            const promoText = item.promo_text || item.name || '';
+            const promoName = item.name || '';
+            const promoDiv = appendMessage('bot', `💡 ${promoText}`);
+            if (promoName && promoDiv) {
+                const btnContainer = document.createElement('div');
+                btnContainer.className = 'mt-2';
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-sm btn-outline-secondary shadow-sm px-3 py-1';
+                btn.style.borderRadius = '10px';
+                btn.innerText = '📋 Подробнее';
+                btn.onclick = () => {
+                    appendMessage('user', '📋 Подробнее');
+                    btnContainer.remove();
+                    sendCallback(`text:${promoName.substring(0, 100)}`);
+                };
+                btnContainer.appendChild(btn);
+                promoDiv.querySelector('.message-bubble').appendChild(btnContainer);
+            }
+        });
+    }
+
+    if (buttons.length > 0 && msgDiv) {
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'mt-3 d-flex flex-wrap gap-2';
+        buttons.forEach(btn => {
+            if (btn.type === 'link') {
+                const a = document.createElement('a');
+                a.href = btn.url;
+                a.target = '_blank';
+                a.className = 'btn btn-sm btn-success shadow-sm px-3 py-2';
+                a.style.cssText = 'border-radius:10px;text-decoration:none';
+                a.innerHTML = `<i class="bi bi-geo-alt-fill me-1"></i> ${btn.text}`;
+                btnContainer.appendChild(a);
+            } else {
+                const b = document.createElement('button');
+                b.className = 'btn btn-sm btn-outline-primary shadow-sm px-3 py-2';
+                b.style.borderRadius = '10px';
+                b.innerText = btn.text;
+                b.onclick = () => {
+                    appendMessage('user', btn.text);
+                    btnContainer.remove();
+                    sendCallback(btn.payload);
+                };
+                btnContainer.appendChild(b);
+            }
+        });
+        msgDiv.querySelector('.message-bubble').appendChild(btnContainer);
+    }
+
+    document.getElementById('chat-window').scrollTop = document.getElementById('chat-window').scrollHeight;
+}
+
+async function sendCallback(payload) {
+    const loading = document.getElementById('loading-indicator');
+    loading.classList.remove('d-none');
+    try {
+        const response = await fetch('/admin/chat/callback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload })
+        });
+        const data = await response.json();
+        const isDebug = document.getElementById('setting-debug').checked;
+        if (isDebug && data.slots) renderClassification(data.slots);
+        if (isDebug && data.search_request) renderSearchRequest(data.search_request);
+        if (isDebug && data.search) renderSearchDebug(data.search);
+        if (isDebug && data.timing) renderTiming(data.timing);
+        await renderResult(data);
+        if (data.error) appendMessage('bot', `❌ ${data.error}`);
+    } catch (e) {
+        appendMessage('bot', '❌ Ошибка при обработке кнопки.');
+    } finally {
+        loading.classList.add('d-none');
+    }
+}
+
+document.getElementById('user-input').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendMessage();
+});
+
+</script>
+{% endblock %}

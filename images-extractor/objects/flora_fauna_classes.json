@@ -1,0 +1,72 @@
+{
+  "YOLO_CLASSES": [
+    "animal",
+    "mammal",
+    "seal",
+    "bear",
+    "deer",
+    "fox",
+    "wolf",
+    "dog",
+    "cat",
+    "squirrel",
+    "hare",
+
+    "bird",
+    "gull",
+    "eagle",
+    "hawk",
+    "owl",
+    "duck",
+    "swan",
+    "goose",
+    "sparrow",
+    "woodpecker",
+
+    "fish",
+    "omul",
+    "salmon",
+    "trout",
+    "pike",
+
+    "insect",
+    "butterfly",
+    "bee",
+    "wasp",
+    "ant",
+    "beetle",
+    "dragonfly",
+
+    "plant",
+    "tree",
+    "shrub",
+    "flower",
+    "grass",
+    "moss",
+    "lichen",
+
+    "pine",
+    "fir",
+    "spruce",
+    "larch",
+    "birch",
+    "cedar",
+
+    "thyme",
+    "primula",
+    "wildflower",
+    "herb",
+
+    "leaf",
+    "branch",
+    "cone",
+    "seed",
+    "fruit",
+    "cone",
+    "tree`s cone",
+
+    "fungus",
+    "mushroom",
+    "cloudy"
+  ]
+}

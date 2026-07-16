@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Обзор системы{% endblock %}
+
+{% block content %}
+
+<!-- Статусные карточки -->
+<div class="stat-cards">
+    <div class="stat-card" id="dash-status-card">
+        <p class="label">Состояние бота</p>
+        <h2 class="value {{ 'online' if bot_online else 'offline' }}" id="dash-status-text">
+            {{ 'Активен' if bot_online else 'Не в сети' }}
+        </h2>
+        <p class="desc" id="dash-status-desc">
+            {% if bot_online %}Последний сигнал получен менее 15 мин. назад{% else %}Бот давно не выходил на связь{% endif %}
+        </p>
+    </div>
+    <div class="stat-card">
+        <p class="label">Ошибок за сутки</p>
+        <h2 class="value {{ 'zero' if errors_24h == 0 else 'errors' }}">{{ errors_24h }}</h2>
+        <p class="desc">
+            {% if errors_24h > 0 %}Требуют вашего внимания{% else %}Система работает стабильно{% endif %}
+        </p>
+    </div>
+</div>
+
+<!-- База знаний -->
+<div class="section-title">Состояние базы знаний</div>
+<div class="info-grid">
+    <div class="info-card">
+        <h4>Объекты</h4>
+        <div class="info-row"><span class="k">🌿 Флора</span><span class="v">{{ kb_stats.flora }}</span></div>
+        <div class="info-row"><span class="k">🐾 Фауна</span><span class="v">{{ kb_stats.fauna }}</span></div>
+        <div class="info-row"><span class="k">❓ Без классификации</span><span class="v">{{ kb_stats.unclassified }}</span></div>
+        <div class="info-row"><span class="k">📍 Достопримечательности</span><span class="v">{{ kb_stats.geo }}</span></div>
+        <div class="info-row"><span class="k">🛍 Услуги</span><span class="v">{{ kb_stats.services }}</span></div>
+        <div class="info-row total-row"><span class="k" style="font-weight:700;">Всего объектов</span><span class="v">{{ kb_stats.flora + kb_stats.fauna + kb_stats.unclassified + kb_stats.geo + kb_stats.services }}</span></div>
+    </div>
+    <div class="info-card">
+        <h4>Ресурсы</h4>
+        <div class="info-row"><span class="k">📝 Текстов</span><span class="v">{{ kb_stats.texts }}</span></div>
+        <div class="info-row"><span class="k">🖼 Фотографий</span><span class="v">{{ kb_stats.images }}</span></div>
+        <div class="info-row"><span class="k">🗺 Ареалов (геозон)</span><span class="v">{{ kb_stats.geodata }}</span></div>
+        <div class="info-row total-row"><span class="k" style="font-weight:700;">Всего ресурсов</span><span class="v">{{ kb_stats.texts + kb_stats.images + kb_stats.geodata }}</span></div>
+    </div>
+</div>
+{% endblock %}

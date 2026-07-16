@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Настройки системы{% endblock %}
+
+{% block content %}
+
+<div class="card shadow-sm" style="border-radius: 16px; min-height: 70vh;">
+  <div class="card-header" style="border-radius: 16px 16px 0 0; padding: 0 24px;">
+    <ul class="nav nav-tabs settings-tab-nav card-header-tabs" id="settingsTabs" role="tablist" style="border-bottom: none; gap: 4px; padding-top: 12px;">
+      {% for tab in schema.tabs %}
+      <li class="nav-item">
+        <button class="nav-link {% if loop.first %}active{% endif %}"
+                data-bs-toggle="tab" data-bs-target="#tab-{{ tab.id }}" type="button">
+          {{ tab.title }}<span class="badge-svc">{{ tab.badge }}</span>
+        </button>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="card-body p-4 tab-content" id="settingsTabContent">
+
+    {% for tab in schema.tabs %}
+    <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="tab-{{ tab.id }}">
+
+      {% if tab.id == "prompts" %}
+        {# ── Вкладка Промпты — особый случай ── #}
+        <div class="section-divider">
+          <span class="section-divider-label instant">Мгновенно</span>
+        </div>
+        {% if not prompts %}
+        <div class="alert d-flex align-items-center gap-3 mb-4" style="background:#fff7ed; border:1px solid #fed7aa; border-radius:12px; padding:14px 18px;">
+          <i class="bi bi-exclamation-triangle-fill" style="color:#ea580c; font-size:1.3rem;"></i>
+          <div>
+            <strong class="text-danger">Core API недоступен</strong>
+            <div class="text-muted" style="font-size:0.88rem;">Промпты не загружены. Убедитесь, что контейнер <code>core-api</code> запущен, затем обновите страницу.</div>
+          </div>
+        </div>
+        {% endif %}
+        {% set prompt_descriptions = {
+          'classifications_actions_part_of_prompt.txt': 'Список возможных действий (интентов), которые LLM должна выбрать на основе запроса пользователя.',
+          'classifications_entities_part_of_prompt.txt': 'Справочник категорий и подкатегорий (Flora, Fauna, Infrastructure).',
+          'examples_entity.txt': 'Сложные примеры названий для лучшего понимания границ названий.',
+          'examples_for_prompt.txt': 'Few-Shot примеры: «Запрос → Идеальный JSON», обучающие LLM думать правильно.',
+          'classification_prompt.txt': 'Главный промпт классификатора: извлечение слотов object_type, synonym, modality, properties, features, extra.'
+        } %}
+        <form id="form-prompts">
+          {% for filename, content in prompts.items() %}
+          <div class="mb-4">
+            <label class="form-label fw-bold text-primary d-flex align-items-center gap-2">
+              {{ filename }}
+              {% if filename in prompt_descriptions %}
+              <i class="bi bi-question-circle text-muted"
+                 data-bs-toggle="tooltip" data-bs-placement="right"
+                 title="{{ prompt_descriptions[filename] }}"
+                 style="cursor:help; font-size:1.1rem; color:#94a3b8 !important;"></i>
+              {% endif %}
+            </label>
+            <textarea class="form-control" name="{{ filename }}" rows="10"
+              style="font-family:'JetBrains Mono',monospace; font-size:0.85rem; background:#f8fafc; border:1px solid #cbd5e1;">{{ content }}</textarea>
+          </div>
+          {% endfor %}
+          <div class="save-bar">
+            <button type="button" class="btn btn-primary px-4 fw-bold"
+                    onclick="saveShared('form-prompts', '/admin/settings/prompts', 'instant')">
+              Сохранить промпты
+            </button>
+          </div>
+        </form>
+
+      {% else %}
+        {# ── Обычная вкладка — разбиваем поля на instant и restart ── #}
+        {% set instant_fields = tab.fields | selectattr("reload", "equalto", "instant") | list %}
+        {% set restart_fields = tab.fields | selectattr("reload", "equalto", "restart") | list %}
+
+        {% if instant_fields %}
+        <div class="section-divider">
+          <span class="section-divider-label instant">Применяется мгновенно</span>
+        </div>
+        <form id="form-{{ tab.id }}-instant">
+          <div class="row g-3">
+          {% for field in instant_fields %}
+            <div class="col-md-{{ '12' if field.type == 'toggle' else '6' }}">
+              {% if field.type == 'toggle' %}
+                {# Redis toggle #}
+                <div class="d-flex align-items-center gap-3 py-2">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" id="toggle-{{ field.key }}"
+                           style="width:2.5em; height:1.3em;"
+                           {% if (field.key == 'promo_enabled' and promo_enabled) or (field.key == 'multi_act_dialog' and multi_act_enabled) %}checked{% endif %}>
+                    <label class="form-check-label fw-bold ms-1" for="toggle-{{ field.key }}">
+                      {{ field.label }}
+                    </label>
+                  </div>
+                  <span style="font-size:0.83rem; color:#475569;">{{ field.desc }}</span>
+                </div>
+              {% else %}
+                <div class="field-group">
+                  <label>{{ field.label }} <span class="var-name">{{ field.key }}</span></label>
+                  <div class="field-desc">{{ field.desc }}</div>
+                  <div class="input-wrap">
+                    {% if field.type == 'password' %}
+                    <input type="password" name="{{ field.key }}"
+                           value="{{ shared.get(field.key, '') }}">
+                    <button type="button" class="toggle-pw" onclick="togglePw(this)">
+                      <i class="bi bi-eye"></i>
+                    </button>
+                    {% else %}
+                    <input type="text" name="{{ field.key }}"
+                           value="{{ shared.get(field.key, '') }}">
+                    {% endif %}
+                  </div>
+                </div>
+              {% endif %}
+            </div>
+          {% endfor %}
+          </div>
+          <div class="save-bar">
+            <button type="button" class="btn btn-primary px-4 fw-bold"
+                    onclick="saveShared('form-{{ tab.id }}-instant', '/admin/settings/shared', 'instant')">
+              Сохранить
+            </button>
+            <span class="save-hint">Изменения применятся без перезапуска контейнеров</span>
+          </div>
+        </form>
+        {% endif %}
+
+        {% if restart_fields %}
+        {% if instant_fields %}<hr class="my-4">{% endif %}
+        <div class="section-divider">
+          <span class="section-divider-label restart">Требует перезапуска</span>
+        </div>
+        {% if tab.restart_cmd %}
+        <div class="restart-cmd-box">
+          <code id="cmd-{{ tab.id }}">{{ tab.restart_cmd }}</code>
+          <button class="copy-btn" onclick="copyCmd('cmd-{{ tab.id }}', this)">
+            <i class="bi bi-clipboard me-1"></i>Скопировать
+          </button>
+        </div>
+        {% endif %}
+        <form id="form-{{ tab.id }}-restart">
+          <div class="row g-3">
+          {% for field in restart_fields %}
+            <div class="col-md-6">
+              <div class="field-group">
+                <label>{{ field.label }} <span class="var-name">{{ field.key }}</span></label>
+                <div class="field-desc">{{ field.desc }}</div>
+                <div class="input-wrap">
+                  {% if field.type == 'password' %}
+                  <input type="password" name="{{ field.key }}"
+                         value="{{ shared.get(field.key, '') }}">
+                  <button type="button" class="toggle-pw" onclick="togglePw(this)">
+                    <i class="bi bi-eye"></i>
+                  </button>
+                  {% else %}
+                  <input type="text" name="{{ field.key }}"
+                         value="{{ shared.get(field.key, '') }}">
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+          </div>
+          <div class="save-bar">
+            <button type="button" class="btn btn-warning px-4 fw-bold"
+                    onclick="saveShared('form-{{ tab.id }}-restart', '/admin/settings/shared', 'restart', '{{ tab.restart_cmd }}')">
+              Сохранить
+            </button>
+            <span class="save-hint">После сохранения выполните команду выше для применения</span>
+          </div>
+        </form>
+        {% endif %}
+
+      {% endif %}
+    </div>
+    {% endfor %}
+
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+  <div id="liveToast" class="toast align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body fw-bold" id="toastMessage"></div>
+      <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => new bootstrap.Tooltip(el));
+
+  // Promo toggle
+  const promoToggle = document.getElementById('toggle-promo_enabled');
+  if (promoToggle) {
+    promoToggle.addEventListener('change', async (e) => {
+      try {
+        await fetch('/admin/chat/promo-setting', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: e.target.checked }),
+        });
+        showToast(e.target.checked ? 'Промо включено' : 'Промо отключено', 'success');
+      } catch {
+        showToast('Ошибка при сохранении', 'danger');
+      }
+    });
+  }
+});
+
+function togglePw(btn) {
+  const input = btn.closest('.input-wrap').querySelector('input');
+  const icon = btn.querySelector('i');
+  input.type = input.type === 'password' ? 'text' : 'password';
+  icon.className = input.type === 'password' ? 'bi bi-eye' : 'bi bi-eye-slash';
+}
+
+function copyCmd(elemId, btn) {
+  const text = document.getElementById(elemId).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = '<i class="bi bi-check me-1"></i>Скопировано';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<i class="bi bi-clipboard me-1"></i>Скопировать';
+    }, 2000);
+  });
+}
+
+async function saveShared(formId, endpoint, reloadType, restartCmd) {
+  const form = document.getElementById(formId);
+  const data = Object.fromEntries(
+    [...new FormData(form).entries()].filter(([k]) => {
+      // Исключаем toggle-поля (они управляются отдельно)
+      const el = form.querySelector(`[name="${k}"]`);
+      return el && el.type !== 'checkbox';
+    })
+  );
+  try {
+    const resp = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const result = await resp.json();
+    if (resp.ok) {
+      if (reloadType === 'restart' && restartCmd) {
+        showToast('Сохранено. Выполните команду выше для применения.', 'warning');
+      } else {
+        showToast(result.message || 'Применено', 'success');
+      }
+    } else {
+      showToast(result.detail || 'Ошибка сохранения', 'danger');
+    }
+  } catch (e) {
+    showToast('Ошибка: ' + e.message, 'danger');
+  }
+}
+
+function showToast(msg, type) {
+  const toast = document.getElementById('liveToast');
+  const colorMap = { success: 'text-bg-success', danger: 'text-bg-danger', warning: 'text-bg-warning' };
+  toast.className = `toast align-items-center border-0 ${colorMap[type] || 'text-bg-secondary'}`;
+  document.getElementById('toastMessage').innerText = msg;
+  new bootstrap.Toast(toast, { delay: 4000 }).show();
+}
+</script>
+{% endblock %}

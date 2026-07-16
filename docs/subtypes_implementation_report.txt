@@ -1,0 +1,156 @@
+ОТЧЁТ О РЕАЛИЗАЦИИ ПОДТИПОВ (SUBTYPES)
+=========================================
+
+Дата: 15.07.2026
+Проект: Эко-Байкал (AdminPanel)
+Задача: Перенос реализации подтипов из эталонных шаблонов (AdminPanelTemplates/)
+        в текущие (AdminPanel/templates/)
+
+
+1. ЦЕЛЬ РАБОТЫ
+--------------
+
+Перенос реализации подтипов (subtypes) из эталонных шаблонов (AdminPanelTemplates/)
+в текущие рабочие шаблоны (AdminPanel/templates/). Подтипы - это множественное
+свойство объекта, которое реализовано через интерактивные chips-теги с
+автодополнением из справочника (datalist).
+
+
+2. АРХИТЕКТУРА РЕШЕНИЯ
+-----------------------
+
+Каждый объект (биологический, географический, услуга) может иметь несколько
+подтипов. Подтипы хранятся как массив строк в
+object_properties['Подтип объекта']. Реализация состоит из трёх уровней:
+
+- HTML-разметка: контейнер chips (#subtypes-chips), datalist для автодополнения,
+  скрытое поле (#subtypesHidden) для отправки данных формы, input с привязкой
+  к datalist.
+
+- JavaScript-функции:
+  * addSubtypeChip() - добавление чипа с валидацией через datalist
+  * removeSubtypeChip() - удаление чипа
+  * onSubtypeInput() - авто-добавление при выборе из datalist
+  * syncSubtypesHidden() - синхронизация скрытого поля (только для форм создания)
+
+- Серверная часть: сохранение подтипов как массива строк через
+  object_properties['Подтип объекта'].
+
+
+3. ПЕРЕЧЕНЬ ИЗМЕНЁННЫХ ФАЙЛОВ
+------------------------------
+
+3.1. Формы создания (3 файла):
+
+  1. AdminPanel/templates/biological_form.html
+  2. AdminPanel/templates/geographical_form.html
+  3. AdminPanel/templates/service_form.html
+
+3.2. Модалки редактирования (3 файла):
+
+  4. AdminPanel/templates/biological_edit.html
+  5. AdminPanel/templates/geographical_edit.html
+  6. AdminPanel/templates/service_edit.html
+
+
+4. ДЕТАЛЬНОЕ ОПИСАНИЕ ИЗМЕНЕНИЙ
+--------------------------------
+
+4.1. Формы создания (biological_form.html, geographical_form.html,
+     service_form.html)
+
+  БЫЛО:
+    <input type="text" class="form-control form-control-lg" name="subtypes"
+           list="subtypesList" placeholder="Через запятую, напр: ...">
+    <datalist id="subtypesList">...</datalist>
+    <div class="form-text text-muted mt-1">
+        <i class="bi bi-info-circle"></i> Несколько подтипов разделяйте запятыми.
+    </div>
+
+  СТАЛО:
+    <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2"></div>
+    <datalist id="subtypesList">...</datalist>
+    <div class="input-group">
+        <input type="text" class="form-control form-control-lg" id="subtypesInput"
+               list="subtypesList" placeholder="Начните вводить для поиска..."
+               onkeydown="if(event.key==='Enter'){addSubtypeChip();event.preventDefault()}">
+        <button class="btn btn-outline-secondary" type="button"
+                onclick="addSubtypeChip()">Добавить</button>
+    </div>
+    <input type="hidden" name="subtypes" id="subtypesHidden">
+    <div class="form-text text-muted mt-1">
+        <i class="bi bi-info-circle"></i> Выберите один или несколько подтипов
+        из справочника.
+    </div>
+
+  ЧТО ИЗМЕНИЛОСЬ:
+    - Заменено простое текстовое поле на chips-интерфейс с datalist
+    - Добавлен контейнер #subtypes-chips для отображения выбранных подтипов
+    - Добавлено скрытое поле #subtypesHidden для отправки данных формы
+    - Добавлены JS-функции: addSubtypeChip(), removeSubtypeChip(),
+      syncSubtypesHidden()
+    - Добавлена валидация: можно добавить только значения из справочника
+    - Добавлена защита от дублирования подтипов
+    - Изменён placeholder и helper text
+
+4.2. Модалки редактирования (biological_edit.html, geographical_edit.html,
+     service_edit.html)
+
+  БЫЛО:
+    <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2">...</div>
+    <div class="input-group">
+        <input type="text" class="form-control" id="subtypesInput"
+               placeholder="Добавить подтип...">
+        <button class="btn btn-outline-secondary" type="button"
+                onclick="addSubtypeChip()">Добавить</button>
+    </div>
+
+  СТАЛО:
+    <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2">...</div>
+    <datalist id="subtypes-datalist">
+        {% for v in prop['values'] %}<option value="{{ v }}">{% endfor %}
+    </datalist>
+    <div class="input-group">
+        <input type="text" class="form-control" id="subtypesInput"
+               placeholder="Начните вводить для поиска..."
+               list="subtypes-datalist"
+               oninput="onSubtypeInput(this)"
+               onkeydown="if(event.key==='Enter'){addSubtypeChip();event.preventDefault()}">
+        <button class="btn btn-outline-secondary" type="button"
+                onclick="addSubtypeChip()">Добавить</button>
+    </div>
+
+  ЧТО ИЗМЕНИЛОСЬ:
+    - Добавлен datalist#subtypes-datalist с опциями из prop['values']
+    - Добавлен атрибут list="subtypes-datalist" на input
+    - Добавлен обработчик oninput="onSubtypeInput(this)" для авто-добавления
+    - Добавлен обработчик onkeydown для добавления по Enter
+    - Обновлена функция addSubtypeChip() - добавлена валидация через datalist
+    - Добавлена функция onSubtypeInput() - авто-добавление чипа при выборе
+    - Изменён placeholder на "Начните вводить для поиска..."
+
+
+5. СОХРАНЁННАЯ ФУНКЦИОНАЛЬНОСТЬ
+--------------------------------
+
+При переносе изменений из эталонных шаблонов была сохранена функциональность,
+которая отсутствует в эталонных шаблонах:
+
+  - Модалка editSynonymsModal с SortableJS для управления синонимами
+  - Интеграция с серверным API через saveProperties()
+  - Сбор подтипов в объект props['Подтип объекта'] при сохранении
+
+
+6. ЗАКЛЮЧЕНИЕ
+-------------
+
+Все 6 шаблонов успешно синхронизированы с эталонной реализацией подтипов.
+Текущие шаблоны теперь используют chips-интерфейс с валидацией через datalist,
+что обеспечивает:
+
+  [V] Удобный множественный выбор подтипов через интерактивные теги
+  [V] Валидацию значений - только из справочника (datalist)
+  [V] Защиту от дублирования подтипов
+  [V] Автоматическое добавление чипа при выборе из выпадающего списка
+  [V] Корректную отправку данных через скрытое поле (для форм создания)
+  [V] Совместимость с существующей серверной логикой

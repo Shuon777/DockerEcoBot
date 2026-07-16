@@ -1,0 +1,5 @@
+# Bash скрипты всегда хранить с LF (Unix line endings)
+*.sh text eol=lf
+
+# Конфиги — тоже LF
+nginx/nginx*.conf text eol=lf

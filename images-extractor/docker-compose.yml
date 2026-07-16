@@ -1,0 +1,24 @@
+services:
+  images-extractor:
+    build: .
+    container_name: images-extractor
+    env_file:
+      - .env
+    environment:
+      YOLO_CONFIG_DIR: /tmp
+      HF_HOME: /app/.cache/huggingface
+      TORCH_HOME: /app/.cache/torch
+    volumes:
+      - ./objects:/app/objects
+      - ./data:/app/data
+      - ./photos:/app/photos
+      - ./results:/app/results
+      - ./cache:/app/.cache
+
+      - ./SAM:/app/SAM
+      - ./ViT:/app/ViT
+      - ./local_bioclip_model:/app/local_bioclip_model
+      - ./local_blip_model:/app/local_blip_model
+      - ./local_grounding_dino_tiny_model:/app/local_grounding_dino_tiny_model
+      - ./local_owlv2_model:/app/local_owlv2_model
+    restart: "no"
