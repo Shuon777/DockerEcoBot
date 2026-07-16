@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Без классификации{% endblock %}
+{% block title %}Флора{% endblock %}
 
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <p class="text-secondary mb-0" style="font-size:1.05rem; font-weight:500;">
-        ❓ Объекты флоры/фауны без указания типа
+        🌿 Управление объектами флоры базы знаний
     </p>
     <a href="/admin/biological/new" class="btn-stats"
-       style="background:#6b7280; box-shadow:0 4px 6px rgba(107,114,128,0.2);">
+       style="background:#059669; box-shadow:0 4px 6px rgba(5,150,105,0.2);">
         <i class="bi bi-plus-lg me-1"></i> Добавить
     </a>
 </div>
@@ -23,7 +23,7 @@
         ('has_links', 'has_links',    '#0f766e', '#f0fdfa', 'Со связями',   'bi-diagram-3'),
     ] %}
     <span class="stat-pill active" style="background:#1e293b; color:#fff; border-color:#47556920;">
-        <i class="bi bi-question-circle"></i> Без типа <strong>{{ stats.unclassified }}</strong>
+        <i class="bi bi-collection"></i> Флора <strong>{{ stats.flora }}</strong>
     </span>
     {% for fval, stat_key, clr, bg, label, icon in res_defs %}
     {% set is_active = fval in filter_resources %}
@@ -66,9 +66,9 @@
                 </select>
             </div>
             <div class="col-md-3 d-flex gap-2">
-                <button class="btn fw-bold flex-grow-1" style="border-radius:10px; background:#6b7280; color:#fff;" onclick="applyFilters()">Найти</button>
+                <button class="btn btn-success fw-bold flex-grow-1" style="border-radius:10px;" onclick="applyFilters()">Найти</button>
                 {% if search %}
-                <a href="/admin/unclassified{% if filter_resources %}?filter_resources={{ filter_resources }}{% endif %}{% if sort_by and sort_by != 'default' %}{% if filter_resources %}&{% else %}?{% endif %}sort_by={{ sort_by }}{% endif %}"
+                <a href="/admin/flora{% if filter_resources %}?filter_resources={{ filter_resources }}{% endif %}{% if sort_by and sort_by != 'default' %}{% if filter_resources %}&{% else %}?{% endif %}sort_by={{ sort_by }}{% endif %}"
                    class="btn btn-outline-danger fw-bold" style="border-radius:10px;" title="Сбросить поиск">
                     <i class="bi bi-x-lg"></i>
                 </a>
@@ -99,7 +99,7 @@
                     {% endif %}
                 </td>
                 <td class="td-name">
-                    <strong>{{ e.name_ru }}</strong>
+                    {{ e.name_ru }}
                     {% if e.scientific_name %}
                     <div style="font-size:0.76rem; color:#94a3b8; font-style:italic; font-weight:400;">{{ e.scientific_name }}</div>
                     {% endif %}
@@ -123,7 +123,7 @@
             <tr>
                 <td colspan="4" class="text-center text-secondary py-5">
                     <i class="bi bi-inbox fs-1 d-block mb-2"></i>
-                    Нет объектов без классификации.
+                    Ничего не найдено.
                 </td>
             </tr>
             {% endfor %}
@@ -135,13 +135,13 @@
 <nav aria-label="Page navigation" class="mt-4 mb-4">
     <ul class="pagination justify-content-center shadow-sm" style="border-radius: 10px;">
         <li class="page-item {% if page <= 1 %}disabled{% endif %}">
-            <a class="page-link fw-bold text-secondary" href="#" onclick="goToPage({{ page - 1 }}); return false;">&laquo; Назад</a>
+            <a class="page-link fw-bold text-success" href="#" onclick="goToPage({{ page - 1 }}); return false;">&laquo; Назад</a>
         </li>
         <li class="page-item disabled">
             <span class="page-link text-dark fw-bold bg-light">Страница {{ page }} из {{ total_pages }} (Всего: {{ total_items }})</span>
         </li>
         <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-            <a class="page-link fw-bold text-secondary" href="#" onclick="goToPage({{ page + 1 }}); return false;">Вперед &raquo;</a>
+            <a class="page-link fw-bold text-success" href="#" onclick="goToPage({{ page + 1 }}); return false;">Вперед &raquo;</a>
         </li>
     </ul>
 </nav>
@@ -159,12 +159,12 @@ function buildParams() {
     return params;
 }
 function applyFilters() {
-    window.location.href = '/admin/unclassified?' + buildParams().toString();
+    window.location.href = '/admin/flora?' + buildParams().toString();
 }
 function goToPage(p) {
     const params = buildParams();
     params.set('page', p);
-    window.location.href = '/admin/unclassified?' + params.toString();
+    window.location.href = '/admin/flora?' + params.toString();
 }
 document.getElementById('searchInput').addEventListener('keydown', e => {
     if (e.key === 'Enter') applyFilters();

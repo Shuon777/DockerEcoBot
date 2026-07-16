@@ -142,7 +142,7 @@
                     <div style="font-size:0.65rem; font-weight:400; color:#cbd5e1; word-break:break-all;">{{ e.db_id }}</div>
                     {% endif %}
                 </td>
-                <td class="td-name"><strong>{{ e.name_ru }}</strong></td>
+                <td class="td-name">{{ e.name_ru }}</td>
                 <td class="td-sub">
                     {% for s in (e.subtypes or [])[:3] %}
                         <span class="subtype-tag svc">{{ s }}</span>

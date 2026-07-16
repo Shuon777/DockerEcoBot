@@ -116,13 +116,12 @@
             </div>
             {% endif %}
 
-            {% if entity.synonyms and entity.synonyms|length > 1 %}
+            {% set other_names = entity.synonyms | selectattr('synonym', 'ne', entity.name_ru) | list %}
+            {% if other_names %}
             <div class="mb-3 mt-2">
                 <p class="text-muted small fw-bold mb-1">ДРУГИЕ ИМЕНА</p>
-                {% for s in entity.synonyms %}
-                    {% if s != entity.name_ru %}
-                    <span class="badge bg-light text-secondary border me-1 mb-1">{{ s }}</span>
-                    {% endif %}
+                {% for s in other_names %}
+                    <span class="badge bg-light text-secondary border me-1 mb-1">{{ s.synonym }}</span>
                 {% endfor %}
             </div>
             {% endif %}

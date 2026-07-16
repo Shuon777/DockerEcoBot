@@ -506,13 +506,12 @@ async def _biological_list_impl(
         .correlate(Object)
         .scalar_subquery()
     )
-    # Подзапрос для сортировки по имени: синоним с language="ru" в приоритете,
-    # среди них - самый длинный (соответствует _primary_synonym)
+    # Подзапрос для сортировки по имени: берём самый длинный синоним (соответствует _primary_synonym)
     primary_name_sq = (
         select(ObjectNameSynonym.synonym)
         .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
         .where(object_name_synonym_link.c.object_id == Object.id)
-        .order_by((ObjectNameSynonym.language == "ru").desc(), func.length(ObjectNameSynonym.synonym).desc())
+        .order_by(func.length(ObjectNameSynonym.synonym).desc())
         .limit(1)
         .correlate(Object)
         .scalar_subquery()
@@ -520,7 +519,6 @@ async def _biological_list_impl(
     query = (
         select(Object.id, Object.db_id, Object.object_properties,
                func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
-               func.array_agg(ObjectNameSynonym.language).label("synonym_languages"),
                total_res_sq.label("total_resources"))
         .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
         .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
@@ -600,7 +598,7 @@ async def _biological_list_impl(
 
     entities = []
     for row in rows:
-        synonyms = [{"synonym": t, "language": l} for t, l in zip(row.synonyms or [], row.synonym_languages or []) if t]
+        synonyms = [s for s in (row.synonyms or []) if s]
         props = row.object_properties or {}
         c = resource_counts.get(row.id, {"text": 0, "image": 0, "geo": 0})
         entities.append({
@@ -610,7 +608,7 @@ async def _biological_list_impl(
             "synonyms": synonyms,
             "object_properties": props,
             "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
-            "scientific_name": _synonym_by_language(synonyms, "sn") or (props.get("scientific_name", "") if isinstance(props, dict) else ""),
+            "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
             "text_count": c["text"],
             "image_count": c["image"],
             "geo_count": c["geo"],
@@ -733,6 +731,7 @@ async def biological_save(
         object_properties=_build_bio_object_properties(
             bio_type.strip(),
             _parse_subtypes(subtypes),
+            scientific_name.strip() or None,
             conservation_status.strip() or None,
             region.strip() or None,
             baikal_relation.strip() or None,
@@ -745,12 +744,6 @@ async def biological_save(
     db.add(syn)
     await db.flush()
     await db.execute(insert(object_name_synonym_link).values(object_id=obj.id, synonym_id=syn.id))
-
-    if scientific_name.strip():
-        syn_sn = ObjectNameSynonym(synonym=scientific_name.strip(), language="sn")
-        db.add(syn_sn)
-        await db.flush()
-        await db.execute(insert(object_name_synonym_link).values(object_id=obj.id, synonym_id=syn_sn.id))
 
     if description.strip():
         parsed_date = None
@@ -779,22 +772,21 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
     if not obj or obj.object_type_id != BIO_OBJECT_TYPE_ID:
         raise HTTPException(status_code=404, detail="Биологический объект не найден")
 
-    syn_rows = (await db.execute(
-        select(ObjectNameSynonym.synonym, ObjectNameSynonym.language)
+    synonyms = (await db.execute(
+        select(ObjectNameSynonym.synonym)
         .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
         .where(object_name_synonym_link.c.object_id == object_id)
-    )).all()
-    synonyms = [{"synonym": r.synonym, "language": r.language} for r in syn_rows]
+    )).scalars().all()
 
     props = obj.object_properties or {}
     entity = {
         "id": obj.id,
         "db_id": obj.db_id,
-        "name_ru": _primary_synonym(synonyms),
-        "synonyms": synonyms,
+        "name_ru": _primary_synonym(list(synonyms)),
+        "synonyms": list(synonyms),
         "object_properties": props,
         "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
-        "scientific_name": _synonym_by_language(synonyms, "sn") or (props.get("scientific_name", "") if isinstance(props, dict) else ""),
+        "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
         "conservation_status": props.get("conservation_status", "") if isinstance(props, dict) else "",
         "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else [],
     }
@@ -1478,44 +1470,27 @@ async def _attach_geodata_to_object(db: AsyncSession, object_id: int, resource: 
     ))
 
 
-def _primary_synonym(synonyms: list[dict]) -> str:
-    """
-    Выбрать «основное» (русское) имя объекта.
-    Синонимы с language="ru" в приоритете (среди них - самый длинный, обычно
-    самый подробный); если ни одного "ru" нет - откат на самый длинный синоним
-    любого языка (старые/непомеченные записи).
-    """
+def _primary_synonym(synonyms: list[str]) -> str:
+    """Выбрать «основное» имя объекта — самый длинный синоним (обычно самый подробный)."""
     if not synonyms:
         return "Без названия"
-    ru_names = [s["synonym"] for s in synonyms if s.get("language") == "ru" and s.get("synonym")]
-    if ru_names:
-        return max(ru_names, key=len)
-    other_names = [s["synonym"] for s in synonyms if s.get("synonym")]
-    return max(other_names, key=len) if other_names else "Без названия"
+    return max(synonyms, key=len)
 
 
-def _synonym_by_language(synonyms: list[dict], language: str) -> str:
-    """Найти среди синонимов объекта первый с заданным языковым кодом (напр. "sn" - научное название)."""
-    for s in synonyms:
-        if s.get("language") == language and s.get("synonym"):
-            return s["synonym"]
-    return ""
-
-
-def _build_bio_object_properties(type_: str, subtypes: list[str],
+def _build_bio_object_properties(type_: str, subtypes: list[str], scientific_name: str | None,
                                   conservation_status: str | None, region: str | None,
                                   baikal_relation: str | None) -> dict:
     """Собрать словарь object.object_properties для биологического объекта.
 
     subtypes/region/baikal_relation - кириллица (PROP_*), как у db_importer/
     DialogService/search_api (см. tasks/normalizaciya_registra_v_katalogah.md).
-    conservation_status оставлен как есть - бот по нему не ищет.
-    Научное (латинское) название хранится не здесь, а как ObjectNameSynonym
-    с language="sn" - см. biological_save.
+    scientific_name/conservation_status оставлены как есть - бот по ним не ищет.
     """
     props: dict = {"Тип ОФФ": type_}
     if subtypes:
         props[PROP_SUBTYPES] = subtypes
+    if scientific_name:
+        props["scientific_name"] = scientific_name
     if conservation_status:
         props["conservation_status"] = conservation_status
     if region:
@@ -1617,7 +1592,7 @@ async def geographical_list(
         select(ObjectNameSynonym.synonym)
         .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
         .where(object_name_synonym_link.c.object_id == Object.id)
-        .order_by((ObjectNameSynonym.language == "ru").desc(), func.length(ObjectNameSynonym.synonym).desc())
+        .order_by(func.length(ObjectNameSynonym.synonym).desc())
         .limit(1)
         .correlate(Object)
         .scalar_subquery()
@@ -1626,7 +1601,6 @@ async def geographical_list(
     query = (
         select(Object.id, Object.db_id, Object.object_properties,
                func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
-               func.array_agg(ObjectNameSynonym.language).label("synonym_languages"),
                total_res_sq.label("total_resources"))
         .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
         .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
@@ -1701,7 +1675,7 @@ async def geographical_list(
 
     entities = []
     for row in rows:
-        synonyms = [{"synonym": t, "language": l} for t, l in zip(row.synonyms or [], row.synonym_languages or []) if t]
+        synonyms =[s for s in (row.synonyms or []) if s]
         props = row.object_properties or {}
         c = resource_counts.get(row.id, {"text": 0, "image": 0, "geo": 0})
         entities.append({
@@ -1847,18 +1821,17 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
     if not obj or obj.object_type_id != GEO_OBJECT_TYPE_ID:
         raise HTTPException(status_code=404, detail="Достопримечательность не найдена")
 
-    syn_rows = (await db.execute(
-        select(ObjectNameSynonym.synonym, ObjectNameSynonym.language)
+    synonyms = (await db.execute(
+        select(ObjectNameSynonym.synonym)
         .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
         .where(object_name_synonym_link.c.object_id == object_id)
-    )).all()
-    synonyms = [{"synonym": r.synonym, "language": r.language} for r in syn_rows]
+    )).scalars().all()
 
     entity = {
         "id": obj.id,
         "db_id": obj.db_id,
-        "name_ru": _primary_synonym(synonyms),
-        "synonyms": synonyms,
+        "name_ru": _primary_synonym(list(synonyms)),
+        "synonyms": list(synonyms),
         "object_properties": obj.object_properties or {},
         "subtypes": (obj.object_properties or {}).get(PROP_SUBTYPES, []),
         "feature_data": obj.object_properties or {},
@@ -2432,7 +2405,7 @@ async def service_list(
         select(ObjectNameSynonym.synonym)
         .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
         .where(object_name_synonym_link.c.object_id == Object.id)
-        .order_by((ObjectNameSynonym.language == "ru").desc(), func.length(ObjectNameSynonym.synonym).desc())
+        .order_by(func.length(ObjectNameSynonym.synonym).desc())
         .limit(1)
         .correlate(Object)
         .scalar_subquery()
@@ -2440,7 +2413,6 @@ async def service_list(
     query = (
         select(Object.id, Object.db_id, Object.object_properties,
                func.array_agg(ObjectNameSynonym.synonym).label("synonyms"),
-               func.array_agg(ObjectNameSynonym.language).label("synonym_languages"),
                total_res_sq.label("total_resources"))
         .join(object_name_synonym_link, object_name_synonym_link.c.object_id == Object.id, isouter=True)
         .join(ObjectNameSynonym, ObjectNameSynonym.id == object_name_synonym_link.c.synonym_id, isouter=True)
@@ -2507,7 +2479,7 @@ async def service_list(
 
     entities = []
     for row in rows:
-        synonyms = [{"synonym": t, "language": l} for t, l in zip(row.synonyms or [], row.synonym_languages or []) if t]
+        synonyms = [s for s in (row.synonyms or []) if s]
         props = row.object_properties or {}
         c = resource_counts.get(row.id, {"text": 0, "image": 0, "geo": 0})
         entities.append({
@@ -2627,17 +2599,16 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
     obj = (await db.execute(select(Object).where(Object.id == object_id))).scalar()
     if not obj or obj.object_type_id != SERVICE_OBJECT_TYPE_ID:
         raise HTTPException(status_code=404, detail="Услуга не найдена")
-    syn_rows = (await db.execute(
-        select(ObjectNameSynonym.synonym, ObjectNameSynonym.language)
+    synonyms = (await db.execute(
+        select(ObjectNameSynonym.synonym)
         .join(object_name_synonym_link, object_name_synonym_link.c.synonym_id == ObjectNameSynonym.id)
         .where(object_name_synonym_link.c.object_id == object_id)
-    )).all()
-    synonyms = [{"synonym": r.synonym, "language": r.language} for r in syn_rows]
+    )).scalars().all()
     entity = {
         "id": obj.id,
         "db_id": obj.db_id,
-        "name_ru": _primary_synonym(synonyms),
-        "synonyms": synonyms,
+        "name_ru": _primary_synonym(list(synonyms)),
+        "synonyms": list(synonyms),
         "object_properties": obj.object_properties or {},
         "subtypes": (obj.object_properties or {}).get(PROP_SUBTYPES, []),
         "feature_data": obj.object_properties or {},
@@ -3210,7 +3181,7 @@ async def _load_object_links(db: AsyncSession, object_id: int) -> list:
         JOIN eco_assistant.object_name_synonym ons ON ons.id = onsl.synonym_id
         JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
         WHERE o.id = ANY(:ids)
-        ORDER BY o.id, (ons.language = 'ru') DESC, LENGTH(ons.synonym) ASC
+        ORDER BY o.id, LENGTH(ons.synonym) ASC
     """), {"ids": linked_ids})
     seen: set[int] = set()
     names: dict[int, dict] = {}
@@ -3338,7 +3309,7 @@ async def object_link_add(
         JOIN eco_assistant.object_name_synonym ons ON ons.id = onsl.synonym_id
         JOIN eco_assistant.object_type ot ON ot.id = o.object_type_id
         WHERE o.id = :rid
-        ORDER BY (ons.language = 'ru') DESC, LENGTH(ons.synonym) DESC LIMIT 1
+        ORDER BY LENGTH(ons.synonym) DESC LIMIT 1
     """), {"rid": related_id})).first()
     return {
         "ok": True,
