@@ -1,243 +1,357 @@
-# Отчёт о реализации поддержки `is_multiple` для свойств объектов
+# Отчёт: Реализация множественного выбора свойств (is_multiple)
 
-## 1. Описание задачи
+## 1. Назначение
 
-Добавить возможность выбора нескольких значений для свойства объекта (флаг `is_multiple` в таблице `object_property`). Если флаг `true` — в модалке редактирования свойств объекта отображается chip-UI (аналогично подтипам), позволяющий выбрать несколько значений из справочника. Если `false` — обычный select/input.
+Флаг `is_multiple` у свойства в каталоге определяет, может ли объект иметь **несколько значений** для этого свойства или только **одно**.
 
----
-
-## 2. Изменённые файлы
-
-### 2.1. Модель: [`AdminPanel/models/eco_assistant_models.py`](AdminPanel/models/eco_assistant_models.py:487)
-
-Добавлено поле `is_multiple` в класс `ObjectProperty`:
-
-```python
-is_multiple = Column(Boolean, default=False, server_default='false', nullable=False,
-                     doc='Флаг: можно ли выбрать несколько значений для этого свойства')
-```
-
-Импорт `Boolean` добавлен в начало файла.
+- `is_multiple = true` — объект может хранить массив значений (например, `["Значение1", "Значение2"]`)
+- `is_multiple = false` — объект хранит только одно значение (скаляр, строка)
 
 ---
 
-### 2.2. Бэкенд: [`AdminPanel/main.py`](AdminPanel/main.py)
+## 2. Где настраивается
 
-#### 2.2.1. Добавление `is_multiple` в словарь `available_properties`
+Управление флагом находится на странице **«Каталог свойств»** (`/admin/properties`).
 
-Во всех трёх роутах (biological, geographical, service) в словарь свойства добавлено поле `is_multiple`:
+В модалке редактирования свойства есть переключатель **«Множественный выбор»**:
 
-```python
-available_properties = [
-    {
-        "name": p.name,
-        "json_key": p.json_key,
-        "values": p.values,
-        "is_multiple": p.is_multiple,  # <-- добавлено
-    }
-    for p in props
-    if p.object_type_id == object_type_id
-]
-```
+- Включён (`true`) — при редактировании объекта это свойство отображается как **chip-UI** (можно добавить несколько значений)
+- Выключен (`false`) — при редактировании объекта это свойство отображается как **select/dropdown** (одиночный выбор)
 
-Строки:
-- [`biological_edit`](AdminPanel/main.py:883)
-- [`geographical_edit`](AdminPanel/main.py:1974)
-- [`service_edit`](AdminPanel/main.py:2736)
+---
 
-#### 2.2.2. Эндпоинт редактирования свойства в каталоге
+## 3. Переключение is_multiple в каталоге свойств
 
-[`/properties/{prop_id}/edit`](AdminPanel/main.py:3666) — добавлен приём и сохранение `is_multiple`:
+### Бэкенд: `POST /properties/{prop_id}/update_settings`
+
+При переключении флага:
+
+- Флаг **моментально сохраняется** в базе данных
+- **Данные объектов не изменяются** — если у объекта был массив значений, он остаётся массивом
+- Модалка редактирования свойства **остаётся открытой**
+- Предупреждение о потере данных **не показывается**
 
 ```python
-@app.post("/properties/{prop_id}/edit")
-async def properties_edit(
+@app.post("/properties/{prop_id}/update_settings")
+async def properties_update_settings(
     request: Request,
     prop_id: int,
-    property_values: str = Form(""),
-    is_multiple: str = Form("false"),  # <-- добавлено
+    data: dict = Body(...),
     db: AsyncSession = Depends(get_db),
 ):
-    ...
-    prop.is_multiple = (is_multiple == "true")  # <-- добавлено
+    """
+    Обновление настроек свойства (is_multiple).
+    Флаг меняется без изменения данных объектов — массив значений сохраняется как есть.
+    При редактировании объекта бэкенд сам решает, заменять массив на скаляр.
+    """
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+
+    prop = (await db.execute(
+        select(ObjectProperty).where(ObjectProperty.id == prop_id)
+    )).scalar()
+    if not prop:
+        return {"ok": False, "error": "not found"}
+
+    new_is_multiple = data.get("is_multiple", False)
+
+    # Просто меняем флаг, не трогая данные объектов
+    prop.is_multiple = new_is_multiple
+    await db.commit()
+    return {"ok": True}
 ```
 
-#### 2.2.3. Эндпоинты `set_property` (все три)
+### Фронтенд: `properties_list.html`
 
-Очистка свойства теперь работает корректно — пустая строка и пустой массив передаются на бэкенд и обрабатываются:
+Переключатель вызывает `updatePropertySettings`, который отправляет запрос без перезагрузки страницы:
 
-- [`biological_set_property`](AdminPanel/main.py:3792)
-- [`geographical_set_property`](AdminPanel/main.py:3817)
-- [`service_set_property`](AdminPanel/main.py:3842)
+```javascript
+async function updatePropertySettings(propId, isMultiple) {
+    try {
+        const resp = await fetch(`/admin/properties/${propId}/update_settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_multiple: isMultiple })
+        });
+        const data = await resp.json();
+
+        if (data.ok) {
+            // Флаг обновлён без перезагрузки — модалка редактирования остаётся открытой.
+            // Пользователь увидит изменения (chip-UI ↔ select) при следующем открытии.
+        } else {
+            alert('Ошибка: ' + (data.error || 'неизвестная'));
+        }
+    } catch(e) {
+        alert('Ошибка сети: ' + e.message);
+    }
+}
+```
 
 ---
 
-### 2.3. Шаблоны
+## 4. Отображение в модалке редактирования объекта
 
-#### 2.3.1. Модалка редактирования свойств (`editPropertiesModal`)
+При открытии карточки объекта (биологического, географического или услуги) в модалке «Свойства объекта»:
 
-Во всех трёх шаблонах добавлен блок для multiple-свойств с chip-UI:
+| Состояние свойства | Отображение |
+|---|---|
+| `is_multiple = true` | Chip-UI: можно добавлять/удалять несколько значений |
+| `is_multiple = false`, в БД скаляр | Select/dropdown: выбран текущее значение |
+| `is_multiple = false`, в БД массив | Select/dropdown: выбрано **первое значение** из массива |
 
-```jinja
-{% elif prop['values'] | length > 0 and prop.get('is_multiple') %}
-{% set prop_slug = prop.name | replace(' ', '_') %}
-<div id="prop_{{ prop_slug }}_chips" class="d-flex flex-wrap gap-1 mb-2">
-    {% set cur_val = (entity.object_properties or {}).get(prop.json_key, []) %}
-    {% if cur_val is string %}{% set cur_val = [cur_val] %}{% endif %}
-    {% for v in cur_val %}
-    <span class="badge bg-light text-dark border d-flex align-items-center gap-1" style="font-size:0.85rem;">
-        {{ v }}
-        <button type="button" class="btn-close" style="font-size:0.6rem;" onclick="removeMultipleChip(this, '{{ prop_slug }}')"></button>
-    </span>
-    {% endfor %}
-</div>
-<datalist id="prop_{{ prop_slug }}_datalist">
-    {% for v in prop['values'] %}
-    <option value="{{ v }}">
-    {% endfor %}
-</datalist>
-<div class="input-group">
-    <input type="text" class="form-control" id="prop_{{ prop_slug }}_input"
-           list="prop_{{ prop_slug }}_datalist" placeholder="Введите значение...">
-    <button class="btn btn-outline-secondary" type="button" onclick="addMultipleChip('{{ prop_slug }}')">Добавить</button>
-</div>
-```
+Если в БД у объекта для свойства с `is_multiple = false` хранится массив (например, остался от предыдущего включённого режима), то в select отображается **первый элемент** этого массива, а не «— не указано —».
 
-Файлы:
-- [`biological_edit.html`](AdminPanel/templates/biological_edit.html)
-- [`geographical_edit.html`](AdminPanel/templates/geographical_edit.html)
-- [`service_edit.html`](AdminPanel/templates/service_edit.html)
-
-#### 2.3.2. JS-функция `saveProperties`
-
-Добавлена ветка для multiple-свойств:
-
-```javascript
-{% elif prop.get('is_multiple') %}
-{
-    {% set prop_slug = prop.name | replace(' ', '_') %}
-    const chips = document.querySelectorAll('#prop_{{ prop_slug }}_chips .badge');
-    const valList = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
-    props['{{ prop.json_key }}'] = valList;
-}
-```
-
-Также исправлена очистка значений — теперь всегда передаётся значение (пустая строка или пустой массив):
-
-```javascript
+```jinja2
+{% elif prop['values'] | length > 0 %}
+{% set raw_val = (entity.object_properties or {}).get(prop.json_key, '') %}
+{% if raw_val is iterable and raw_val is not string %}
+    {% set cur_val = raw_val[0] %}
 {% else %}
-{
-    const el = document.getElementById('prop_{{ prop.name }}');
-    if (el) props['{{ prop.json_key }}'] = el.value || '';
-}
-```
-
-#### 2.3.3. Универсальные JS-функции для chip-UI
-
-Добавлены во все три шаблона:
-
-```javascript
-function addMultipleChip(slug) {
-    const input = document.getElementById('prop_' + slug + '_input');
-    const val = input.value.trim(); if (!val) return;
-    const datalist = document.getElementById('prop_' + slug + '_datalist');
-    const allowed = datalist ? Array.from(datalist.options).map(o => o.value) : [];
-    if (!allowed.includes(val)) { alert('Такого значения нет в справочнике — выберите из списка подсказок'); return; }
-    const container = document.getElementById('prop_' + slug + '_chips');
-    const existing = Array.from(container.querySelectorAll('.badge')).map(c => c.childNodes[0].textContent.trim());
-    if (existing.includes(val)) { input.value = ''; return; }
-    const span = document.createElement('span');
-    span.className = 'badge bg-light text-dark border d-flex align-items-center gap-1';
-    span.style.fontSize = '0.85rem';
-    span.innerHTML = val + ' <button type="button" class="btn-close" style="font-size:0.6rem;" onclick="removeMultipleChip(this, \'' + slug + '\')"></button>';
-    container.appendChild(span);
-    input.value = '';
-}
-
-function removeMultipleChip(btn, slug) {
-    btn.parentElement.remove();
-}
-
-function onMultipleInput(el, slug) {
-    // обработка Enter и выбор из datalist
-}
-```
-
-#### 2.3.4. Карточка объекта (левая колонка)
-
-Добавлено отображение multiple-свойств в виде списка badge-элементов:
-
-```jinja
-{% if prop.get('is_multiple') and val is not string %}
-    {% for v in val %}
-    <span class="badge bg-light text-dark border me-1 mb-1">{{ v }}</span>
-    {% endfor %}
-{% else %}
-    {{ val if val is string else (val | join(', ')) }}
+    {% set cur_val = raw_val %}
 {% endif %}
-```
-
-**Дополнительно**: добавлен фильтр `{% if prop.name != 'подтип объекта' %}`, чтобы исключить дублирование подтипа (он уже отображается отдельно через `entity.subtypes`).
-
-Файлы:
-- [`biological_edit.html`](AdminPanel/templates/biological_edit.html:117)
-- [`geographical_edit.html`](AdminPanel/templates/geographical_edit.html:103)
-- [`service_edit.html`](AdminPanel/templates/service_edit.html:100)
-
----
-
-### 2.4. Каталог свойств: [`AdminPanel/templates/properties_list.html`](AdminPanel/templates/properties_list.html)
-
-В модалку редактирования свойства (`editPropertyModal`) добавлен чекбокс `is_multiple`:
-
-```html
-<div class="form-check mb-3">
-    <input class="form-check-input" type="checkbox" id="editIsMultiple">
-    <label class="form-check-label" for="editIsMultiple">
-        Разрешить несколько значений
-    </label>
-</div>
-```
-
-В JS-функцию `openEditProperty` добавлена передача `isMultiple`:
-
-```javascript
-function openEditProperty(id, name, jsonKey, values, isMultiple) {
-    ...
-    document.getElementById('editIsMultiple').checked = isMultiple;
-    ...
-}
+<select class="form-select" id="prop_{{ prop.name }}">
+    <option value="">— не указано —</option>
+    {% for v in prop['values'] %}
+    <option value="{{ v }}" {% if cur_val == v %}selected{% endif %}>{{ v }}</option>
+    {% endfor %}
+</select>
 ```
 
 ---
 
-## 3. Настройка в БД
+## 5. Сохранение при редактировании объекта
 
-Для свойства «Географическая зона» установлен `is_multiple = true` для обоих типов объектов (id=20 и id=491).
+### Бэкенд: `POST /biological|geographical|service/{object_id}/set_property`
+
+При нажатии «Сохранить» в модалке свойств объекта:
+
+1. Фронтенд собирает **все** свойства из DOM и отправляет на сервер
+2. Бэкенд загружает каталог свойств для данного типа объекта
+3. Для каждого свойства применяется логика замены массива на скаляр
+
+```python
+@app.post("/biological/{object_id}/set_property")
+async def biological_set_property(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    obj = (await db.execute(
+        select(Object).where(Object.id == object_id, Object.object_type_id == BIO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404)
+
+    # Загружаем каталог свойств для этого типа объекта
+    catalog_props = {
+        p.property_name: p for p in (
+            await db.execute(
+                select(ObjectProperty).where(ObjectProperty.object_type_id == obj.object_type_id)
+            )
+        ).scalars().all()
+    }
+
+    current = dict(obj.object_properties or {})
+    for k, v in (data.get("properties") or {}).items():
+        if v is None or v == "" or v == []:
+            current.pop(k, None)
+        else:
+            # Находим свойство в каталоге (по вхождению ключа в property_name)
+            catalog_prop = catalog_props.get(k.lower())
+            if not catalog_prop:
+                catalog_prop = next(
+                    (p for p in catalog_props.values() if k.lower() in p.property_name.lower()),
+                    None
+                )
+
+            # Если свойство НЕ множественное, текущее значение — массив, а новое — скаляр
+            if (catalog_prop and not catalog_prop.is_multiple
+                    and isinstance(current.get(k), list)
+                    and isinstance(v, str)):
+                # Заменяем массив на скаляр (новое значение)
+                current[k] = v
+            else:
+                current[k] = v
+
+    obj.object_properties = current
+    await db.commit()
+    return {"ok": True}
+```
+
+Аналогичные обработчики для географических объектов и услуг:
+
+```python
+@app.post("/geographical/{object_id}/set_property")
+async def geographical_set_property(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    obj = (await db.execute(
+        select(Object).where(Object.id == object_id, Object.object_type_id == GEO_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404)
+
+    # Загружаем каталог свойств для этого типа объекта
+    catalog_props = {
+        p.property_name: p for p in (
+            await db.execute(
+                select(ObjectProperty).where(ObjectProperty.object_type_id == obj.object_type_id)
+            )
+        ).scalars().all()
+    }
+
+    current = dict(obj.object_properties or {})
+    for k, v in (data.get("properties") or {}).items():
+        if v is None or v == "" or v == []:
+            current.pop(k, None)
+        else:
+            catalog_prop = catalog_props.get(k.lower())
+            if not catalog_prop:
+                catalog_prop = next(
+                    (p for p in catalog_props.values() if k.lower() in p.property_name.lower()),
+                    None
+                )
+
+            if (catalog_prop and not catalog_prop.is_multiple
+                    and isinstance(current.get(k), list)
+                    and isinstance(v, str)):
+                current[k] = v
+            else:
+                current[k] = v
+
+    obj.object_properties = current
+    await db.commit()
+    return {"ok": True}
+
+
+@app.post("/service/{object_id}/set_property")
+async def service_set_property(
+    request: Request,
+    object_id: int,
+    data: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    obj = (await db.execute(
+        select(Object).where(Object.id == object_id, Object.object_type_id == SERVICE_OBJECT_TYPE_ID)
+    )).scalar()
+    if not obj:
+        raise HTTPException(status_code=404)
+
+    # Загружаем каталог свойств для этого типа объекта
+    catalog_props = {
+        p.property_name: p for p in (
+            await db.execute(
+                select(ObjectProperty).where(ObjectProperty.object_type_id == obj.object_type_id)
+            )
+        ).scalars().all()
+    }
+
+    current = dict(obj.object_properties or {})
+    for k, v in (data.get("properties") or {}).items():
+        if v is None or v == "" or v == []:
+            current.pop(k, None)
+        else:
+            catalog_prop = catalog_props.get(k.lower())
+            if not catalog_prop:
+                catalog_prop = next(
+                    (p for p in catalog_props.values() if k.lower() in p.property_name.lower()),
+                    None
+                )
+
+            if (catalog_prop and not catalog_prop.is_multiple
+                    and isinstance(current.get(k), list)
+                    and isinstance(v, str)):
+                current[k] = v
+            else:
+                current[k] = v
+
+    obj.object_properties = current
+    await db.commit()
+    return {"ok": True}
+```
+
+**Ключевое условие замены массива на скаляр:**
+
+```
+ЕСЛИ в каталоге is_multiple = false
+  И в БД текущее значение — массив
+  И новое значение — строка (скаляр)
+ТО массив заменяется на скаляр (новое значение)
+ИНАЧЕ значение сохраняется как есть
+```
+
+Если пользователь не менял свойство, оно отправляется как есть (массив остаётся массивом). Замена массива на скаляр происходит **только** когда пользователь явно выбрал новое значение в select.
 
 ---
 
-## 4. Проблемы, возникшие в процессе
+## 6. Сценарии использования
 
-| Проблема | Причина | Решение |
-|----------|---------|---------|
-| 502 Bad Gateway | Не импортирован `Boolean` в модели | Добавлен импорт |
-| Колонка называлась `is_muliple` | Опечатка в имени колонки | Переименована в `is_multiple` |
-| Docker не подхватывал изменения | `COPY . .` — требуется пересборка | `docker compose build admin` |
-| Нельзя было очистить select/input | Условие `if (el.value)` не передавало пустую строку | Убрана проверка, всегда передаётся значение |
-| Нельзя было очистить multiple/подтипы | Условие `if (valList.length > 0)` не передавало пустой массив | Убрана проверка, всегда передаётся массив |
-| Подтип дублировался на карточке | Цикл выводил все свойства включая «подтип объекта» | Добавлен `{% if prop.name != 'подтип объекта' %}` |
+### Сценарий А: Отключение множественного выбора
+
+1. Администратор заходит в каталог свойств
+2. Открывает редактирование свойства, у которого `is_multiple = true`
+3. Выключает переключатель «Множественный выбор»
+4. Флаг сохраняется, модалка не закрывается
+5. У всех объектов этого типа массив значений **сохраняется как есть**
+
+### Сценарий Б: Редактирование объекта после отключения
+
+1. Администратор открывает карточку объекта
+2. В модалке свойств видит select с выбранным **первым значением** из старого массива
+3. Если администратор **выбирает новое значение** в select и сохраняет:
+   - Массив заменяется на новое значение (скаляр)
+4. Если администратор **не меняет** значение и сохраняет:
+   - Массив остаётся как есть
+
+### Сценарий В: Повторное включение множественного выбора
+
+1. Администратор снова включает `is_multiple = true`
+2. При редактировании объекта свойство снова отображается как chip-UI
+3. Если в БД был массив — он отображается в chip-ах
+4. Если в БД был скаляр — он отображается как один chip
 
 ---
 
-## 5. Итог
+## 7. Схема потока данных
 
-Реализована полная поддержка флага `is_multiple` для свойств объектов:
+```
+┌──────────────┐     Переключает is_multiple     ┌──────────────────┐
+│ Администратор │ ──────────────────────────────> │ Каталог свойств  │
+└──────────────┘                                   └────────┬─────────┘
+       │                                                    │
+       │ Открывает объект                                    │ Сохраняет флаг
+       ▼                                                    ▼
+┌──────────────────┐                                ┌──────────────────┐
+│ Модалка свойств  │                                │      БД          │
+│ объекта          │ <───────────────────────────── │                  │
+└────────┬─────────┘   is_multiple=false, в БД массив └──────────────────┘
+         │
+         │ Выбирает новое значение и сохраняет
+         ▼
+┌──────────────────┐     is_multiple=false          ┌──────────────────┐
+│   set_property   │ ─────────────────────────────> │      БД          │
+│                  │     массив → скаляр            │  (обновлено)     │
+└──────────────────┘                                └──────────────────┘
+```
 
-- **Модель**: новое поле `is_multiple` (Boolean)
-- **Бэкенд**: флаг передаётся в `available_properties`, сохраняется через `properties_edit`
-- **Модалка**: chip-UI для multiple-свойств, select/input для обычных
-- **JS**: универсальные функции `addMultipleChip`, `removeMultipleChip`, `onMultipleInput`
-- **Сохранение**: корректная очистка значений (пустая строка / пустой массив)
-- **Карточка**: отображение multiple-значений списком badge, подтип не дублируется
-- **Каталог свойств**: чекбокс `is_multiple` в модалке редактирования
+---
+
+## 8. Сравнение: было / стало
+
+| Аспект | Было | Стало |
+|---|---|---|
+| Отключение is_multiple | Предупреждение + обрезание массивов | Только смена флага |
+| Данные объектов при отключении | Обрезались до первого элемента | Не изменяются |
+| Модалка каталога при переключении | Закрывалась (reload) | Остаётся открытой |
+| Select при массиве в БД | Показывал «— не указано —» | Показывает первый элемент массива |
+| Замена массива на скаляр | При отключении is_multiple для всех объектов | Только при явном изменении значения в конкретном объекте |

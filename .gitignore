@@ -113,3 +113,5 @@ compose.full.yml
 CLAUDE.md
 tasks/
 /take_screenshot.py
+plans/multiple-properties-behavior-plan.md
+plans/multiple-properties-report.md

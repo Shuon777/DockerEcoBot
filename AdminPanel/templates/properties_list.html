@@ -462,21 +462,13 @@ async function updatePropertySettings(propId, isMultiple) {
         const resp = await fetch(`/admin/properties/${propId}/update_settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_multiple: isMultiple, confirmed: false })
+            body: JSON.stringify({ is_multiple: isMultiple })
         });
         const data = await resp.json();
 
-        if (data.warning && data.affected_count > 0) {
-            // Показываем модалку подтверждения
-            showConfirmModal(propId, isMultiple, data.message, data.affected_count);
-        } else if (data.ok) {
-            // При включении множественного выбора (false → true) — не делаем reload,
-            // чтобы пользователь не вылетел из модалки редактирования.
-            // При отключении без затронутых объектов (affected_count = 0) — reload.
-            if (!isMultiple) {
-                window.location.reload();
-            }
-            // Если isMultiple === true — просто обновили флаг, остаёмся в модалке
+        if (data.ok) {
+            // Флаг обновлён без перезагрузки — модалка редактирования остаётся открытой.
+            // Пользователь увидит изменения (chip-UI ↔ select) при следующем открытии.
         } else {
             alert('Ошибка: ' + (data.error || 'неизвестная'));
         }
@@ -484,67 +476,5 @@ async function updatePropertySettings(propId, isMultiple) {
         alert('Ошибка сети: ' + e.message);
     }
 }
-
-function showConfirmModal(propId, isMultiple, message, affectedCount) {
-    document.getElementById('confirmModalMessage').textContent = message;
-    document.getElementById('confirmModalAffected').textContent =
-        'Затронуто объектов: ' + affectedCount;
-
-    document.getElementById('confirmModalYes').onclick = async function() {
-        try {
-            const resp = await fetch(`/admin/properties/${propId}/update_settings`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ is_multiple: isMultiple, confirmed: true })
-            });
-            const data = await resp.json();
-            if (data.ok) {
-                window.location.reload();
-            } else {
-                alert('Ошибка: ' + (data.error || 'неизвестная'));
-            }
-        } catch(e) {
-            alert('Ошибка сети: ' + e.message);
-        }
-        bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
-    };
-
-    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
-
-    // При скрытии модалки (отмена, клик по backdrop, Esc) — возвращаем чекбокс в true
-    // ВАЖНО: отключаем onchange перед возвратом, чтобы не вызвать рекурсивный updatePropertySettings
-    document.getElementById('confirmModal').addEventListener('hidden.bs.modal', function() {
-        const cb = document.getElementById('editIsMultiple');
-        cb.removeAttribute('onchange');
-        cb.checked = true;
-        cb.setAttribute('onchange', 'updatePropertySettings(currentEditPropId, this.checked)');
-    }, { once: true });
-
-    modal.show();
-}
 </script>
-
-<!-- ===== Модальное окно подтверждения смены is_multiple ===== -->
-<div class="modal fade" id="confirmModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border-radius: 16px;">
-            <div class="modal-header border-0">
-                <h5 class="modal-title fw-bold text-warning">
-                    <i class="bi bi-exclamation-triangle"></i> Подтверждение
-                </h5>
-                <!-- Крестик убран по требованию -->
-            </div>
-            <div class="modal-body">
-                <p id="confirmModalMessage" class="mb-2"></p>
-                <p id="confirmModalAffected" class="fw-bold text-danger mb-0"></p>
-            </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Отмена</button>
-                <button type="button" class="btn btn-warning fw-bold" id="confirmModalYes">
-                    Да, продолжить
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}

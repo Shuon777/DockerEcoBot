@@ -3709,11 +3709,9 @@ async def properties_update_settings(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Обновление настроек свойства (is_multiple) с защитой от потери данных.
-
-    При смене is_multiple с true на false:
-    - Если confirmed=false: подсчитывает объекты с >1 значением и возвращает warning
-    - Если confirmed=true: обрезает массивы значений до первого элемента и обновляет флаг
+    Обновление настроек свойства (is_multiple).
+    Флаг меняется без изменения данных объектов — массив значений сохраняется как есть.
+    При редактировании объекта бэкенд сам решает, заменять массив на скаляр.
     """
     if not request.session.get("user_id"):
         return {"ok": False, "error": "unauthorized"}
@@ -3725,103 +3723,8 @@ async def properties_update_settings(
         return {"ok": False, "error": "not found"}
 
     new_is_multiple = data.get("is_multiple", False)
-    confirmed = data.get("confirmed", False)
 
-    # Смена с true на false — требуется проверка и возможная обрезка данных
-    if prop.is_multiple and not new_is_multiple:
-        # Определяем реальный JSON-ключ в object_properties (с учётом регистра)
-        json_key = prop.property_name  # в каталоге всегда нижний регистр
-
-        # 1. Ищем точное совпадение ключа
-        real_key_row = await db.execute(sql_text("""
-            SELECT DISTINCT jsonb_object_keys(object_properties) AS key
-            FROM eco_assistant.object
-            WHERE object_type_id = :otid
-              AND object_properties ? :pname
-            LIMIT 1
-        """), {"otid": prop.object_type_id, "pname": json_key})
-        real_key = real_key_row.scalar()
-
-        # 2. Если не нашли — ищем по lower-case с LIKE (разный регистр ключей,
-        #    например property_name='вид_ru' а ключ 'Вид (русское название)')
-        if not real_key:
-            real_key_row = await db.execute(sql_text("""
-                SELECT DISTINCT key
-                FROM eco_assistant.object o,
-                     jsonb_object_keys(o.object_properties) AS key
-                WHERE o.object_type_id = :otid
-                  AND LOWER(key) LIKE '%' || :pname || '%'
-                LIMIT 1
-            """), {"otid": prop.object_type_id, "pname": json_key})
-            real_key = real_key_row.scalar()
-
-        actual_key = real_key if real_key else json_key
-
-        # Подсчёт объектов, у которых есть значение для этого свойства
-        # (считаем любые объекты, где ключ существует — не только массивы >1)
-        count_row = await db.execute(sql_text("""
-            SELECT COUNT(*) AS cnt
-            FROM eco_assistant.object
-            WHERE object_type_id = :otid
-              AND object_properties ? :key
-        """), {"otid": prop.object_type_id, "key": actual_key})
-        affected_count = count_row.scalar() or 0
-
-        if not confirmed:
-            if affected_count > 0:
-                # Возвращаем предупреждение без изменений
-                return {
-                    "ok": True,
-                    "warning": True,
-                    "affected_count": affected_count,
-                    "message": (
-                        f"При отключении множественного выбора значения свойства "
-                        f"«{prop.property_name}» будут утеряны у {affected_count} объектов. "
-                        f"Для каждого объекта останется только первое (старое) значение. Продолжить?"
-                    ),
-                }
-            # Если affected_count = 0 — просто обновляем флаг, без предупреждения
-            else:
-                prop.is_multiple = new_is_multiple
-                await db.commit()
-                return {"ok": True}
-
-        # Подтверждено: обрезаем массивы до первого элемента
-        if affected_count > 0:
-            await db.execute(sql_text("""
-                UPDATE eco_assistant.object
-                SET object_properties = jsonb_set(
-                    object_properties,
-                    ARRAY[:key],
-                    CASE
-                        WHEN jsonb_typeof(object_properties -> :key) = 'array'
-                             AND CAST(
-                                 jsonb_array_length(
-                                     CASE WHEN jsonb_typeof(object_properties -> :key) = 'array'
-                                          THEN object_properties -> :key
-                                          ELSE '[]'::jsonb
-                                     END
-                                 ) AS integer
-                             ) > 0
-                        THEN object_properties -> :key -> 0
-                        ELSE object_properties -> :key
-                    END,
-                    false
-                )
-                WHERE object_type_id = :otid
-                  AND object_properties ? :key
-                  AND jsonb_typeof(object_properties -> :key) = 'array'
-                  AND CAST(
-                      jsonb_array_length(
-                          CASE WHEN jsonb_typeof(object_properties -> :key) = 'array'
-                               THEN object_properties -> :key
-                               ELSE '[]'::jsonb
-                          END
-                      ) AS integer
-                  ) > 1
-            """), {"otid": prop.object_type_id, "key": actual_key})
-
-    # Обновляем флаг is_multiple
+    # Просто меняем флаг, не трогая данные объектов
     prop.is_multiple = new_is_multiple
     await db.commit()
     return {"ok": True}
@@ -3918,12 +3821,38 @@ async def biological_set_property(
     )).scalar()
     if not obj:
         raise HTTPException(status_code=404)
+
+    # Загружаем каталог свойств для этого типа объекта
+    catalog_props = {
+        p.property_name: p for p in (
+            await db.execute(
+                select(ObjectProperty).where(ObjectProperty.object_type_id == obj.object_type_id)
+            )
+        ).scalars().all()
+    }
+
     current = dict(obj.object_properties or {})
     for k, v in (data.get("properties") or {}).items():
         if v is None or v == "" or v == []:
             current.pop(k, None)
         else:
-            current[k] = v
+            # Находим свойство в каталоге (по вхождению ключа в property_name)
+            catalog_prop = catalog_props.get(k.lower())
+            if not catalog_prop:
+                catalog_prop = next(
+                    (p for p in catalog_props.values() if k.lower() in p.property_name.lower()),
+                    None
+                )
+
+            # Если свойство НЕ множественное, текущее значение — массив, а новое — скаляр
+            if (catalog_prop and not catalog_prop.is_multiple
+                    and isinstance(current.get(k), list)
+                    and isinstance(v, str)):
+                # Заменяем массив на скаляр (новое значение)
+                current[k] = v
+            else:
+                current[k] = v
+
     obj.object_properties = current
     await db.commit()
     return {"ok": True}
@@ -3943,12 +3872,38 @@ async def geographical_set_property(
     )).scalar()
     if not obj:
         raise HTTPException(status_code=404)
+
+    # Загружаем каталог свойств для этого типа объекта
+    catalog_props = {
+        p.property_name: p for p in (
+            await db.execute(
+                select(ObjectProperty).where(ObjectProperty.object_type_id == obj.object_type_id)
+            )
+        ).scalars().all()
+    }
+
     current = dict(obj.object_properties or {})
     for k, v in (data.get("properties") or {}).items():
         if v is None or v == "" or v == []:
             current.pop(k, None)
         else:
-            current[k] = v
+            # Находим свойство в каталоге (по вхождению ключа в property_name)
+            catalog_prop = catalog_props.get(k.lower())
+            if not catalog_prop:
+                catalog_prop = next(
+                    (p for p in catalog_props.values() if k.lower() in p.property_name.lower()),
+                    None
+                )
+
+            # Если свойство НЕ множественное, текущее значение — массив, а новое — скаляр
+            if (catalog_prop and not catalog_prop.is_multiple
+                    and isinstance(current.get(k), list)
+                    and isinstance(v, str)):
+                # Заменяем массив на скаляр (новое значение)
+                current[k] = v
+            else:
+                current[k] = v
+
     obj.object_properties = current
     await db.commit()
     return {"ok": True}
@@ -3968,12 +3923,38 @@ async def service_set_property(
     )).scalar()
     if not obj:
         raise HTTPException(status_code=404)
+
+    # Загружаем каталог свойств для этого типа объекта
+    catalog_props = {
+        p.property_name: p for p in (
+            await db.execute(
+                select(ObjectProperty).where(ObjectProperty.object_type_id == obj.object_type_id)
+            )
+        ).scalars().all()
+    }
+
     current = dict(obj.object_properties or {})
     for k, v in (data.get("properties") or {}).items():
         if v is None or v == "" or v == []:
             current.pop(k, None)
         else:
-            current[k] = v
+            # Находим свойство в каталоге (по вхождению ключа в property_name)
+            catalog_prop = catalog_props.get(k.lower())
+            if not catalog_prop:
+                catalog_prop = next(
+                    (p for p in catalog_props.values() if k.lower() in p.property_name.lower()),
+                    None
+                )
+
+            # Если свойство НЕ множественное, текущее значение — массив, а новое — скаляр
+            if (catalog_prop and not catalog_prop.is_multiple
+                    and isinstance(current.get(k), list)
+                    and isinstance(v, str)):
+                # Заменяем массив на скаляр (новое значение)
+                current[k] = v
+            else:
+                current[k] = v
+
     obj.object_properties = current
     await db.commit()
     return {"ok": True}

@@ -916,10 +916,16 @@
                         <button class="btn btn-outline-secondary" type="button" onclick="addMultipleChip('{{ prop_slug }}')">Добавить</button>
                     </div>
                     {% elif prop['values'] | length > 0 %}
+                    {% set raw_val = (entity.object_properties or {}).get(prop.json_key, '') %}
+                    {% if raw_val is iterable and raw_val is not string %}
+                        {% set cur_val = raw_val[0] %}
+                    {% else %}
+                        {% set cur_val = raw_val %}
+                    {% endif %}
                     <select class="form-select" id="prop_{{ prop.name }}">
                         <option value="">— не указано —</option>
                         {% for v in prop['values'] %}
-                        <option value="{{ v }}" {% if (entity.object_properties or {}).get(prop.json_key) == v %}selected{% endif %}>{{ v }}</option>
+                        <option value="{{ v }}" {% if cur_val == v %}selected{% endif %}>{{ v }}</option>
                         {% endfor %}
                     </select>
                     {% else %}
