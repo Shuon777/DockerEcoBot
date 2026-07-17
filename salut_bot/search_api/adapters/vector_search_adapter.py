@@ -24,7 +24,6 @@ class VectorSearchAdapter(VectorSearchPort):
 
     def search(self, query: str, object_type: str, limit: int) -> List[Dict[str, Any]]:
         service = self._get_service()
-        service.faiss_index_path = self._faiss_index_path
         service.load_faiss_index()
         
         return service.vector_search_fallback(

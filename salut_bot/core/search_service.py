@@ -395,7 +395,7 @@ class SearchService:
             logger.error(f"❌ Ошибка при реранке: {str(e)}")
             reranked_results = faiss_results
 
-        if object_type != "all":
+        if object_type and object_type != "all" and object_type.lower() != "none":
             target_type = self._normalize_object_type(object_type)
             filtered_by_type = []
 
