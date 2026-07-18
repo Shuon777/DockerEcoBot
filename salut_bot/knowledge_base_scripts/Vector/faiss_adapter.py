@@ -269,6 +269,11 @@ class TextResourceIndexer:
             if description:
                 parts.append(description)
         
+        # Для изображений используем только common_name (название)
+        # Ссылка на файл сохраняется в метаданных FAISS как file_path
+        elif resource.get('type') == 'Изображение':
+            pass  # common_name уже добавлен выше
+        
         # Объединяем всё: Название. Описание
         if len(parts) == 2:
             # Если есть и название и описание, соединяем их через точку
@@ -303,16 +308,19 @@ class TextResourceIndexer:
         
         text_count = 0
         geo_count = 0
+        image_count = 0
         documents = []
         
         for i, resource in enumerate(resources):
             resource_type = resource.get('type', 'Неизвестно')
             
-            # Фильтруем только текстовые ресурсы
+            # Индексируем текстовые ресурсы, географические объекты и изображения
             if resource_type == 'Текст':
                 text_count += 1
             elif resource_type == 'Географический объект':
                 geo_count += 1
+            elif resource_type == 'Изображение':
+                image_count += 1
             else:
                 continue
             
@@ -346,9 +354,18 @@ class TextResourceIndexer:
                 identificator = resource.get('identificator', {})
                 name_info = identificator.get('name', {})
                 
+                # Определяем modality_type и file_path для изображений
+                modality_type = "Изображение" if resource_type == "Изображение" else "Текст"
+                file_path = None
+                if resource_type == "Изображение":
+                    access = resource.get('access_options', {})
+                    feature_photo = resource.get('featurePhoto', {})
+                    file_path = access.get('file_path') or feature_photo.get('file_path')
+                
                 metadata = {
                     "resource_id": identificator.get('id', f'unknown_{i}'),
                     "resource_type": resource_type,
+                    "modality_type": modality_type,
                     "source": name_info.get('source', ''),
                     "common_name": name_info.get('common', ''),
                     "scientific_name": name_info.get('scientific', ''),
@@ -357,6 +374,8 @@ class TextResourceIndexer:
                     "original_length": len(chunk_text),
                     "full_text": full_text[:500] + "..." if len(full_text) > 500 else full_text  # Сохраняем для отладки
                 }
+                if file_path:
+                    metadata["file_path"] = file_path
                 
                 # Создаем документ
                 doc = Document(
@@ -372,6 +391,7 @@ class TextResourceIndexer:
         print(f"\nСтатистика обработки:")
         print(f"  Текстовых ресурсов: {text_count}")
         print(f"  Географических объектов: {geo_count}")
+        print(f"  Изображений: {image_count}")
         print(f"  Всего создано чанков: {len(documents)}")
         
         # Анализируем размеры чанков
