@@ -85,7 +85,8 @@
                     {% endif %}
                     {% if entity.subtypes %}
                     <div class="mt-2">
-                        {% for s in entity.subtypes %}
+                        {% set subtypes_list = entity.subtypes if entity.subtypes is not string else [entity.subtypes] %}
+                        {% for s in subtypes_list %}
                         <span class="badge bg-light border text-secondary me-1 mb-1" style="font-size:0.75rem;">{{ s }}</span>
                         {% endfor %}
                     </div>
@@ -931,22 +932,7 @@
                 {% for prop in available_properties %}
                 <div class="mb-3">
                     <label class="form-label fw-bold small text-secondary">{{ prop.name | upper }}</label>
-                    {% if prop.name == 'подтип объекта' %}
-                    <div id="subtypes-chips" class="d-flex flex-wrap gap-1 mb-2">
-                        {% set cur_sub = (entity.object_properties or {}).get('Подтип объекта', []) %}
-                        {% if cur_sub is string %}{% set cur_sub = [cur_sub] %}{% endif %}
-                        {% for s in cur_sub %}
-                        <span class="badge bg-light text-dark border d-flex align-items-center gap-1" style="font-size:0.85rem;">
-                            {{ s }}
-                            <button type="button" class="btn-close" style="font-size:0.6rem;" onclick="removeSubtypeChip(this)"></button>
-                        </span>
-                        {% endfor %}
-                    </div>
-                    <div class="input-group">
-                        <input type="text" class="form-control" id="subtypesInput" placeholder="Начните вводить для поиска..." list="subtypes-datalist" oninput="onSubtypeInput(this)" onkeydown="if(event.key==='Enter'){addSubtypeChip();event.preventDefault()}">
-                        <button class="btn btn-outline-secondary" type="button" onclick="addSubtypeChip()">Добавить</button>
-                    </div>
-                    {% elif prop['values'] | length > 0 and prop.get('is_multiple') %}
+                    {% if prop['values'] | length > 0 and prop.get('is_multiple') %}
                     {# Множественный выбор через chip-UI #}
                     {% set prop_slug = prop.name | replace(' ', '_') %}
                     <div id="prop_{{ prop_slug }}_chips" class="d-flex flex-wrap gap-1 mb-2">
@@ -1599,13 +1585,7 @@ async function saveResourceFeatures(resourceId) {
 async function saveProperties(objectId) {
     const props = {};
     {% for prop in available_properties %}
-    {% if prop.name == 'подтип объекта' %}
-    {
-        const chips = document.querySelectorAll('#subtypes-chips .badge');
-        const subtypesList = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
-        props['Подтип объекта'] = subtypesList;
-    }
-    {% elif prop.get('is_multiple') %}
+    {% if prop.get('is_multiple') %}
     {
         {% set prop_slug = prop.name | replace(' ', '_') %}
         const chips = document.querySelectorAll('#prop_{{ prop_slug }}_chips .badge');

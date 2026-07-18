@@ -811,7 +811,7 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
         "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
         "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
         "conservation_status": props.get("conservation_status", "") if isinstance(props, dict) else "",
-        "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else [],
+        "subtypes": _normalize_subtypes(props) if isinstance(props, dict) else [],
     }
 
     texts_q = (
@@ -1247,6 +1247,20 @@ def _resolve_json_key(object_properties: dict | None, catalog_name: str) -> str:
         if k.strip().lower() == target:
             return k
     return catalog_name
+
+
+def _normalize_subtypes(object_properties: dict | None) -> list:
+    """Извлечь subtypes из object_properties с учётом реального регистра ключа.
+    Если ключ в JSONB отличается от PROP_SUBTYPES регистром (например,
+    'подтип объекта' вместо 'Подтип объекта'), обычный get() не найдёт значение.
+    _resolve_json_key ищет по strip().lower(), что решает проблему."""
+    if not object_properties:
+        return []
+    real_key = _resolve_json_key(object_properties, PROP_SUBTYPES)
+    val = object_properties.get(real_key, [])
+    if isinstance(val, str):
+        return [val]
+    return list(val) if val else []
 
 
 async def get_property_counts(db: AsyncSession, object_type_id: int, property_name: str,
@@ -1723,7 +1737,7 @@ async def geographical_list(
             "name_ru": _primary_synonym(synonyms),
             "synonyms": synonyms,
             "object_properties": props,
-            "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else[],
+            "subtypes": _normalize_subtypes(props) if isinstance(props, dict) else [],
             "text_count": c["text"],
             "image_count": c["image"],
             "geo_count": c["geo"],
@@ -1878,7 +1892,7 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
         "name_ru": _primary_synonym(list(synonyms), obj.object_properties or {}),
         "synonyms": list(synonyms),
         "object_properties": obj.object_properties or {},
-        "subtypes": (obj.object_properties or {}).get(PROP_SUBTYPES, []),
+        "subtypes": _normalize_subtypes(obj.object_properties or {}),
         "feature_data": obj.object_properties or {},
     }
 
@@ -2534,7 +2548,7 @@ async def service_list(
             "name_ru": _primary_synonym(synonyms),
             "synonyms": synonyms,
             "object_properties": props,
-            "subtypes": props.get(PROP_SUBTYPES, []) if isinstance(props, dict) else [],
+            "subtypes": _normalize_subtypes(props) if isinstance(props, dict) else [],
             "text_count": c["text"],
             "image_count": c["image"],
             "geo_count": c["geo"],
@@ -2669,7 +2683,7 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
         "name_ru": _primary_synonym(list(synonyms), obj.object_properties or {}),
         "synonyms": list(synonyms),
         "object_properties": obj.object_properties or {},
-        "subtypes": (obj.object_properties or {}).get(PROP_SUBTYPES, []),
+        "subtypes": _normalize_subtypes(obj.object_properties or {}),
         "feature_data": obj.object_properties or {},
     }
     texts_q = (
