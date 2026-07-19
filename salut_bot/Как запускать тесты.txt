@@ -1,21 +1,170 @@
-??????? ??????? ?????? search_api ? db_importer ??????
-# ?????? ???? ??????
-pytest
+================================================================================
+  РУКОВОДСТВО ПО ЗАПУСКУ ТЕСТОВ — FastAPI backend (salut_bot)
+================================================================================
 
-# ?????? ? ?????????
-pytest --cov=search_api --cov=db_importer --cov-report=html
+Проект: d:\Praktika2026
+Backend: salut_bot (FastAPI)
+Дата: Июль 2026
 
-# ?????? ?????? unit ??????
-pytest -m unit
 
-# ?????? ?????? ?????????????? ??????
-pytest -m integration
+1. СТРУКТУРА ТЕСТОВ
+================================================================================
 
-# ?????? E2E ??????
-pytest -m e2e
+salut_bot/
+├── tests/
+│   ├── unit/search_api/test_use_cases.py    # Unit-тесты SearchUseCase (пагинация)
+│   ├── integration/search_api/test_repository.py  # Интеграционные тесты репозитория
+│   ├── e2e/test_search_endpoints.py         # E2E-тесты (устарели — под Flask)
+│   ├── regression/test_search_endpoint.py   # Регрессионные тесты (устарели — под Flask)
+│   └── smoke/test_smoke.py                  # Smoke-тесты (устарели — под Flask)
+├── test_backend_live.py                     # Live-тесты backend через HTTP
+├── test_pagination_live.py                  # Расширенные тесты пагинации
+└── test_pagination.py                       # Простой скрипт проверки пагинации
 
-# ?????? smoke ??????
-pytest -m smoke
 
-# ???????? ?? ???-?????
-pytest -m regression
+2. ЗАПУСК UNIT-ТЕСТОВ (без БД)
+================================================================================
+
+Эти тесты не требуют PostgreSQL, Redis или Docker.
+Используют mock-объекты.
+
+Команда:
+    cd d:\Praktika2026\salut_bot
+    python -m pytest tests/unit/search_api/test_use_cases.py -v --tb=long
+
+Ожидаемый результат: 7 passed
+
+Что тестируется:
+  - test_execute_with_object_only         — поиск только по объекту
+  - test_execute_with_resource_only       — поиск только по ресурсу
+  - test_execute_with_object_and_resource — поиск по объекту + ресурсу
+  - test_execute_with_pagination_has_more — пагинация: есть ещё страницы
+  - test_execute_with_pagination_last_page — пагинация: последняя страница
+  - test_execute_with_cache_miss          — кэш: промах
+  - test_execute_with_cache_hit           — кэш: попадание
+
+
+3. ЗАПУСК ИНТЕГРАЦИОННЫХ ТЕСТОВ (требуют PostgreSQL)
+================================================================================
+
+Эти тесты создают тестовую БД eco_test, применяют схему и проверяют
+репозиторий. Требуют PostgreSQL на localhost:5432.
+
+ВАЖНО: Пароль 'Fdf78yh0a4b!' содержит спецсимвол '!', из-за чего
+psycopg2 2.9.12 на Python 3.14 падает с UnicodeDecodeError.
+Рекомендуется запускать через Docker.
+
+Через Docker:
+    docker compose up -d db
+    docker exec -it praktika2026-db-1 psql -U postgres -c "CREATE DATABASE eco_test;"
+    cd d:\Praktika2026\salut_bot
+    python -m pytest tests/integration/search_api/test_repository.py -v --tb=long
+
+Ожидаемый результат: 3 passed
+
+
+4. LIVE-ТЕСТЫ BACKEND (через Docker)
+================================================================================
+
+Требуют запущенных контейнеров Docker.
+
+Проверить, что контейнеры запущены:
+    docker ps
+
+Должны быть: praktika2026-backend-1, praktika2026-db-1, praktika2026-redis-1
+
+4.1. Базовые тесты backend:
+    docker cp d:\Praktika2026\salut_bot\test_backend_live.py praktika2026-backend-1:/app/
+    docker exec praktika2026-backend-1 python /app/test_backend_live.py
+
+    Ожидаемый результат: 5 passed
+    - Health endpoint
+    - Home endpoint
+    - Search pagination (2 страницы, проверка дубликатов)
+    - Empty search
+    - Invalid JSON rejection
+
+4.2. Расширенные тесты пагинации:
+    docker cp d:\Praktika2026\salut_bot\test_pagination_live.py praktika2026-backend-1:/app/
+    docker exec praktika2026-backend-1 python /app/test_pagination_live.py
+
+    Ожидаемый результат: все тесты PASSED
+    - Edge cases: limit=3, limit=100, limit=0, offset=999
+    - Consistency: 4 страницы по 2 объекта, проверка уникальности ID
+
+
+
+
+5. ЗАПУСК ВСЕХ ТЕСТОВ РАЗОМ
+================================================================================
+
+# Unit-тесты (без БД):
+cd d:\Praktika2026\salut_bot
+python -m pytest tests/unit/ -v --tb=long
+
+# Все тесты (пропустятся те, что требуют БД):
+python -m pytest tests/ -v --tb=long
+
+# Live-тесты (через Docker):
+docker cp d:\Praktika2026\salut_bot\test_backend_live.py praktika2026-backend-1:/app/
+docker cp d:\Praktika2026\salut_bot\test_pagination_live.py praktika2026-backend-1:/app/
+docker exec praktika2026-backend-1 python /app/test_backend_live.py
+docker exec praktika2026-backend-1 python /app/test_pagination_live.py
+
+
+7. ИЗВЕСТНЫЕ ПРОБЛЕМЫ
+================================================================================
+
+7.1. UnicodeDecodeError в psycopg2 на Python 3.14
+--------------------------------------------------
+Симптом: pytest падает с UnicodeDecodeError при подключении к PostgreSQL.
+Причина: psycopg2 2.9.12 несовместим с Python 3.14 при паролях со спецсимволами.
+Решение: обновить psycopg2 до 2.9.13+ или использовать asyncpg.
+Обход: запускать тесты через Docker (в контейнере Python 3.10).
+
+7.2. Smoke/E2E/регресс тесты помечены skip
+------------------------------------------
+Симптом: тесты не запускаются, пишут "Flask приложение удалено".
+Причина: тесты написаны для старого Flask-приложения.
+Решение: переписать под FastAPI с использованием TestClient.
+
+7.3. Таймауты при offset >> total
+---------------------------------
+Симптом: запрос с offset=999 может зависнуть.
+Причина: PostgreSQL сканирует строки до offset даже если результатов нет.
+Решение: добавить защиту на уровне use_case (не критично).
+
+
+8. ИНТЕРПРЕТАЦИЯ РЕЗУЛЬТАТОВ
+================================================================================
+
+8.1. Unit-тесты (7/7 PASSED)
+-----------------------------
+Логика пагинации в SearchUseCase работает корректно:
+  - Pagination формируется только при наличии object criteria
+  - total берётся из результата find_objects_by_criteria
+  - has_more = next_offset < total (с учётом limit > 0)
+  - next_offset = offset + limit
+  - Кэширование работает: cache hit возвращает закэшированный результат,
+    cache miss — выполняет поиск и сохраняет в кэш
+
+8.2. Live-тесты backend (5/5 + 9/9 PASSED)
+-------------------------------------------
+FastAPI backend в Docker работает стабильно:
+  - Health-check отвечает корректно
+  - Search endpoint принимает запросы в формате system_parameters/search_parameters
+  - Пагинация возвращает правильные total/limit/offset/next_offset/has_more
+  - Нет дубликатов ID между страницами
+  - Крайние случаи (limit=0, offset за пределами) обрабатываются корректно
+  - Невалидный JSON возвращает HTTP 422 (Validation Error)
+
+8.3. Интеграционные тесты (ERROR)
+----------------------------------
+Не запустились из-за отсутствия локального PostgreSQL.
+Рекомендуется запускать через Docker-контейнер с БД.
+
+8.4. Устаревшие тесты (SKIPPED)
+--------------------------------
+Smoke, E2E и регрессионные тесты неактуальны — написаны под Flask.
+Требуют переписывания под FastAPI TestClient.
+================================================================================

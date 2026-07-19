@@ -9,9 +9,7 @@ sys.path.insert(0, str(project_root / 'knowledge_base_scripts' / 'Relational'))
 import pytest
 from typing import Dict, Any
 from unittest.mock import Mock, patch
-from flask import Flask
 
-from api import app as flask_app
 from search_api.config import SearchConfig
 from search_api.infrastructure.redis_cache import RedisCache
 from search_api.adapters.database import PostgresSearchRepository
@@ -47,7 +45,7 @@ def db_config() -> DatabaseConfig:
         port='5432'
     )
 
-@pytest.fixture(scope='session', autouse=True)
+@pytest.fixture(scope='session')
 def init_database(db_config: DatabaseConfig):
     import psycopg2
     from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
@@ -149,22 +147,9 @@ def mock_geo_service():
 @pytest.fixture
 def mock_repository():
     repo = Mock(spec=SearchRepository)
-    repo.find_objects_by_criteria.return_value = []
-    repo.find_resources_by_criteria.return_value = []
+    repo.find_objects_by_criteria.return_value = ([], 0)
+    repo.find_resources_by_criteria.return_value = ([], 0)
     return repo
-
-@pytest.fixture
-def app(mock_redis, mock_llm, mock_geo_service, mock_repository, test_config: SearchConfig):
-    test_app = flask_app
-    test_app.config['TESTING'] = True
-    test_app.config['SEARCH_CONFIG'] = test_config
-    test_app.config['SEARCH_REDIS'] = mock_redis
-    test_app.config['SEARCH_REPOSITORY'] = mock_repository
-    return test_app
-
-@pytest.fixture
-def client(app):
-    return app.test_client()
 
 @pytest.fixture
 def search_repository(db_client):
@@ -197,14 +182,3 @@ def production_config() -> SearchConfig:
         maps_dir=os.getenv('MAPS_DIR', '/app/maps'),
         domain=os.getenv('DOMAIN', 'http://localhost:5555')
     )
-
-@pytest.fixture
-def production_app(production_config):
-    from api import app as flask_app
-    flask_app.config['TESTING'] = True
-    flask_app.config['SEARCH_CONFIG'] = production_config
-    return flask_app
-
-@pytest.fixture
-def production_client(production_app):
-    return production_app.test_client()

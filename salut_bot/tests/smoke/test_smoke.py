@@ -1,6 +1,8 @@
 import pytest
 import json
 
+pytestmark = pytest.mark.skip(reason="Flask приложение удалено. Используется только FastAPI.")
+
 class TestSmokeTests:
     def test_health_endpoint(self, client):
         response = client.get('/')

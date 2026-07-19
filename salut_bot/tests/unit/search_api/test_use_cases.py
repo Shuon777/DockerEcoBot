@@ -19,12 +19,16 @@ class TestSearchUseCase:
         expected_objects = [
             ObjectResult(id=1, db_id='test_001', object_type='Test', properties={}, synonyms=[])
         ]
-        repo.find_objects_by_criteria.return_value = expected_objects
-        repo.find_resources_by_criteria.return_value = []
+        repo.find_objects_by_criteria.return_value = (expected_objects, 1)
+        repo.find_resources_by_criteria.return_value = ([], 0)
         
         response = use_case.execute(request)
         
         assert response.objects == expected_objects
+        assert response.total_objects == 1
+        assert response.pagination is not None
+        assert response.pagination.total == 1
+        assert response.pagination.has_more is False
         assert response.debug_info is not None
         repo.find_objects_by_criteria.assert_called_once_with(object_criteria, limit=20, offset=0)
 
@@ -38,12 +42,15 @@ class TestSearchUseCase:
         expected_resources = [
             ResourceResult(id=1, title='Test Resource', uri=None, author=None, source=None, modality_type='Текст', content={})
         ]
-        repo.find_objects_by_criteria.return_value = []
-        repo.find_resources_by_criteria.return_value = expected_resources
+        repo.find_objects_by_criteria.return_value = ([], 0)
+        repo.find_resources_by_criteria.return_value = (expected_resources, 1)
         
         response = use_case.execute(request)
         
         assert response.resources == expected_resources
+        assert response.total_resources == 1
+        # Без object criteria пагинация не вычисляется
+        assert response.pagination is None
         repo.find_resources_by_criteria.assert_called_once()
 
     def test_execute_with_object_and_resource(self):
@@ -57,13 +64,53 @@ class TestSearchUseCase:
         expected_objects = [ObjectResult(id=1, db_id='test_001', object_type='Test', properties={}, synonyms=[])]
         expected_resources = [ResourceResult(id=1, title='Test', uri=None, author=None, source=None, modality_type='Текст', content={})]
         
-        repo.find_objects_by_criteria.return_value = expected_objects
-        repo.find_resources_by_criteria.return_value = expected_resources
+        repo.find_objects_by_criteria.return_value = (expected_objects, 1)
+        repo.find_resources_by_criteria.return_value = (expected_resources, 1)
         
         response = use_case.execute(request)
         
         assert response.objects == expected_objects
         assert response.resources == expected_resources
+        assert response.pagination is not None
+        assert response.pagination.total == 1
+
+    def test_execute_with_pagination_has_more(self):
+        repo = Mock()
+        use_case = SearchUseCase(repo)
+        
+        object_criteria = ObjectCriteria(db_id='test_001')
+        request = SearchRequest(object=object_criteria, limit=5, offset=0)
+        
+        expected_objects = [ObjectResult(id=i, db_id=f'test_{i}', object_type='Test', properties={}, synonyms=[]) for i in range(5)]
+        repo.find_objects_by_criteria.return_value = (expected_objects, 45)
+        repo.find_resources_by_criteria.return_value = ([], 0)
+        
+        response = use_case.execute(request)
+        
+        assert response.pagination is not None
+        assert response.pagination.total == 45
+        assert response.pagination.limit == 5
+        assert response.pagination.offset == 0
+        assert response.pagination.next_offset == 5
+        assert response.pagination.has_more is True
+
+    def test_execute_with_pagination_last_page(self):
+        repo = Mock()
+        use_case = SearchUseCase(repo)
+        
+        object_criteria = ObjectCriteria(db_id='test_001')
+        request = SearchRequest(object=object_criteria, limit=10, offset=40)
+        
+        expected_objects = [ObjectResult(id=i, db_id=f'test_{i}', object_type='Test', properties={}, synonyms=[]) for i in range(5)]
+        repo.find_objects_by_criteria.return_value = (expected_objects, 45)
+        repo.find_resources_by_criteria.return_value = ([], 0)
+        
+        response = use_case.execute(request)
+        
+        assert response.pagination is not None
+        assert response.pagination.total == 45
+        assert response.pagination.next_offset == 50
+        assert response.pagination.has_more is False
 
 class TestSearchAndBuildUseCase:
     def test_execute_with_cache_miss(self, mock_redis):

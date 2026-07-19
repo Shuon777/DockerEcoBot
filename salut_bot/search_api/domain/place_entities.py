@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, List, Any, Dict
-from .entities import ObjectCriteria
+from .entities import ObjectCriteria, Pagination
 
 @dataclass
 class PlaceGeometryRequest:
@@ -31,3 +31,4 @@ class PlaceSearchResponse:
     resources: List[Any]
     used_geometry: Dict[str, Any]
     total_objects: int
+    pagination: Optional[Pagination] = None

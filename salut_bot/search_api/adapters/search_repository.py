@@ -4,9 +4,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 class SearchRepository(ABC):
     @abstractmethod
-    def find_objects_by_criteria(self, criteria, limit=20, offset=0): pass
+    def find_objects_by_criteria(self, criteria, limit=20, offset=0) -> Tuple[List[Any], int]:
+        """Returns (objects, total_count)."""
+        pass
     @abstractmethod
-    def find_resources_by_criteria(self, criteria, object_ids=None, limit=50, offset=0): pass
+    def find_resources_by_criteria(self, criteria, object_ids=None, limit=50, offset=0) -> Tuple[List[Any], int]:
+        """Returns (resources, total_count)."""
+        pass
     @abstractmethod
     def find_place_geometry(self, place_name: str) -> Optional[Dict[str, Any]]: pass
     @abstractmethod
@@ -16,10 +20,14 @@ class SearchRepository(ABC):
         self, geometry_geojson: Dict[str, Any], subtypes: List[str],
         buffer_radius_km: float, limit: int, offset: int,
         search_type: str = "near"
-    ) -> Tuple[List[Any], List[int]]: pass
+    ) -> Tuple[List[Any], List[int], int]:
+        """Returns (objects, object_ids, total_count)."""
+        pass
     @abstractmethod
     def find_objects_with_geometry_by_criteria(
         self, geometry_geojson: Dict[str, Any], criteria: Any,
         buffer_radius_km: float, limit: int, offset: int,
         search_type: str = "near"
-    ) -> Tuple[List[Any], List[int]]: pass
+    ) -> Tuple[List[Any], List[int], int]:
+        """Returns (objects, object_ids, total_count)."""
+        pass

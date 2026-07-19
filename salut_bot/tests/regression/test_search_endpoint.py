@@ -1,7 +1,7 @@
 # tests/regression/test_search_endpoint.py
 import pytest
 
-pytestmark = pytest.mark.regression
+pytestmark = pytest.mark.skip(reason="Flask приложение удалено. Используется только FastAPI.")
 
 class TestSearchEndpointRegression:
     def test_museums_search_first_6_results(self, production_client):

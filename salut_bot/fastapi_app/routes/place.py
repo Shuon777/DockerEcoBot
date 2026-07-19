@@ -134,6 +134,15 @@ async def search_objects_near_place(request_data: PlaceSearchRequest):
             'resources': resources_serialized
         }
 
+        if result.pagination:
+            response_data['pagination'] = {
+                'total': result.pagination.total,
+                'limit': result.pagination.limit,
+                'offset': result.pagination.offset,
+                'next_offset': result.pagination.next_offset,
+                'has_more': result.pagination.has_more,
+            }
+
         if hasattr(result, 'total_resources'):
             response_data['total_resources'] = result.total_resources
 

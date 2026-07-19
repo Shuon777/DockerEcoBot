@@ -32,6 +32,14 @@ class ResponseBuilder:
             'objects': self._serialize_objects(search_response.objects),
             'resources': self._serialize_resources(search_response.resources, search_response.objects),
         }
+        if search_response.pagination:
+            result['pagination'] = {
+                'total': search_response.pagination.total,
+                'limit': search_response.pagination.limit,
+                'offset': search_response.pagination.offset,
+                'next_offset': search_response.pagination.next_offset,
+                'has_more': search_response.pagination.has_more,
+            }
         if search_response.debug_info:
             result['debug'] = search_response.debug_info
         if use_llm and user_query:

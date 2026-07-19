@@ -2,6 +2,15 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 
 @dataclass
+class Pagination:
+    """Блок пагинации для постраничной выдачи результатов."""
+    total: int
+    limit: int
+    offset: int
+    next_offset: int
+    has_more: bool
+
+@dataclass
 class ObjectCriteria:
     db_id: Optional[str] = None
     name_synonyms: Optional[Dict[str, List[str]]] = None
@@ -82,3 +91,6 @@ class SearchResponse:
     resources: List[ResourceResult]
     debug_info: Optional[Dict[str, Any]] = None
     llm_answer: Optional[Dict[str, Any]] = None
+    total_objects: int = 0
+    total_resources: int = 0
+    pagination: Optional[Pagination] = None

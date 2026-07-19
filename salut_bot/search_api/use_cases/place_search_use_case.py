@@ -2,10 +2,12 @@
 import logging
 import time
 from typing import List, Optional, Dict, Any
-from ..domain.entities import ObjectResult, ResourceResult, ResourceCriteria, ObjectCriteria
+from sqlalchemy import text
+from ..domain.entities import ObjectResult, ResourceResult, ResourceCriteria, ObjectCriteria, Pagination
 from ..domain.place_entities import PlaceSearchResponse
 from ..adapters.search_repository import SearchRepository
 from ..services.geo_map_service import GeoMapService
+from ..infrastructure.database import get_session
 import json
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,68 @@ class PlaceSearchUseCase:
             return False
         return any('\u0400' <= char <= '\u04FF' for char in text)
 
+    def _count_objects_with_geometry(
+        self, geometry_geojson: Dict[str, Any], subtypes: List[str],
+        buffer_radius_km: float, search_type: str = "near",
+        object_criteria: Optional[ObjectCriteria] = None
+    ) -> int:
+        """Подсчитывает общее количество объектов, подходящих под гео-запрос (без LIMIT/OFFSET)."""
+        geom_json_str = json.dumps(geometry_geojson)
+        buffer_meters = buffer_radius_km * 1000.0
+
+        if search_type == "inside":
+            spatial_cond = "ST_Within(gv.geometry, ig.geom)"
+        elif search_type == "near":
+            spatial_cond = "ST_DWithin(gv.geometry, ig.geom, :buffer)"
+        else:
+            spatial_cond = "(ST_Within(gv.geometry, ig.geom) OR ST_DWithin(gv.geometry, ig.geom, :buffer))"
+
+        base_conditions = [f"m.modality_type = 'Геоданные'", spatial_cond]
+        params = {'geom': geom_json_str, 'buffer': buffer_meters}
+
+        if object_criteria and (object_criteria.object_type or object_criteria.properties or object_criteria.name_synonyms or object_criteria.db_id):
+            if object_criteria.object_type:
+                base_conditions.append("ot.name = :object_type")
+                params['object_type'] = object_criteria.object_type
+            if object_criteria.db_id:
+                base_conditions.append("o.db_id = :db_id")
+                params['db_id'] = object_criteria.db_id
+            if object_criteria.properties:
+                for key, val in object_criteria.properties.items():
+                    param_name = f"prop_{key.replace(' ', '_').replace('-', '_')}"
+                    if isinstance(val, str):
+                        base_conditions.append(f"o.object_properties->>'{key}' = :{param_name}")
+                        params[param_name] = val
+                    elif isinstance(val, list):
+                        items = "', '".join(val)
+                        base_conditions.append(f"o.object_properties->'{key}' ?| ARRAY['{items}']")
+        else:
+            base_conditions.append(
+                "(o.object_properties->>'Подтип объекта' = ANY(:subtypes) "
+                "OR o.object_properties->'Подтип объекта' ?| :subtypes)"
+            )
+            params['subtypes'] = subtypes
+
+        where_clause = " AND ".join(base_conditions)
+
+        sql = text(f"""
+            WITH input_geom AS (SELECT ST_SetSRID(ST_GeomFromGeoJSON(:geom), 4326) AS geom)
+            SELECT COUNT(DISTINCT o.id) as total
+            FROM eco_assistant.object o
+            JOIN eco_assistant.object_type ot ON o.object_type_id = ot.id
+            JOIN eco_assistant.resource_object ro ON o.id = ro.object_id
+            JOIN eco_assistant.resource_value rv ON ro.resource_id = rv.resource_id
+            JOIN eco_assistant.modality m ON rv.modality_id = m.id
+            JOIN eco_assistant.geodata_value gv ON rv.value_id = gv.id
+            CROSS JOIN input_geom ig
+            WHERE {where_clause}
+        """)
+
+        session = get_session()
+        with session:
+            row = session.execute(sql, params).first()
+            return row.total if row else 0
+
     def execute(
         self, place_name: str, subtypes: List[str], modality_type: Optional[str] = None,
         buffer_radius_km: float = 10.0, limit: int = 20, offset: int = 0,
@@ -73,6 +137,11 @@ class PlaceSearchUseCase:
         effective_search_type = search_type
         if search_type == "inside" and geom_type not in ('Polygon', 'MultiPolygon'):
             effective_search_type = "near"
+
+        # Получаем общее количество объектов (до LIMIT/OFFSET)
+        total_objects = self._count_objects_with_geometry(
+            geometry, subtypes, buffer_radius_km, effective_search_type, object_criteria
+        )
 
         objects_search_start = time.time()
         if object_criteria and (object_criteria.object_type or object_criteria.properties or object_criteria.name_synonyms or object_criteria.db_id):
@@ -128,7 +197,7 @@ class PlaceSearchUseCase:
         if all_object_ids:
             resources_start = time.time()
             resource_criteria = ResourceCriteria(modality_type=modality_type)
-            resources = self._repository.find_resources_by_criteria(
+            resources, _ = self._repository.find_resources_by_criteria(
                 resource_criteria, all_object_ids, limit=limit, offset=offset
             )
             resources_time = time.time() - resources_start
@@ -171,6 +240,17 @@ class PlaceSearchUseCase:
 
         all_resources = [geo_resource] + filtered_resources
 
+        # Вычисляем пагинацию
+        next_offset = offset + limit
+        has_more = next_offset < total_objects
+        pagination = Pagination(
+            total=total_objects,
+            limit=limit,
+            offset=offset,
+            next_offset=next_offset,
+            has_more=has_more
+        )
+
         total_time = time.time() - total_start
         logger.info(f"Place search total time: {total_time:.4f}s")
 
@@ -178,5 +258,6 @@ class PlaceSearchUseCase:
             objects=obj_results,
             resources=all_resources,
             used_geometry=geometry,
-            total_objects=len(obj_results)
+            total_objects=total_objects,
+            pagination=pagination,
         )

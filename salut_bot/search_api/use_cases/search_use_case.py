@@ -4,7 +4,7 @@ import logging
 from dataclasses import dataclass
 from typing import List, Optional
 
-from ..domain.entities import SearchRequest, SearchResponse, ResourceCriteria, ObjectResult, ResourceResult
+from ..domain.entities import SearchRequest, SearchResponse, ResourceCriteria, ObjectResult, ResourceResult, Pagination
 from ..adapters.search_repository import SearchRepository
 
 logger = logging.getLogger(__name__)
@@ -28,20 +28,23 @@ class SearchUseCase:
 
         objects: List[ObjectResult] = []
         object_ids: Optional[List[int]] = None
+        total_objects = 0
 
         if request.object:
             obj_start = time.time()
-            objects = self._repository.find_objects_by_criteria(
+            objects, total_objects = self._repository.find_objects_by_criteria(
                 request.object, limit=request.limit, offset=request.offset
             )
             obj_time = time.time() - obj_start
             debug['objects_query_time'] = obj_time
-            logger.info(f"Objects query took {obj_time:.4f}s, found {len(objects)} objects")
+            debug['total_objects'] = total_objects
+            logger.info(f"Objects query took {obj_time:.4f}s, found {len(objects)} objects (total: {total_objects})")
             object_ids = [obj.id for obj in objects] if objects else None
         else:
             logger.info("No object criteria provided")
 
         resources: List[ResourceResult] = []
+        total_resources = 0
         if request.object and not objects:
             debug['resources_query_time'] = 0.0
             debug['resources_skipped'] = True
@@ -49,12 +52,13 @@ class SearchUseCase:
         else:
             resource_criteria = request.resource if request.resource else ResourceCriteria()
             res_start = time.time()
-            resources = self._repository.find_resources_by_criteria(
+            resources, total_resources = self._repository.find_resources_by_criteria(
                 resource_criteria, object_ids, limit=request.limit * 2, offset=request.offset
             )
             res_raw_time = time.time() - res_start
             debug['resources_query_time_raw'] = res_raw_time
-            logger.info(f"Raw resources query took {res_raw_time:.4f}s, found {len(resources)} resources")
+            debug['total_resources'] = total_resources
+            logger.info(f"Raw resources query took {res_raw_time:.4f}s, found {len(resources)} resources (total: {total_resources})")
 
             for r in resources:
                 r.resource_type = "Статический"
@@ -108,6 +112,20 @@ class SearchUseCase:
             debug['vector_results_count'] = len(vector_docs)
             debug['vector_search_time'] = vector_time
 
+        # Вычисляем пагинацию
+        pagination = None
+        if request.object:
+            next_offset = request.offset + request.limit
+            # Если limit <= 0, следующей страницы быть не может
+            has_more = (request.limit > 0) and (next_offset < total_objects)
+            pagination = Pagination(
+                total=total_objects,
+                limit=request.limit,
+                offset=request.offset,
+                next_offset=next_offset,
+                has_more=has_more
+            )
+
         total_time = time.time() - total_start
         debug['total_time'] = total_time
         logger.info(f"SearchUseCase total execution time: {total_time:.4f}s (objects: {debug.get('objects_query_time', 0):.4f}, resources_raw: {debug.get('resources_query_time_raw', 0):.4f}, filter: {debug.get('resources_filter_time', 0):.4f}, vector: {vector_time:.4f})")
@@ -118,6 +136,9 @@ class SearchUseCase:
             modality_filter=request.modality_type,
             objects=objects,
             resources=resources,
+            total_objects=total_objects,
+            total_resources=total_resources,
+            pagination=pagination,
         )
 
         if request.debug:

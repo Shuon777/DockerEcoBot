@@ -4,7 +4,7 @@ from search_api.domain.entities import ObjectCriteria, ResourceCriteria
 class TestPostgresSearchRepository:
     def test_find_objects_by_criteria_with_db_id(self, search_repository, db_client):
         db_client.execute("""
-            INSERT INTO eco_assistant.object_type (name, schema) 
+            INSERT INTO eco_assistant.object_type (name, schema)
             VALUES ('TestType', '{}') ON CONFLICT (name) DO NOTHING
         """)
         db_client.commit()
@@ -16,13 +16,14 @@ class TestPostgresSearchRepository:
         """, (type_id,))
         db_client.commit()
         criteria = ObjectCriteria(db_id='test_db_001')
-        results = search_repository.find_objects_by_criteria(criteria)
+        results, total = search_repository.find_objects_by_criteria(criteria)
         assert len(results) >= 1
+        assert total >= 1
         assert any(r.db_id == 'test_db_001' for r in results)
 
     def test_find_objects_by_criteria_with_type(self, search_repository, db_client):
         db_client.execute("""
-            INSERT INTO eco_assistant.object_type (name, schema) 
+            INSERT INTO eco_assistant.object_type (name, schema)
             VALUES ('Flora', '{}') ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
         """)
         db_client.commit()
@@ -34,8 +35,9 @@ class TestPostgresSearchRepository:
         """, (type_id,))
         db_client.commit()
         criteria = ObjectCriteria(object_type='Flora')
-        results = search_repository.find_objects_by_criteria(criteria)
+        results, total = search_repository.find_objects_by_criteria(criteria)
         assert len(results) >= 1
+        assert total >= 1
         assert any(r.object_type == 'Flora' for r in results)
 
     def test_find_resources_by_criteria_with_title(self, search_repository, db_client):
@@ -73,6 +75,7 @@ class TestPostgresSearchRepository:
         """, (resource_id, modality_id, text_value_id))
         db_client.commit()
         criteria = ResourceCriteria(title='Baikal')
-        results = search_repository.find_resources_by_criteria(criteria)
+        results, total = search_repository.find_resources_by_criteria(criteria)
         assert len(results) >= 1
+        assert total >= 1
         assert any('Baikal' in (r.title or '') for r in results)

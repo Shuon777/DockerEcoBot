@@ -32,9 +32,9 @@ class SQLAlchemySearchRepository(SearchRepository):
         
         return query.filter(regex_condition.is_not(None))
 
-    def find_objects_by_criteria(self, criteria: ObjectCriteria, limit: int = 20, offset: int = 0) -> List[ObjectResult]:
+    def find_objects_by_criteria(self, criteria: ObjectCriteria, limit: int = 20, offset: int = 0) -> Tuple[List[ObjectResult], int]:
         if not criteria.db_id and not criteria.name_synonyms and not criteria.properties and not criteria.object_type:
-            return []
+            return [], 0
         
         session = self._session_factory()
         with session:
@@ -95,7 +95,11 @@ class SQLAlchemySearchRepository(SearchRepository):
                             query = query.filter(Object.object_properties[key].as_float() == value)
                         else:
                             query = query.filter(Object.object_properties[key].as_string().ilike(f"%{str(value)}%"))
-                                
+            
+            # COUNT before LIMIT/OFFSET
+            count_query = query.with_entities(func.count(Object.id.distinct()))
+            total = count_query.scalar()
+            
             query = query.limit(limit).offset(offset)
             compiled = query.statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
             logger.info(f"Executing query: {compiled}")
@@ -109,9 +113,9 @@ class SQLAlchemySearchRepository(SearchRepository):
                     properties=obj.object_properties,
                     synonyms=[s.synonym for s in obj.synonyms]
                 ) for obj in objects
-            ]
+            ], total
                           
-    def find_resources_by_criteria(self, criteria: ResourceCriteria, object_ids: Optional[List[int]] = None, limit: int = 50, offset: int = 0) -> List[ResourceResult]:
+    def find_resources_by_criteria(self, criteria: ResourceCriteria, object_ids: Optional[List[int]] = None, limit: int = 50, offset: int = 0) -> Tuple[List[ResourceResult], int]:
         session = self._session_factory()
         with session:
             query = session.query(Resource).options(
@@ -165,6 +169,10 @@ class SQLAlchemySearchRepository(SearchRepository):
                 )
             else:
                 query = query.order_by(Resource.id)
+
+            # COUNT before LIMIT/OFFSET (убираем ORDER BY, т.к. он недопустим в агрегатных запросах)
+            count_query = query.with_entities(func.count(Resource.id.distinct())).order_by(None)
+            total = count_query.scalar()
 
             resources = query.limit(limit).offset(offset).all()
 
@@ -224,7 +232,7 @@ class SQLAlchemySearchRepository(SearchRepository):
             if criteria.modality_type:
                 result = [r for r in result if r.modality_type == criteria.modality_type]
 
-            return result
+            return result, total
 
     def find_objects_with_geometry_by_subtypes(
     self, geometry_geojson: Dict[str, Any], subtypes: List[str],

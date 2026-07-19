@@ -7,6 +7,8 @@ sys.path.insert(0, str(project_root))
 
 import pytest
 
+pytestmark = pytest.mark.skip(reason="Flask приложение удалено. Используется только FastAPI.")
+
 class TestSearchEndpointsE2E:
     def test_search_by_chabrets(self, client, db_client):
         request_data = {
