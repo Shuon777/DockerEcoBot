@@ -775,8 +775,8 @@ async def biological_save(
             source_name=source.strip(), reliability_name=reliability.strip(), date_value=parsed_date,
         )
         await _attach_text_to_object(db, object_id=obj.id, resource=res, structured_data={"description": description})
-        await db.commit()
-    
+
+    await db.commit()
     return RedirectResponse(url=f"/biological/{obj.id}", status_code=303)
 
 
@@ -802,11 +802,16 @@ async def biological_edit(request: Request, object_id: int, db: AsyncSession = D
     synonyms = list(synonyms_result)
 
     props = obj.object_properties or {}
+    # Исключаем основное название из списка синонимов (регистронезависимое сравнение,
+    # т.к. синонимы хранятся в нижнем регистре, а основное имя — в оригинальном)
+    main_name = _primary_synonym(list(synonyms), props)
+    main_name_norm = main_name.lower().strip().replace("ё", "е")
+    filtered_synonyms = [s for s in synonyms if s.lower().strip().replace("ё", "е") != main_name_norm]
     entity = {
         "id": obj.id,
         "db_id": obj.db_id,
-        "name_ru": _primary_synonym(list(synonyms), props),
-        "synonyms": list(synonyms),
+        "name_ru": main_name,
+        "synonyms": filtered_synonyms,
         "object_properties": props,
         "bio_type": props.get("Тип ОФФ", "") if isinstance(props, dict) else "",
         "scientific_name": props.get("scientific_name", "") if isinstance(props, dict) else "",
@@ -1886,11 +1891,15 @@ async def geographical_edit(request: Request, object_id: int, db: AsyncSession =
     
     synonyms = list(synonyms_result)
 
+    # Исключаем основное название из списка синонимов (регистронезависимое сравнение)
+    main_name = _primary_synonym(list(synonyms), obj.object_properties or {})
+    main_name_norm = main_name.lower().strip().replace("ё", "е")
+    filtered_synonyms = [s for s in synonyms if s.lower().strip().replace("ё", "е") != main_name_norm]
     entity = {
         "id": obj.id,
         "db_id": obj.db_id,
-        "name_ru": _primary_synonym(list(synonyms), obj.object_properties or {}),
-        "synonyms": list(synonyms),
+        "name_ru": main_name,
+        "synonyms": filtered_synonyms,
         "object_properties": obj.object_properties or {},
         "subtypes": _normalize_subtypes(obj.object_properties or {}),
         "feature_data": obj.object_properties or {},
@@ -2677,11 +2686,15 @@ async def service_edit(request: Request, object_id: int, db: AsyncSession = Depe
     )).scalars().all()
     
     synonyms = list(synonyms_result)
+    # Исключаем основное название из списка синонимов (регистронезависимое сравнение)
+    main_name = _primary_synonym(list(synonyms), obj.object_properties or {})
+    main_name_norm = main_name.lower().strip().replace("ё", "е")
+    filtered_synonyms = [s for s in synonyms if s.lower().strip().replace("ё", "е") != main_name_norm]
     entity = {
         "id": obj.id,
         "db_id": obj.db_id,
-        "name_ru": _primary_synonym(list(synonyms), obj.object_properties or {}),
-        "synonyms": list(synonyms),
+        "name_ru": main_name,
+        "synonyms": filtered_synonyms,
         "object_properties": obj.object_properties or {},
         "subtypes": _normalize_subtypes(obj.object_properties or {}),
         "feature_data": obj.object_properties or {},
