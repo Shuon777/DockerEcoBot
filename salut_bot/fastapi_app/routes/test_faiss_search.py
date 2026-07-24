@@ -7,11 +7,6 @@ from fastapi_app.dependencies import get_search_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ============================================================
-# ЭНДПОИНТ: /test_faiss_search
-# ============================================================
-
 @router.get("/test_faiss_search")
 async def test_faiss_search(
     query: str = Query(..., description="Поисковый запрос"),

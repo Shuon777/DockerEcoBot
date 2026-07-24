@@ -17,9 +17,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-
-# ==================== Pydantic Models ====================
-
 class DescriptionRequest(BaseModel):
     """Модель для POST-запроса с фильтрами"""
     filters: Optional[Dict[str, Any]] = Field(None, description="Фильтры для поиска")
@@ -59,9 +56,6 @@ class SpeciesDescriptionParams(BaseModel):
     vector_similarity_threshold: float = Field(0.03, ge=0, le=1, description="Порог схожести для векторного поиска")
     use_vector_fallback: bool = Field(True, description="Использовать векторный поиск как fallback")
 
-
-# ==================== Helper Functions ====================
-
 def build_debug_info(params: dict) -> dict:
     """Создает структуру для отладочной информации"""
     return {
@@ -70,14 +64,14 @@ def build_debug_info(params: dict) -> dict:
         "steps": []
     }
 
-
+# фильтрация по безопасности
 def filter_by_stoplist(
     descriptions: List[Dict],
     in_stoplist: str,
     use_faiss_fallback: bool = False
 ) -> tuple[List[Dict], List[Dict], Dict]:
     """
-    Фильтрует описания по уровню стоп-листа.
+    Фильтрует описания по уровню стоп-листа
     Возвращает (safe_descriptions, stoplisted_descriptions, filter_info)
     """
     safe = []
@@ -187,7 +181,7 @@ def build_object_info(
         "search_source": "faiss_vector_store" if use_faiss_fallback else "relational_database"
     }
 
-
+# векторный поиск
 def handle_faiss_search(
     search_query: str,
     object_type: str,
@@ -220,8 +214,7 @@ def handle_faiss_search(
     return results, bool(results), faiss_info
 
 
-# ==================== Routes ====================
-
+# роутеры
 @router.get("/object/description")
 @router.post("/object/description")
 async def get_object_description(
@@ -410,7 +403,7 @@ async def get_object_description(
         used_objects = []
         not_used_objects = []
         
-        # ============ GigaChat Answer ============
+        # ответ GigaChat
         if use_gigachat_answer:
             if not descriptions:
                 response = {"error": "Не найдено описаний для генерации ответа"}
@@ -469,7 +462,7 @@ async def get_object_description(
                 if isinstance(desc, dict):
                     not_used_objects.append(build_object_info(desc, object_name, object_type, use_faiss_fallback))
             
-            # ============ Return Raw Documents ============
+            # Raw Documents
             if return_raw_documents:
                 logger.info("📄 Возвращаем сырые документы без вызова GigaChat")
                 external_ids = extract_all_external_ids(descriptions_for_context)
@@ -536,7 +529,7 @@ async def get_object_description(
                 
                 return JSONResponse(content=response_data)
             
-            # ============ Формирование контекста для GigaChat ============
+            # формирование контекста для GigaChat
             context = "\n\n".join([
                 desc["content"] if isinstance(desc, dict) else desc
                 for desc in context_descriptions
@@ -584,7 +577,7 @@ async def get_object_description(
                 except Exception as e:
                     logger.error(f"❌ Ошибка сохранения промпта: {e}")
             
-            # ============ Генерация ответа через GigaChat ============
+            # генерация ответа через GigaChat
             try:
                 llm_result = search_service._generate_llm_answer(query, context)
                 is_blacklist = llm_result.get("finish_reason") == "blacklist" or not llm_result.get("success", True)
@@ -732,7 +725,7 @@ async def get_object_description(
                     error_response["debug"] = debug_info
                 return JSONResponse(content=error_response, status_code=500)
         
-        # ============ Без GigaChat Answer (просто возвращаем описания) ============
+        # без ответа GigaChat (просто возвращаем описания)
         for desc in descriptions:
             if isinstance(desc, dict):
                 used_objects.append(build_object_info(desc, object_name, object_type, use_faiss_fallback))

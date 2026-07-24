@@ -8,18 +8,8 @@ from fastapi_app.dependencies import get_geo_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ============================================================
-# Pydantic-схема запроса
-# ============================================================
-
 class GetCoordsRequest(BaseModel):
     name: str
-
-
-# ============================================================
-# ЭНДПОИНТ: /get_coords
-# ============================================================
 
 @router.post("/get_coords")
 async def get_coords(

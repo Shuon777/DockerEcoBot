@@ -1,60 +1,55 @@
-import logging
-import time
-import hashlib
-import json
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+import logging # для записи логов
+import time # для замера времени выполнения
+import hashlib # для генерации md5-хэша
+import json # для работы json (сериализация параметров)
+from fastapi import APIRouter, Depends, Query # основные инструменты fastapi: роутер, зависимости, параметры запроса
+from pydantic import BaseModel # для создания схемы запроса
+from typing import Optional, List, Dict, Any # аннотации типов
 
-from fastapi_app.dependencies import get_search_service, get_relational_service, get_geo_service
+from fastapi_app.dependencies import get_search_service, get_relational_service, get_geo_service # внедрение зависимостей (сервисы)
 
-logger = logging.getLogger(__name__)
-router = APIRouter()
+logger = logging.getLogger(__name__) # логгер
+router = APIRouter() # создание роутера для группировки эндпоинтов
 
-
-# ============================================================
-# Pydantic-схема запроса (повторяет Flask-структуру)
-# ============================================================
-
+# pydantic схема запроса. описывает структуру json запроса и автоматически валидирует его
 class AreaRequest(BaseModel):
-    area_name: Optional[str] = None
-    object_type: Optional[str] = "all"
-    object_subtype: Optional[str] = None
-    object_name: Optional[str] = None
-    limit: Optional[int] = 1500
-    search_around: Optional[bool] = False
-    buffer_radius_km: Optional[float] = 10.0
+    area_name: Optional[str] = None # название области (например, Байкал)
+    object_type: Optional[str] = "all" # тип объектов для поиска (biological_entity)
+    object_subtype: Optional[str] = None # уточняющий подтип (Дерево)
+    object_name: Optional[str] = None # конкретное название объекта (лиственница)
+    limit: Optional[int] = 1500 # макисмально еколичество результатов
+    search_around: Optional[bool] = False # искать ли объекты не только внутри области, но и снаружи
+    buffer_radius_km: Optional[float] = 10.0 # радиус зоны (если search_around=true)
 
-
-# ============================================================
-# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ (как в Flask)
-# ============================================================
-
+# генерирует md5-хэш из параметров
+# для уникального ключа для кэша, чтобы не делать повторные одинаковые запросы
 def generate_cache_key(params: dict) -> str:
-    """Генерирует MD5 хэш из параметров (как в Flask)"""
+    # превращает словарь params в json строку
+    # сортирует ключи (чтобы одинаковые параметры давали одинаковый кэш)
+    # кодирует байты (utf-8)
+    # считает md5-хэш и возвращает его как строку
     canonical = json.dumps(params, sort_keys=True, ensure_ascii=False).encode('utf-8')
     return hashlib.md5(canonical).hexdigest()
 
-
+# Извлекает external_id из features
 def extract_external_id(features: dict) -> Optional[str]:
-    """Извлекает external_id из features (как в Flask)"""
     if not features:
         return None
     return features.get('external_id') or features.get('externalId')
 
-
-# ============================================================
-# ЭНДПОИНТ: /objects_in_area_by_type
-# ============================================================
-
+# регистрирует функцию как post-эндпоинт по адресу /objects_in_area_by_type
 @router.post("/objects_in_area_by_type")
 async def objects_in_area_by_type(
-    request: AreaRequest,
-    debug_mode: bool = Query(False, description="Режим отладки"),
-    relational_service=Depends(get_relational_service),
-    search_service=Depends(get_search_service),
-    geo=Depends(get_geo_service)
+    request: AreaRequest, # fastapi атвоматом парсит json тело и валидирует его по схеме AreaRequest
+    debug_mode: bool = Query(False, description="Режим отладки"), # параметр из строки запроса (например, ?debug_mode=true)
+    relational_service=Depends(get_relational_service), # внедрение сервиса по работе с БД
+    search_service=Depends(get_search_service), # внедрение сервиса по поиску объектов
+    geo=Depends(get_geo_service) # внедрение сервиса по работе с картами и геометрией
 ):
+    # извлечение параметров
+    # логирует полученный запрос
+    # превращает pydantic модель в обычный словарь
+    # извлекает параметры со значениями по умолчанию
     logger.info(f"📦 /objects_in_area_by_type - POST data: {request.dict()}")
 
     data = request.dict()
@@ -67,7 +62,12 @@ async def objects_in_area_by_type(
     search_around = data.get("search_around", False)
     buffer_radius_km = data.get("buffer_radius_km", 10.0)
 
-    # ===== КЕШИРОВАНИЕ (как в Flask) =====
+    # формирование ключа хэша
+    # обирает все параметры в словарь
+    # добавляет version для инвалидации кэша при изменении логики
+    # генерирует уникальный ключ для redis
+    # создает структуру для отладочной информации
+    # для того, чтобы вернуть закэшированный ответ, если запрос пришел повторно
     cache_params = {
         "area_name": area_name,
         "object_type": object_type,
@@ -102,9 +102,9 @@ async def objects_in_area_by_type(
         "buffer_radius_km": buffer_radius_km
     }
 
-    # ===== РАЗРЕШЕНИЕ СИНОНИМА (как в Flask) =====
-    resolved_object_info = None
+    resolved_object_info = None # хранение результата поиска синонима
     if object_name:
+        #метод из сервиса search_service ищет синоним, совпадающий с object_name
         resolved_object_info = search_service.resolve_object_synonym(object_name, object_type)
         debug_info["synonym_resolution"] = {
             "original_name": object_name,
@@ -112,14 +112,14 @@ async def objects_in_area_by_type(
             "resolved_info": resolved_object_info
         }
         if resolved_object_info.get("resolved", False):
-            object_name = resolved_object_info["main_form"]
+            object_name = resolved_object_info["main_form"] # замена исходного названия на каноничсекое (лиственница на Лиственница сибирская)
             if object_type != "all":
                 object_type = resolved_object_info["object_type"]
             logger.info(f"✅ Разрешен синоним объекта: '{resolved_object_info['original_name']}' -> '{object_name}' (тип: {object_type})")
         else:
             logger.info(f"ℹ️ Синоним для объекта '{object_name}' не найден, используем оригинальное название")
 
-    # ===== ПРЯМОЙ ПОИСК ОБЪЕКТА (если нет area_name) =====
+    # если пользователь не указал область ("Байкал"), но указал название объекта ("лиственница"), значит он хочет найти этот объект без привязки к конкретной области
     if not area_name and object_name:
         debug_info["steps"].append({
             "step": "direct_object_search",
@@ -129,13 +129,14 @@ async def objects_in_area_by_type(
         })
 
         try:
+            # вызов метода из search_service, который ищет объекты в БД по названию, фльтрует по типу и подтипу (если указаны) и ограничивает количество результатов
             results = search_service.search_objects_directly_by_name(
                 object_name=object_name,
                 object_type=object_type,
                 object_subtype=object_subtype,
                 limit=limit
             )
-
+            # возвращает список найденных объектов objects и текстовое описание результата answer
             objects = results.get("objects", [])
             answer = results.get("answer", "")
 
@@ -153,14 +154,16 @@ async def objects_in_area_by_type(
                     response["debug"] = debug_info
                 return response
 
-            objects_for_map = []
-            used_objects = []
+            # подготовка данных для карты
+            objects_for_map = [] # объекты, которые будут отрисованы на карте
+            used_objects = [] # объекты, которые были использованы
 
             for obj in objects:
-                name = obj.get('name', 'Без имени')
-                description = obj.get('description', '')
-                geojson = obj.get('geojson', {})
-                obj_type = obj.get('type', 'unknown')
+                # извлечение из объекта его свойства с значениями по умолчанию
+                name = obj.get('name', 'Без имени') # название
+                description = obj.get('description', '') # опсиание
+                geojson = obj.get('geojson', {}) # геометрия объекта
+                obj_type = obj.get('type', 'unknown') # тип объекта
 
                 used_objects.append({
                     "name": name,
@@ -169,18 +172,23 @@ async def objects_in_area_by_type(
                     "geometry_type": obj.get('geometry_type')
                 })
 
+                # формирование html кода для всплывающего окна на карте
                 popup_html = f"<h6>{name}</h6>"
                 if description:
                     short_desc = description[:200] + "..." if len(description) > 200 else description
                     popup_html += f"<p>{short_desc}</p>"
 
+                # добавление объекта в список objects_for_map для отрисовки на карте
                 objects_for_map.append({
-                    'tooltip': name,
-                    'popup': popup_html,
-                    'geojson': geojson
+                    'tooltip': name, # текст, который появляется при наведении на объект
+                    'popup': popup_html, # html код всплывающего окна
+                    'geojson': geojson # геометрия объекта
                 })
 
-            map_name = redis_key.replace("cache:", "map_").replace(":", "_")
+            map_name = redis_key.replace("cache:", "map_").replace(":", "_") # генерация уникального имени для карты
+            # вызов метода из geo 
+            # принимает списокобъектов с геометрией, генерирует статическую карту png, интерактивную html и сохраняет их в папку maps/
+            # возвращает ссылки на карты
             map_result = geo.draw_custom_geometries(objects_for_map, map_name)
 
             detailed_objects = []
@@ -235,18 +243,19 @@ async def objects_in_area_by_type(
                 response["debug"] = debug_info
             return response
 
+    # не передан object_name или area_name 
     if not area_name:
         response = {"error": "area_name is required when no object_name provided"}
         if debug_mode:
             response["debug"] = debug_info
         return response
 
-    # ===== ПОИСК ГЕОМЕТРИИ ОБЛАСТИ =====
-    area_geometry = None
-    area_info = None
+    # поиск геометрии области
+    area_geometry = None # геометрия области
+    area_info = None # информация
 
     try:
-        area_results = relational_service.find_area_geometry(area_name)
+        area_results = relational_service.find_area_geometry(area_name) # поиск геометрии области в БД (map_content, geographical_entity )
 
         if area_results:
             area_geometry = area_results.get("geometry")
@@ -277,7 +286,7 @@ async def objects_in_area_by_type(
             response["debug"] = debug_info
         return response
 
-    # ===== ПОИСК ОБЪЕКТОВ В ОБЛАСТИ =====
+    # поиск объектов в области
     try:
         results = search_service.get_objects_in_area_by_type(
             area_geometry=area_geometry,
@@ -314,10 +323,10 @@ async def objects_in_area_by_type(
                 response["debug"] = debug_info
             return response
 
-        # ===== ПОДГОТОВКА ДАННЫХ ДЛЯ КАРТЫ =====
         objects_for_map = []
         used_objects = []
 
+        # добавление на карту области поиска
         area_title = area_info.get('title', area_name) if area_info else area_name
         objects_for_map.append({
             'tooltip': f"Область поиска: {area_title}",
@@ -372,6 +381,7 @@ async def objects_in_area_by_type(
                 'geojson': geojson
             })
 
+        # генерация карты
         map_name = redis_key.replace("cache:", "map_").replace(":", "_")
         map_result = geo.draw_custom_geometries(objects_for_map, map_name)
 
@@ -381,6 +391,7 @@ async def objects_in_area_by_type(
             features = obj.get('features', {})
             external_id = extract_external_id(features)
 
+            # формирование детального списка объектов для ответа
             detailed_objects.append({
                 "name": obj.get('name'),
                 "description": obj.get('description'),

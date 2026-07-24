@@ -8,20 +8,10 @@ from infrastructure.db_utils_for_search import Slot_validator
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ============================================================
-# Pydantic-схема запроса
-# ============================================================
-
 class SpeciesRequest(BaseModel):
     name: str
     limit: Optional[int] = 1500
     offset: Optional[int] = 0
-
-
-# ============================================================
-# ЭНДПОИНТ: /find_species_with_description
-# ============================================================
 
 @router.post("/find_species_with_description")
 async def find_species_with_description(

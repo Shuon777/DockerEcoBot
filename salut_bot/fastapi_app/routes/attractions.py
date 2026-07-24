@@ -9,50 +9,36 @@ from typing import Optional, List, Dict, Any
 from fastapi_app.dependencies import get_search_service, get_relational_service, get_geo_service
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
-
-
-# ============================================================
-# Pydantic-схема запроса
-# ============================================================
+router = APIRouter() # создание роутера
 
 class AttractionsRequest(BaseModel):
-    area_name: Optional[str] = None
-    area_polygon: Optional[Dict[str, Any]] = None
-    attraction_types: Optional[List[str]] = None
-    attraction_subtypes: Optional[List[str]] = []
-    off_types: Optional[List[str]] = ["biological_entity"]
-    buffer_radius_km: Optional[float] = 1.0
-    limit: Optional[int] = 50
-
-
-# ============================================================
-# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
-# ============================================================
+    area_name: Optional[str] = None # название области (Байкал)
+    area_polygon: Optional[Dict[str, Any]] = None # GeoJSON полигона области (вместо названия)
+    attraction_types: Optional[List[str]] = None # типы достопримечательностей (Музеи)
+    attraction_subtypes: Optional[List[str]] = [] # подтипы достопримечательностей
+    off_types: Optional[List[str]] = ["biological_entity"] # Типы ОФФ для поиска
+    buffer_radius_km: Optional[float] = 1.0 # радиус зоны вокруг достопримечательностей
+    limit: Optional[int] = 50 # макс количество результатов
 
 def generate_cache_key(params: dict) -> str:
     canonical = json.dumps(params, sort_keys=True, ensure_ascii=False).encode('utf-8')
     return hashlib.md5(canonical).hexdigest()
 
-
-# ============================================================
-# ЭНДПОИНТ: /find_off_near_attractions
-# ============================================================
-
+# регистрация post эндпоинта
 @router.post("/find_off_near_attractions")
 async def find_off_near_attractions(
     request: AttractionsRequest,
     debug_mode: bool = Query(False, description="Режим отладки"),
     in_stoplist: int = Query(1, description="Уровень фильтрации безопасности"),
-    relational_service=Depends(get_relational_service),
-    search_service=Depends(get_search_service),
-    geo=Depends(get_geo_service)
+    relational_service=Depends(get_relational_service), # БД
+    search_service=Depends(get_search_service), # поиск
+    geo=Depends(get_geo_service) # карты, геометрия
 ):
     logger.info(f"🔍 /find_off_near_attractions - запрос: {request.dict()}")
 
     data = request.dict()
 
-    # ===== ПАРАМЕТРЫ =====
+    # извлечение параметров
     area_name = data.get("area_name")
     area_polygon = data.get("area_polygon")
     attraction_types = data.get("attraction_types", [])
@@ -61,7 +47,7 @@ async def find_off_near_attractions(
     buffer_radius_km = data.get("buffer_radius_km", 1.0)
     limit = data.get("limit", 50)
 
-    # ===== ВАЛИДАЦИЯ =====
+    # валидация
     if not attraction_types:
         return {
             "error": "Необходимо указать attraction_types (типы достопримечательностей)",
@@ -69,7 +55,7 @@ async def find_off_near_attractions(
             "not_used_objects": []
         }
 
-    # ===== КЕШ =====
+    # формирование ключа хэша
     cache_params = {
         "area_name": area_name,
         "area_polygon": area_polygon,
@@ -99,8 +85,8 @@ async def find_off_near_attractions(
         "in_stoplist": in_stoplist
     }
 
+    # поиск геометрии области
     try:
-        # ===== 1. ПОЛУЧАЕМ ПОЛИГОН ОБЛАСТИ =====
         area_geometry = None
         area_info = None
 
@@ -127,7 +113,7 @@ async def find_off_near_attractions(
                 "found": True
             })
 
-        # ===== 2. ИЩЕМ ДОСТОПРИМЕЧАТЕЛЬНОСТИ =====
+        # поиск достопримесательностей
         attractions = []
         all_attractions = []
 
@@ -162,7 +148,7 @@ async def find_off_near_attractions(
                     "error": str(e)
                 })
 
-        # Фильтруем по подтипам
+        # филтрация по подтипам
         if attraction_subtypes:
             filtered_attractions = []
             for obj in all_attractions:
@@ -192,7 +178,7 @@ async def find_off_near_attractions(
                 response["debug"] = debug_info
             return response
 
-        # ===== 3. ИЩЕМ ОФФ ВОКРУГ ДОСТОПРИМЕЧАТЕЛЬНОСТЕЙ =====
+        # Поиск ОФФ вокруг достопримечательностей 
         all_off_results = []
         attraction_off_map = {}
 
@@ -265,11 +251,12 @@ async def find_off_near_attractions(
                     "error": str(e)
                 })
 
-        # ===== 4. ПОДГОТОВКА ДАННЫХ ДЛЯ КАРТЫ =====
+        # подготовка данных для карты
         map_objects = []
         used_objects = []
         not_used_objects = []
 
+        # добавление области поиска
         if area_geometry:
             map_objects.append({
                 'tooltip': f"Область поиска: {area_info.get('title', area_name) if area_name else 'Пользовательский полигон'}",
@@ -278,6 +265,7 @@ async def find_off_near_attractions(
                 'style': {'color': 'blue', 'fillOpacity': 0.1, 'weight': 2}
             })
 
+        # добавление достопримечательностей
         for attraction in attractions:
             attraction_id = attraction.get("id")
             attraction_name = attraction.get("name")
@@ -314,6 +302,7 @@ async def find_off_near_attractions(
                 'style': {'color': 'red', 'fillOpacity': 0.3, 'weight': 3}
             })
 
+            # добавление зоны достопримечательности
             try:
                 buffer_geometry = search_service.geo_service.create_buffer_geometry(
                     geojson,
@@ -329,6 +318,7 @@ async def find_off_near_attractions(
             except Exception as e:
                 logger.warning(f"Не удалось создать буфер для {attraction_name}: {str(e)}")
 
+        # добавление ОФФ на карту
         off_names = set()
         for off in all_off_results:
             off_name = off.get("name", "Неизвестный ОФФ")
@@ -368,7 +358,7 @@ async def find_off_near_attractions(
                 response["debug"] = debug_info
             return response
 
-        # ===== 5. ГЕНЕРАЦИЯ КАРТЫ =====
+        # генерация карты и формирование ответа
         map_name = redis_key.replace("cache:", "map_").replace(":", "_")
         map_result = geo.draw_custom_geometries(map_objects, map_name)
 

@@ -4,7 +4,6 @@ from fastapi import APIRouter, Form
 from fastapi_app.dependencies import get_relational_service
 from core.resource_update_service import ResourceUpdateService
 
-# Импортируем из app.config (как в Flask)
 from app.config import RESOURCES_DIST_PATH, IMAGES_DIR
 
 logger = logging.getLogger(__name__)

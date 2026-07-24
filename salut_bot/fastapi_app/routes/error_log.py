@@ -8,21 +8,11 @@ from fastapi_app.dependencies import get_relational_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ============================================================
-# Pydantic-схема запроса
-# ============================================================
-
 class LogErrorRequest(BaseModel):
     user_query: Optional[str] = ""
     error_message: str
     context: Optional[Dict[str, Any]] = {}
     additional_info: Optional[Dict[str, Any]] = {}
-
-
-# ============================================================
-# ЭНДПОИНТ: /log_error
-# ============================================================
 
 @router.post("/log_error")
 async def log_error(

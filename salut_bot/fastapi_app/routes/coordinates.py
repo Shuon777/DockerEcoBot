@@ -10,7 +10,7 @@ from fastapi_app.dependencies import get_search_service, get_geo_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
+# схема запроса
 class CoordsRequest(BaseModel):
     latitude: float
     longitude: float
@@ -28,6 +28,7 @@ async def coords_to_map(
     geo=Depends(get_geo_service)
 ):
     try:
+        # извлечение параметров
         latitude = request.latitude
         longitude = request.longitude
         radius_km = request.radius_km
@@ -37,7 +38,7 @@ async def coords_to_map(
         if latitude is None or longitude is None:
             return {"error": "latitude and longitude are required"}
 
-        # ===== ГЕНЕРАЦИЯ REDIS_KEY (КАК В FLASK) =====
+        # генерация ключа кэша
         cache_params = {
             "latitude": latitude,
             "longitude": longitude,
@@ -51,16 +52,15 @@ async def coords_to_map(
         cache_hash = hashlib.md5(cache_key_raw).hexdigest()
         redis_key = f"cache:coords_search:{cache_hash}"
         map_name = redis_key.replace("cache:", "map_").replace(":", "_")
-        # ===============================================
 
-        # ===== РАЗРЕШЕНИЕ СИНОНИМА (КАК В FLASK) =====
+        # замена синонима на его каноничсекую форму, если передан species_name ()лиственница в лиственница сибирская
         resolved_species_info = None
         if species_name:
             resolved_species_info = search_service.resolve_object_synonym(species_name, "biological_entity")
             if resolved_species_info.get("resolved", False):
                 species_name = resolved_species_info["main_form"]
-        # ===============================================
 
+        # поиск объектов в радиусе
         result = search_service.get_nearby_objects(
             latitude=latitude,
             longitude=longitude,
@@ -81,7 +81,7 @@ async def coords_to_map(
                 "not_used_objects": []
             }
 
-        # ===== ФИЛЬТРАЦИЯ ПО in_stoplist (КАК В FLASK) =====
+        # фильтрация по in_stoplist (по уровню безопасности, например, скрывать объекты с пометкой "конфидециально")
         safe_objects = []
         stoplisted_objects = []
 
@@ -111,7 +111,7 @@ async def coords_to_map(
                 "not_used_objects": []
             }
 
-        # ===== ФОРМИРОВАНИЕ used_objects (КАК В FLASK) =====
+        # формирование списка использованных объектов
         used_objects = []
         not_used_objects = []
 
@@ -123,10 +123,9 @@ async def coords_to_map(
                 "geometry_type": "unknown"
             })
 
-        # ===== ВЫЗОВ draw_custom_geometries С УНИКАЛЬНЫМ ИМЕНЕМ =====
+        # генерация карты
         map_result = geo.draw_custom_geometries(objects, map_name)
 
-        # ===== ДОБАВЛЕНИЕ ВСЕХ ПОЛЕЙ (КАК В FLASK) =====
         map_result["count"] = len(objects)
         map_result["answer"] = answer
         map_result["names"] = [obj.get("name", "Без имени") for obj in objects]

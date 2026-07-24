@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 
-# Импорты из search_api (те же, что были во Flask-версии)
 from search_api.config import SearchConfig
 from search_api.use_cases.place_search_use_case import PlaceSearchUseCase
 from search_api.adapters.sqlalchemy_repository import SQLAlchemySearchRepository
@@ -14,11 +13,6 @@ from search_api.domain.value_objects import ModalityType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-
-# ============================================================
-# Pydantic-схема запроса (полностью повторяет Flask-структуру)
-# ============================================================
 
 class PlaceSearchRequest(BaseModel):
     place_name: str
@@ -33,11 +27,6 @@ class PlaceSearchRequest(BaseModel):
     name_synonyms: Optional[Dict[str, List[str]]] = None
     properties: Optional[Dict[str, Any]] = None
     db_id: Optional[str] = None
-
-
-# ============================================================
-# ЭНДПОИНТ: /search/place/objects
-# ============================================================
 
 @router.post("/search/place/objects")
 async def search_objects_near_place(request_data: PlaceSearchRequest):
@@ -57,6 +46,7 @@ async def search_objects_near_place(request_data: PlaceSearchRequest):
         offset = data.get('offset', 0)
         search_type = data.get('search_type', 'near')
 
+        # формирование ObjectCriteria
         object_criteria = None
         if data.get('object_criteria'):
             oc = data['object_criteria']
@@ -75,15 +65,15 @@ async def search_objects_near_place(request_data: PlaceSearchRequest):
                     object_type=data.get('object_type')
                 )
 
-        # --- Инициализация use_case (как во Flask-версии) ---
-        config = SearchConfig.from_env()
-        init_db(config)
+        # инициализация use_case
+        config = SearchConfig.from_env() # загрузка конфигурации из переменных окружения
+        init_db(config) # подключение к БД
         session_factory = get_session
         repository = SQLAlchemySearchRepository(session_factory)
         geo_service = GeoMapService(config.maps_dir, config.domain)
         use_case = PlaceSearchUseCase(repository, geo_service)
 
-        # --- Выполнение ---
+        # поиск объектов рядом с местом
         result = use_case.execute(
             place_name=place_name,
             subtypes=subtypes,
@@ -95,7 +85,6 @@ async def search_objects_near_place(request_data: PlaceSearchRequest):
             object_criteria=object_criteria
         )
 
-        # --- Сериализация объектов (как во Flask-версии) ---
         objects_serialized = [{
             'id': o.id,
             'db_id': o.db_id,

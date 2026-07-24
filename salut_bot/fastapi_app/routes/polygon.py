@@ -11,11 +11,6 @@ from fastapi_app.dependencies import get_search_service, get_relational_service,
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ============================================================
-# Pydantic-схема запроса
-# ============================================================
-
 class PolygonRequest(BaseModel):
     name: str
     buffer_radius_km: Optional[float] = 0
@@ -23,19 +18,9 @@ class PolygonRequest(BaseModel):
     object_subtype: Optional[str] = None
     limit: Optional[int] = 1500
 
-
-# ============================================================
-# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ (как в Flask)
-# ============================================================
-
 def generate_cache_key(params: dict) -> str:
     canonical = json.dumps(params, sort_keys=True, ensure_ascii=False).encode('utf-8')
     return hashlib.md5(canonical).hexdigest()
-
-
-# ============================================================
-# ЭНДПОИНТ: /objects_in_polygon_simply
-# ============================================================
 
 @router.post("/objects_in_polygon_simply")
 async def objects_in_polygon_simply(
@@ -55,7 +40,7 @@ async def objects_in_polygon_simply(
     object_subtype = data.get("object_subtype")
     limit = data.get("limit", 1500)
 
-    # ===== КЕШИРОВАНИЕ =====
+    # кэширование
     cache_params = {
         "name": name,
         "buffer_radius_km": buffer_radius_km,
@@ -83,7 +68,7 @@ async def objects_in_polygon_simply(
         "in_stoplist": in_stoplist
     }
 
-    # ===== РАЗРЕШЕНИЕ СИНОНИМА =====
+    # разрешение синонима
     try:
         resolved_info = search_service.resolve_object_synonym(name, "all")
         if resolved_info.get("resolved", False):
@@ -104,7 +89,7 @@ async def objects_in_polygon_simply(
             "error": str(e)
         })
 
-    # ===== ПОИСК ГЕОМЕТРИИ =====
+    # поиск геометрии
     entry = relational_service.find_geometry(name)
     if not entry or "geometry" not in entry:
         from infrastructure.geo_db_store import find_place_flexible
@@ -136,7 +121,7 @@ async def objects_in_polygon_simply(
             response["debug"] = debug_info
         return response
 
-    # ===== ПОИСК ОБЪЕКТОВ В ПОЛИГОНЕ =====
+    # поиск объектов в полигоне
     try:
         results = search_service.get_objects_in_polygon(
             polygon_geojson=polygon,
@@ -159,7 +144,7 @@ async def objects_in_polygon_simply(
             "biological_names": biological_names_before
         }
 
-        # ===== ФИЛЬТРАЦИЯ ПО in_stoplist =====
+        # фильтрация по in_stoplist
         safe_objects = []
         stoplisted_objects = []
 
@@ -212,7 +197,7 @@ async def objects_in_polygon_simply(
                 response["in_stoplist_level"] = in_stoplist
             return response
 
-        # ===== ГРУППИРОВКА ПО ГЕОМЕТРИИ =====
+        # группировка по геометрии
         grouped_by_geojson = {}
         for obj in objects:
             if 'geojson' not in obj or not obj['geojson']:
@@ -227,7 +212,7 @@ async def objects_in_polygon_simply(
             if name_obj not in grouped_by_geojson[geojson_key]['biological_names']:
                 grouped_by_geojson[geojson_key]['biological_names'].append(name_obj)
 
-        # ===== ПОДГОТОВКА КАРТЫ =====
+        # подготовка карты
         objects_for_map = []
         used_objects = []
         not_used_objects = []

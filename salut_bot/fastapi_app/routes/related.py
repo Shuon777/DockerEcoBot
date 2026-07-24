@@ -25,7 +25,6 @@ def _build_promo_text(promo_name: str) -> str:
 @router.post("/objects/related")
 async def get_related_objects(request_data: RelatedRequest):
     try:
-        # ← ИНИЦИАЛИЗИРУЕМ БД ПЕРЕД ИСПОЛЬЗОВАНИЕМ
         config = SearchConfig.from_env()
         init_db(config)
         

@@ -9,19 +9,9 @@ from fastapi_app.dependencies import get_search_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-
-# ============================================================
-# Pydantic-схема запроса (повторяет Flask-структуру)
-# ============================================================
-
 class ImagesRequest(BaseModel):
     species_name: Optional[str] = None
     features: Optional[Dict[str, Any]] = {}
-
-
-# ============================================================
-# ЭНДПОИНТ: /search_images_by_features
-# ============================================================
 
 @router.post("/search_images_by_features")
 async def search_images_by_features(
@@ -61,16 +51,18 @@ async def search_images_by_features(
             "timestamp": time.time()
         }
 
-        safe_images = []
-        stoplisted_images = []
+        safe_images = [] # список безопасных изображений
+        stoplisted_images = [] # список изображений, исключенных по уровню безопасности
         result = None
 
+        # поиск по виду 
         if species_name:
             result = search_service.search_images_by_features(
                 species_name=species_name,
                 features=features
             )
 
+            # фильтрация по in_stoplist 
             if result.get("status") == "success" and "images" in result:
                 safe_images = []
                 stoplisted_images = []
@@ -134,10 +126,11 @@ async def search_images_by_features(
             return result
 
         else:
+            # поиск только по признакам (без вида)
             result = search_service.relational_service.search_images_by_features_only(
                 features=features
             )
-
+             # фильтрация по in_stoplist 
             if result.get("status") == "success" and "images" in result:
                 safe_images = []
                 stoplisted_images = []

@@ -7,11 +7,11 @@ from fastapi_app.config import MAPS_DIR, DOMAIN, EMBEDDING_MODEL_PATH, FAISS_IND
 from search_api.infrastructure import init_db  # ← ДОБАВИТЬ
 from search_api.config import SearchConfig  # ← ДОБАВИТЬ
 
-# --- Инициализация БД (как в Flask) ---
+# инициализация БД 
 config = SearchConfig.from_env()
-init_db(config)  # ← КЛЮЧЕВОЙ МОМЕНТ!
+init_db(config)
 
-# --- 1. Инициализация сервисов ---
+# инициализация сервисов ---
 geo = GeoProcessor(maps_dir=MAPS_DIR, domain=DOMAIN)
 slot_val = Slot_validator()
 
@@ -23,7 +23,7 @@ search_service = SearchService(
 )
 search_service.relational_service = relational_service
 
-# --- 2. Функции для внедрения зависимостей ---
+# функции для внедрения зависимостей ---
 def get_geo_service():
     return geo
 

@@ -3688,6 +3688,7 @@ async def properties_new(
         object_type_id=object_type_id,
         property_name=property_name.strip(),
         property_values=values_list,
+        is_multiple=False,
     )
     db.add(prop)
     await db.commit()
