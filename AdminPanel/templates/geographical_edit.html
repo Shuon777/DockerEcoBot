@@ -892,7 +892,7 @@
                     <label class="form-label fw-bold small text-secondary">{{ prop.name | upper }}</label>
                     {% if prop['values'] | length > 0 and prop.get('is_multiple') %}
                     {# Множественный выбор через chip-UI #}
-                    {% set prop_slug = prop.name | replace(' ', '_') %}
+                    {% set prop_slug = prop.name | slugify %}
                     <div id="prop_{{ prop_slug }}_chips" class="d-flex flex-wrap gap-1 mb-2">
                         {% set cur_val = (entity.object_properties or {}).get(prop.json_key, []) %}
                         {% if cur_val is string %}{% set cur_val = [cur_val] %}{% endif %}
@@ -1631,7 +1631,7 @@ async function saveProperties(objectId) {
     {% for prop in available_properties %}
     {% if prop.get('is_multiple') %}
     {
-        {% set prop_slug = prop.name | replace(' ', '_') %}
+        {% set prop_slug = prop.name | slugify %}
         const chips = document.querySelectorAll('#prop_{{ prop_slug }}_chips .badge');
         const valList = Array.from(chips).map(c => c.childNodes[0].textContent.trim()).filter(Boolean);
         props['{{ prop.json_key }}'] = valList;

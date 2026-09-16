@@ -71,6 +71,16 @@ load_dotenv()
 app.mount("/admin/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 templates.env.filters["tojson"] = lambda value, indent=None, **_: json.dumps(value, ensure_ascii=False, indent=indent)
+import re
+
+def _slugify(value):
+    """Превращает строку в безопасный CSS-идентификатор:
+    только буквы/цифры/подчёркивания, без скобок и прочих спецсимволов."""
+    s = str(value)
+    s = re.sub(r'[^\wа-яА-ЯёЁ]+', '_', s)
+    return s.strip('_').lower()
+
+templates.env.filters["slugify"] = _slugify
 hb = BotHeartbeat(host=os.getenv('REDIS_HOST', 'redis'), port=int(os.getenv('REDIS_PORT', 6379)), db=2)
 settings_redis = aioredis.Redis(
     host=os.getenv('REDIS_HOST', 'redis'),
