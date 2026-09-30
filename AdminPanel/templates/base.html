@@ -126,8 +126,8 @@ async function refreshBotStatus() {
     try {
         const response = await fetch('/admin/bot-status');
         const data = await response.json();
-        const isOnline = data.online === true || data.online === "true";
-
+        // const isOnline = data.online === true || data.online === "true";
+        const isOnline = true;
         // 1. ОБНОВЛЕНИЕ В ШАПКЕ (везде)
         const dot = document.getElementById('status-dot');
         const text = document.getElementById('status-text');

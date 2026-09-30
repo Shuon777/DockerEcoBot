@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_fa719809ccb462a644070dca3a242b7d {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_fa719809ccb462a644070dca3a242b7d" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_fa719809ccb462a644070dca3a242b7d = L.map(
+                "map_fa719809ccb462a644070dca3a242b7d",
+                {
+                    center: [53.1721189185863, 107.37466589769889],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 9,
+  "zoomControl": true,
+  "preferCanvas": false,
+  "attributionControl": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_5bc9299fcc4efb7ab76f2c449d1f967a = L.tileLayer(
+                "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 20,
+  "maxNativeZoom": 20,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors \u0026copy; \u003ca href=\"https://carto.com/attributions\"\u003eCARTO\u003c/a\u003e",
+  "subdomains": "abcd",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_5bc9299fcc4efb7ab76f2c449d1f967a.addTo(map_fa719809ccb462a644070dca3a242b7d);
+        
+    
+        function geo_json_61eba5521537fbe4f4385cf9e4ed45c6_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_61eba5521537fbe4f4385cf9e4ed45c6_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_61eba5521537fbe4f4385cf9e4ed45c6 = L.geoJson(null, {
+                onEachFeature: geo_json_61eba5521537fbe4f4385cf9e4ed45c6_onEachFeature,
+            
+                style: geo_json_61eba5521537fbe4f4385cf9e4ed45c6_styler,
+            ...{
+}
+        });
+
+        function geo_json_61eba5521537fbe4f4385cf9e4ed45c6_add (data) {
+            geo_json_61eba5521537fbe4f4385cf9e4ed45c6
+                .addData(data);
+        }
+            geo_json_61eba5521537fbe4f4385cf9e4ed45c6_add({"features": [{"geometry": {"coordinates": [[[107.792358, 53.406257], [106.910706, 53.075878], [106.951904, 52.989991], [107.399597, 53.074228], [107.723694, 53.220835], [107.792358, 53.406257]]], "type": "Polygon"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_61eba5521537fbe4f4385cf9e4ed45c6.bindTooltip(
+                `<div>
+                     Ареал обитания Эдельвейса
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_f355998f2e3e902e1025c4175548e784 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_518db5e45c208f088ca757e4929e4257 = $(`<div id="html_518db5e45c208f088ca757e4929e4257" style="width: 100.0%; height: 100.0%;">Ареал обитания Эдельвейса</div>`)[0];
+                popup_f355998f2e3e902e1025c4175548e784.setContent(html_518db5e45c208f088ca757e4929e4257);
+            
+        
+
+        geo_json_61eba5521537fbe4f4385cf9e4ed45c6.bindPopup(popup_f355998f2e3e902e1025c4175548e784)
+        ;
+
+        
+    
+    
+            geo_json_61eba5521537fbe4f4385cf9e4ed45c6.addTo(map_fa719809ccb462a644070dca3a242b7d);
+        
+    
+        function geo_json_0009987d64ee92765268ed0ddd7c7aba_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_0009987d64ee92765268ed0ddd7c7aba_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_0009987d64ee92765268ed0ddd7c7aba = L.geoJson(null, {
+                onEachFeature: geo_json_0009987d64ee92765268ed0ddd7c7aba_onEachFeature,
+            
+                style: geo_json_0009987d64ee92765268ed0ddd7c7aba_styler,
+            ...{
+}
+        });
+
+        function geo_json_0009987d64ee92765268ed0ddd7c7aba_add (data) {
+            geo_json_0009987d64ee92765268ed0ddd7c7aba
+                .addData(data);
+        }
+            geo_json_0009987d64ee92765268ed0ddd7c7aba_add({"features": [{"geometry": {"coordinates": [106.820068, 53.03213], "type": "Point"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_0009987d64ee92765268ed0ddd7c7aba.bindTooltip(
+                `<div>
+                     Ареал эдельвейса
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_f030d87a40a37f12449297b81ef6600b = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_0055e4ff317d200eee02e62a70acfb3c = $(`<div id="html_0055e4ff317d200eee02e62a70acfb3c" style="width: 100.0%; height: 100.0%;">Ареал эдельвейса</div>`)[0];
+                popup_f030d87a40a37f12449297b81ef6600b.setContent(html_0055e4ff317d200eee02e62a70acfb3c);
+            
+        
+
+        geo_json_0009987d64ee92765268ed0ddd7c7aba.bindPopup(popup_f030d87a40a37f12449297b81ef6600b)
+        ;
+
+        
+    
+    
+            geo_json_0009987d64ee92765268ed0ddd7c7aba.addTo(map_fa719809ccb462a644070dca3a242b7d);
+        
+</script>
+</html>

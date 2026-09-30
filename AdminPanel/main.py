@@ -11,7 +11,7 @@ from shapely import wkb
 import json
 
 from typing import List
-from fastapi import FastAPI, Request, Depends, Body, Form, Depends, HTTPException, Query
+from fastapi import FastAPI, Request, Depends, Body, Form, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -331,6 +331,43 @@ async def callback_proxy(request: Request, data: dict = Body(...)):
         except Exception as e:
             return {"error": f"Ошибка Core API: {str(e)}"}
 
+PLANT_API_URL = os.getenv("PLANT_API_URL", "http://194.156.118.21:8020/predict")
+
+@app.post("/chat/predict_plant")
+async def predict_plant(
+    request: Request,
+    file: UploadFile = File(...),
+    top_k: int = Query(3, ge=1, le=10),
+):
+    if not request.session.get("user_id"):
+        return {"error": "не авторизован"}
+    content = await file.read()
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as client:
+        try:
+            r = await client.post(
+                PLANT_API_URL,
+                params={"top_k": top_k},
+                files={"file": (file.filename, content, file.content_type or "image/jpeg")},
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            return {"error": f"Ошибка Plant API: {e}"}
+
+    preds = data.get("predictions", [])
+    if not preds:
+        return {"error": "Не удалось распознать растение"}
+
+    top = preds[0]
+    name = top.get("russian_name") or top.get("latin_name") or "неизвестное растение"
+    pct = round((top.get("confidence") or 0) * 100, 1)
+    return {
+        "name": name,
+        "latin": top.get("latin_name"),
+        "confidence": pct,
+        "all": preds,
+        "message": f"На картинке <b>{name}</b>. Рассказать подробнее?",
+    }
 
 _CONFIG_SCHEMA_PATH = Path(__file__).parent / "config_schema.json"
 
@@ -3688,6 +3725,7 @@ async def properties_new(
         object_type_id=object_type_id,
         property_name=property_name.strip(),
         property_values=values_list,
+        is_multiple=False,
     )
     db.add(prop)
     await db.commit()

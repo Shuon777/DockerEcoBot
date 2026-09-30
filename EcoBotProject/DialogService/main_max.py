@@ -62,6 +62,10 @@ async def main() -> None:
     use_webhook = os.getenv("MAX_USE_WEBHOOK", "").lower() == "true"
 
     try:
+        subscriptions = await bot.get_subscriptions()
+        for sub in subscriptions.subscriptions:
+            await bot.unsubscribe_webhook(url=sub.url)
+
         if use_webhook:
             host = os.getenv("MAX_WEBHOOK_HOST", "0.0.0.0")
             port = int(os.getenv("MAX_WEBHOOK_PORT", "8080"))
@@ -74,9 +78,6 @@ async def main() -> None:
             await dp.handle_webhook(bot=bot, host=host, port=port, path=path, secret=webhook_secret)
         else:
             logger.info("Режим polling")
-            subscriptions = await bot.get_subscriptions()
-            for sub in subscriptions.subscriptions:
-                await bot.unsubscribe_webhook(url=sub.url)
             await dp.start_polling(bot)
     finally:
         await ctx.session.close()

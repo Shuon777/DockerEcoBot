@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from maxapi import Dispatcher, Bot
 from maxapi.types import MessageCallback
 
@@ -79,11 +80,27 @@ def register_callback_handlers(dp: Dispatcher, bot: Bot) -> None:
         except Exception:
             pass
 
-        try:
-            promo_val = await ctx.redis_client.get("settings:promo_enabled")
-            result = await ctx.orchestrator.process(query, user_id=user_id, promo_enabled=promo_val != "0")
-            await render_pipeline_result(bot, chat_id, result, ctx.session)
-        except Exception as e:
-            logger.error(f"Callback pipeline error [{chat_id}]: {e}", exc_info=True)
-            await log_critical(ctx.session, query, user_id, e)
-            await bot.send_message(chat_id=chat_id, text="Произошла ошибка. Попробуйте ещё раз.")
+        # сохраняем переменные для фоновой задачи, чтобы избежать проблем с замыканиями
+        current_query = query
+        current_chat_id = chat_id
+        current_user_id = user_id
+
+        async def process_callback_in_background():
+            try:
+                promo_val = await ctx.redis_client.get("settings:promo_enabled")
+                result = await ctx.orchestrator.process(
+                    current_query, user_id=current_user_id, promo_enabled=promo_val != "0"
+                )
+                await render_pipeline_result(bot, current_chat_id, result, ctx.session)
+            except Exception as e:
+                logger.error(f"Callback background error [{current_chat_id}]: {e}", exc_info=True)
+                try:
+                    await log_critical(ctx.session, current_query, current_user_id, e)
+                    await bot.send_message(chat_id=current_chat_id, text="Произошла ошибка. Попробуйте ещё раз.")
+                except Exception:
+                    pass
+
+        asyncio.create_task(process_callback_in_background())
+
+        # отправляем сигнал 200 http
+        return

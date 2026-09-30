@@ -38,16 +38,36 @@ async def render_pipeline_result(
     simplifications: list = pipeline_result.get("simplifications") or []
     slots: dict = pipeline_result.get("slots") or {}
 
-    for url in images[:_MAX_IMAGES]:
-        data = await _fetch_image(session, url)
-        if data:
-            try:
-                await bot.send_message(
-                    chat_id=chat_id,
-                    attachments=[InputMediaBuffer(buffer=data, filename="photo.jpg")],
-                )
-            except Exception as e:
-                logger.error(f"Image send failed: {e}")
+    # --------------Блок прерывания отправки текстовых сообщений когда есть фото---------------
+    # Если в ответе есть изображение, присылаем только их
+    if images:
+        for url in images[:_MAX_IMAGES]:
+            data = await _fetch_image(session, url)
+            if data:
+                try:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        attachments=[InputMediaBuffer(buffer=data, filename="photo.jpg")],
+                    )
+                except Exception as e:
+                    logger.error(f"Image send failed: {e}")
+        return
+
+    #for url in images[:_MAX_IMAGES]:
+    #    data = await _fetch_image(session, url)
+    #    if data:
+    #        try:
+    #            await bot.send_message(
+    #                chat_id=chat_id,
+    #                attachments=[InputMediaBuffer(buffer=data, filename="photo.jpg")],
+    #            )
+    #        except Exception as e:
+    #            logger.error(f"Image send failed: {e}")
+
+    # Если фото нет, отправляем текстовое сообщение
+    builder = InlineKeyboardBuilder()
+    has_buttons = False
+    # ----------------------------------------------------------------------------------
 
     # ── Статическая карта как изображение ────────────────────────────────────
     static_url = map_data.get("static") if isinstance(map_data, dict) else None
@@ -62,8 +82,9 @@ async def render_pipeline_result(
             except Exception as e:
                 logger.error(f"Static map send failed: {e}")
 
-    builder = InlineKeyboardBuilder()
-    has_buttons = False
+    # Перемещено выше
+    # builder = InlineKeyboardBuilder()
+    # has_buttons = False
 
     # ── Интерактивная карта как кнопка ────────────────────────────────────────
     interactive_url = map_data.get("interactive") if isinstance(map_data, dict) else None
@@ -105,6 +126,7 @@ async def render_pipeline_result(
     await bot.send_message(
         chat_id=chat_id,
         text=text,
+        format="markdown",
         attachments=[builder.as_markup()] if has_buttons else None,
     )
 
@@ -120,6 +142,7 @@ async def render_pipeline_result(
                 await bot.send_message(
                     chat_id=chat_id,
                     text=f"💡 {promo_text}",
+                    format="markdown",
                     attachments=[promo_builder.as_markup()] if name else None,
                 )
             except Exception as e:

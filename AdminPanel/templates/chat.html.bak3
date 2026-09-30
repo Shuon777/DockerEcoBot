@@ -19,13 +19,6 @@
 </div>
 
 <div class="card shadow-sm" style="height: calc(100vh - 180px); display: flex; flex-direction: column; border-radius: 16px;">
-    <style>
-    #chat-window.drag-over {
-        outline: 3px dashed #0d6efd;
-        outline-offset: -10px;
-        background-color: rgba(13, 110, 253, 0.05);
-    }
-    </style>
     <!-- Окно сообщений -->
     <div id="chat-window">
         <div class="message bot-message">
@@ -569,67 +562,16 @@ document.getElementById('user-input').addEventListener('keypress', (e) => {
 // === ПРИКРЕПЛЕНИЕ ФОТО РАСТЕНИЯ ===
 let plantFile = null;
 
-function attachPlantFile(file) {
-    if (!file || !file.type.startsWith('image/')) return false;
-    plantFile = file;
+document.getElementById('plant-file').addEventListener('change', (e) => {
+    plantFile = e.target.files[0] || null;
     const preview = document.getElementById('plant-preview');
     const img = document.getElementById('plant-preview-img');
-    img.src = URL.createObjectURL(file);
-    preview.classList.remove('d-none');
-    return true;
-}
-
-['dragover', 'drop'].forEach(evt => {
-    document.addEventListener(evt, e => e.preventDefault());
-});
-
-const chatWindow = document.getElementById('chat-window');
-['dragenter', 'dragover'].forEach(evt => {
-    chatWindow.addEventListener(evt, e => {
-        e.preventDefault();
-        chatWindow.classList.add('drag-over');
-    });
-});
-['dragleave', 'drop'].forEach(evt => {
-    chatWindow.addEventListener(evt, e => {
-        e.preventDefault();
-        if (evt === 'dragleave' && chatWindow.contains(e.relatedTarget)) return;
-        chatWindow.classList.remove('drag-over');
-    });
-});
-
-chatWindow.addEventListener('drop', e => {
-    e.preventDefault();
-    chatWindow.classList.remove('drag-over');
-    const file = e.dataTransfer?.files?.[0];
-    if (file) {
-        if (!attachPlantFile(file)) {
-            appendMessage('bot', 'Можно прикрепить только изображение.');
-        }
-    }
-});
-
-document.addEventListener('paste', e => {
-    const items = e.clipboardData?.items || [];
-    let imageItem = null;
-    for (const item of items) {
-        if (item.type.startsWith('image/')) {
-            imageItem = item;
-            break;
-        }
-    }
-    if (!imageItem) return;
-    e.preventDefault();
-    const file = imageItem.getAsFile();
-    if (file) {
-        attachPlantFile(file);
-    }
-});
-
-document.getElementById('plant-file').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) {
-        attachPlantFile(file);
+    if (plantFile) {
+        img.src = URL.createObjectURL(plantFile);
+        preview.classList.remove('d-none');
+    } else {
+        preview.classList.add('d-none');
+        img.src = '';
     }
 });
 
@@ -659,7 +601,7 @@ sendMessage = async function(overrideText = null, isCallback = false) {
             const fd = new FormData();
             fd.append('file', fileToSend);
 
-            const r = await fetch('/admin/chat/predict_plant?top_k=1', {
+            const r = await fetch('/admin/chat/predict_plant?top_k=3', {
                 method: 'POST',
                 body: fd
             });
