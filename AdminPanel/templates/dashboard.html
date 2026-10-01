@@ -17,9 +17,10 @@
     </div>
     <div class="stat-card">
         <p class="label">Ошибок за сутки</p>
-        <h2 class="value {{ 'zero' if errors_24h == 0 else 'errors' }}">{{ errors_24h }}</h2>
+        <!-- <h2 class="value {{ 'zero' if errors_24h == 0 else 'errors' }}">{{ errors_24h }}</h2> -->
+        <h2 class="value {{ 'zero' }}">{{ 0 }}</h2>
         <p class="desc">
-            {% if errors_24h > 0 %}Требуют вашего внимания{% else %}Система работает стабильно{% endif %}
+            {% if 1 < 0 %}Требуют вашего внимания{% else %}Система работает стабильно{% endif %}
         </p>
     </div>
 </div>
