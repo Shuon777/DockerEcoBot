@@ -60,6 +60,11 @@
             <input type="file" id="plant-file" accept="image/*" hidden>
             <input type="text" id="user-input" class="form-control border-2" placeholder="Спросите что-нибудь или прикрепите фото..." 
                 style="padding: 14px; border-right: none; border-left: none;">
+            <!--Кнопка голосового ввода-->
+            <button class="btn btn-outline-secondary" id="voice-input-btn" type="button" title="Голосовой ввод"
+                style="border-left: none; border-right: none; border-radius: 0; padding: 14px 14px; line-height: 1; padding-top: 12px; z-index: 10;">
+                <i class="bi bi-mic"></i>
+            </button>
             <button class="btn btn-primary px-4" onclick="sendMessage()" style="border-radius: 0 12px 12px 0; padding-top: 12px;">
                 <i class="bi bi-send-fill"></i>
             </button>
@@ -424,7 +429,7 @@ async function renderResult(pipelineData) {
         return; 
     }
     
-    // Иначе, текст
+
     if (result.map?.static) {
         appendImage('bot', fixUrl(result.map.static, deadOrigins));
     }
@@ -434,11 +439,6 @@ async function renderResult(pipelineData) {
     // Изображения (до 3) — как в MAX
     for (const url of (result.images || []).slice(0, 3)) {
         appendImage('bot', fixUrl(url, deadOrigins));
-    }
-
-    // Статическая карта как картинка
-    if (result.map?.static) {
-        appendImage('bot', fixUrl(result.map.static, deadOrigins));
     }
 
     // Кнопки
@@ -710,5 +710,52 @@ sendMessage = async function(overrideText = null, isCallback = false) {
     return _originalSendMessage(overrideText, isCallback);
 };
 
+// --------------------------------------------------------------------------------------
+// Голосовой ввод
+document.addEventListener('DOMContentLoaded', () => {
+    const voiceBtn = document.getElementById('voice-input-btn');
+    const userInput = document.getElementById('user-input');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition || !window.isSecureContext) {
+        if (voiceBtn) voiceBtn.style.display = 'none';
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'ru-RU';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+        voiceBtn.classList.replace('btn-outline-secondary', 'btn-danger');
+        voiceBtn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+    };
+
+    recognition.onend = () => {
+        voiceBtn.classList.replace('btn-danger', 'btn-outline-secondary');
+        voiceBtn.innerHTML = '<i class="bi bi-mic"></i>';
+    };
+
+    recognition.onresult = (event) => {
+        userInput.value = event.results[0][0].transcript;
+    };
+
+    recognition.onerror = () => {
+        voiceBtn.classList.replace('btn-danger', 'btn-outline-secondary');
+        voiceBtn.innerHTML = '<i class="bi bi-mic"></i>';
+    };
+
+    voiceBtn.addEventListener('click', () => {
+        try {
+            recognition.start();
+        } catch (e) {
+            if (e.name === 'InvalidStateError') {
+                recognition.stop();
+            }
+        }
+    });
+});
+// --------------------------------------------------------------------------------------
 </script>
 {% endblock %}

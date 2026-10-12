@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_c5accaa25c83ef0dc4f7001cf0fb0783 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_c5accaa25c83ef0dc4f7001cf0fb0783" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_c5accaa25c83ef0dc4f7001cf0fb0783 = L.map(
+                "map_c5accaa25c83ef0dc4f7001cf0fb0783",
+                {
+                    center: [54.07482846302954, 109.35500728346041],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 9,
+  "zoomControl": true,
+  "preferCanvas": false,
+  "attributionControl": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_f8a8474da53e72bf4112c25d85325a2b = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_f8a8474da53e72bf4112c25d85325a2b.addTo(map_c5accaa25c83ef0dc4f7001cf0fb0783);
+        
+    
+        function geo_json_8a3030da6a609f94089588d80b3f2794_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_8a3030da6a609f94089588d80b3f2794_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_8a3030da6a609f94089588d80b3f2794 = L.geoJson(null, {
+                onEachFeature: geo_json_8a3030da6a609f94089588d80b3f2794_onEachFeature,
+            
+                style: geo_json_8a3030da6a609f94089588d80b3f2794_styler,
+            ...{
+}
+        });
+
+        function geo_json_8a3030da6a609f94089588d80b3f2794_add (data) {
+            geo_json_8a3030da6a609f94089588d80b3f2794
+                .addData(data);
+        }
+            geo_json_8a3030da6a609f94089588d80b3f2794_add({"features": [{"geometry": {"coordinates": [[[109.530885, 53.659248], [109.537707, 53.657003], [109.544529, 53.65835], [109.550594, 53.656104], [109.557416, 53.659248], [109.564996, 53.659698], [109.570303, 53.662842], [109.579399, 53.665087], [109.581673, 53.668232], [109.574851, 53.669579], [109.568029, 53.667782], [109.561964, 53.670926], [109.555142, 53.66913], [109.549836, 53.670477], [109.543013, 53.667782], [109.534675, 53.666884], [109.529369, 53.663291], [109.530885, 53.659248]]], "type": "Polygon"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_8a3030da6a609f94089588d80b3f2794.bindTooltip(
+                `<div>
+                     Баргузинский район, Баргузинская долина — ТЕСТ: условный контур
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_75eca85a38fe9102b5d135b8a87a620e = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_bf966d454c18e42fe9cd2329e2afc61a = $(`<div id="html_bf966d454c18e42fe9cd2329e2afc61a" style="width: 100.0%; height: 100.0%;">Баргузинский район, Баргузинская долина — ТЕСТ: условный контур</div>`)[0];
+                popup_75eca85a38fe9102b5d135b8a87a620e.setContent(html_bf966d454c18e42fe9cd2329e2afc61a);
+            
+        
+
+        geo_json_8a3030da6a609f94089588d80b3f2794.bindPopup(popup_75eca85a38fe9102b5d135b8a87a620e)
+        ;
+
+        
+    
+    
+            geo_json_8a3030da6a609f94089588d80b3f2794.addTo(map_c5accaa25c83ef0dc4f7001cf0fb0783);
+        
+    
+        function geo_json_fda0827b01420f9a0c1c57a78d14ca04_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_fda0827b01420f9a0c1c57a78d14ca04_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_fda0827b01420f9a0c1c57a78d14ca04 = L.geoJson(null, {
+                onEachFeature: geo_json_fda0827b01420f9a0c1c57a78d14ca04_onEachFeature,
+            
+                style: geo_json_fda0827b01420f9a0c1c57a78d14ca04_styler,
+            ...{
+}
+        });
+
+        function geo_json_fda0827b01420f9a0c1c57a78d14ca04_add (data) {
+            geo_json_fda0827b01420f9a0c1c57a78d14ca04
+                .addData(data);
+        }
+            geo_json_fda0827b01420f9a0c1c57a78d14ca04_add({"features": [{"geometry": {"coordinates": [[[107.467371, 52.345659], [107.474725, 52.342964], [107.479137, 52.346558], [107.48355, 52.347905], [107.482815, 52.351947], [107.487227, 52.355092], [107.484285, 52.358685], [107.487962, 52.362278], [107.484285, 52.367219], [107.479137, 52.370363], [107.473989, 52.367219], [107.474725, 52.363625], [107.469577, 52.360931], [107.472519, 52.356888], [107.468842, 52.353744], [107.471048, 52.349702], [107.467371, 52.345659]]], "type": "Polygon"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_fda0827b01420f9a0c1c57a78d14ca04.bindTooltip(
+                `<div>
+                     Прибайкальский район, падь Улан-Хада — ТЕСТ: условный контур
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_30a4c4ff8c31f2c597bfe7052ccffdf9 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_ced34204c20b3451340b0c4554877c35 = $(`<div id="html_ced34204c20b3451340b0c4554877c35" style="width: 100.0%; height: 100.0%;">Прибайкальский район, падь Улан-Хада — ТЕСТ: условный контур</div>`)[0];
+                popup_30a4c4ff8c31f2c597bfe7052ccffdf9.setContent(html_ced34204c20b3451340b0c4554877c35);
+            
+        
+
+        geo_json_fda0827b01420f9a0c1c57a78d14ca04.bindPopup(popup_30a4c4ff8c31f2c597bfe7052ccffdf9)
+        ;
+
+        
+    
+    
+            geo_json_fda0827b01420f9a0c1c57a78d14ca04.addTo(map_c5accaa25c83ef0dc4f7001cf0fb0783);
+        
+    
+        function geo_json_a1f9452bf36679273312a5129369d98b_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_a1f9452bf36679273312a5129369d98b_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_a1f9452bf36679273312a5129369d98b = L.geoJson(null, {
+                onEachFeature: geo_json_a1f9452bf36679273312a5129369d98b_onEachFeature,
+            
+                style: geo_json_a1f9452bf36679273312a5129369d98b_styler,
+            ...{
+}
+        });
+
+        function geo_json_a1f9452bf36679273312a5129369d98b_add (data) {
+            geo_json_a1f9452bf36679273312a5129369d98b
+                .addData(data);
+        }
+            geo_json_a1f9452bf36679273312a5129369d98b_add({"features": [{"geometry": {"coordinates": [[[110.544386, 55.802552], [110.55078, 55.800306], [110.557174, 55.801653], [110.562768, 55.798959], [110.570761, 55.800755], [110.574757, 55.803899], [110.583548, 55.805247], [110.589143, 55.808391], [110.585146, 55.811086], [110.576355, 55.810637], [110.572359, 55.813781], [110.565965, 55.811984], [110.56117, 55.81423], [110.555575, 55.811535], [110.546784, 55.811086], [110.541989, 55.807492], [110.544386, 55.802552]]], "type": "Polygon"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_a1f9452bf36679273312a5129369d98b.bindTooltip(
+                `<div>
+                     Северобайкальский район, урочище Клюевка — ТЕСТ: условный контур
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_123aa415a2419701e557bc7363c86680 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_9f84ba47a87ef054e187b8c8fbcd5b71 = $(`<div id="html_9f84ba47a87ef054e187b8c8fbcd5b71" style="width: 100.0%; height: 100.0%;">Северобайкальский район, урочище Клюевка — ТЕСТ: условный контур</div>`)[0];
+                popup_123aa415a2419701e557bc7363c86680.setContent(html_9f84ba47a87ef054e187b8c8fbcd5b71);
+            
+        
+
+        geo_json_a1f9452bf36679273312a5129369d98b.bindPopup(popup_123aa415a2419701e557bc7363c86680)
+        ;
+
+        
+    
+    
+            geo_json_a1f9452bf36679273312a5129369d98b.addTo(map_c5accaa25c83ef0dc4f7001cf0fb0783);
+        
+</script>
+</html>

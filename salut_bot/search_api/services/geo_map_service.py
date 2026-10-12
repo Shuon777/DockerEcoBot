@@ -66,9 +66,11 @@ class GeoMapService:
 
         m_static = StaticMap(
             1024, 768,
-            url_template='https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-            tile_size=512
+            url_template='https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+            tile_size=256,
+            tile_request_timeout=5,
         )
+
         for geom in geometries:
             self._add_geom_to_static(m_static, geom)
 
@@ -100,7 +102,7 @@ class GeoMapService:
         m = folium.Map(
             location=[centroid.y, centroid.x],
             zoom_start=9,
-            tiles='CartoDB Voyager',
+            tiles='OpenStreetMap',
             attributionControl=False,
         )
         folium.GeoJson(
@@ -154,7 +156,7 @@ class GeoMapService:
         m = folium.Map(
             location=[centroid.y, centroid.x],
             zoom_start=9,
-            tiles='CartoDB Voyager',
+            tiles='OpenStreetMap',
             attributionControl=False
         )
 

@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_ecfd622b5c6415a95dfa00d81bc70045 {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_ecfd622b5c6415a95dfa00d81bc70045" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_ecfd622b5c6415a95dfa00d81bc70045 = L.map(
+                "map_ecfd622b5c6415a95dfa00d81bc70045",
+                {
+                    center: [53.94307200000001, 97.709042],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 9,
+  "zoomControl": true,
+  "preferCanvas": false,
+  "attributionControl": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_94cc509be67c8867b67151e56bf6bf87 = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_94cc509be67c8867b67151e56bf6bf87.addTo(map_ecfd622b5c6415a95dfa00d81bc70045);
+        
+    
+        function geo_json_1ff02a3689cd7bb5ea623b9ae2680023_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_1ff02a3689cd7bb5ea623b9ae2680023_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_1ff02a3689cd7bb5ea623b9ae2680023 = L.geoJson(null, {
+                onEachFeature: geo_json_1ff02a3689cd7bb5ea623b9ae2680023_onEachFeature,
+            
+                style: geo_json_1ff02a3689cd7bb5ea623b9ae2680023_styler,
+            ...{
+}
+        });
+
+        function geo_json_1ff02a3689cd7bb5ea623b9ae2680023_add (data) {
+            geo_json_1ff02a3689cd7bb5ea623b9ae2680023
+                .addData(data);
+        }
+            geo_json_1ff02a3689cd7bb5ea623b9ae2680023_add({"features": [{"geometry": {"coordinates": [107.45581, 53.140731], "type": "Point"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_1ff02a3689cd7bb5ea623b9ae2680023.bindTooltip(
+                `<div>
+                     Ольхонский район, падь Улан-Хада
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_b1c9e4acbd92f600c4a72abd3fa1f748 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_3ceb2a1d27fc9d10ae89724a2b441116 = $(`<div id="html_3ceb2a1d27fc9d10ae89724a2b441116" style="width: 100.0%; height: 100.0%;">Ольхонский район, падь Улан-Хада</div>`)[0];
+                popup_b1c9e4acbd92f600c4a72abd3fa1f748.setContent(html_3ceb2a1d27fc9d10ae89724a2b441116);
+            
+        
+
+        geo_json_1ff02a3689cd7bb5ea623b9ae2680023.bindPopup(popup_b1c9e4acbd92f600c4a72abd3fa1f748)
+        ;
+
+        
+    
+    
+            geo_json_1ff02a3689cd7bb5ea623b9ae2680023.addTo(map_ecfd622b5c6415a95dfa00d81bc70045);
+        
+    
+        function geo_json_f8c04b141c65e755f2ee73c34d113eb5_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_f8c04b141c65e755f2ee73c34d113eb5_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_f8c04b141c65e755f2ee73c34d113eb5 = L.geoJson(null, {
+                onEachFeature: geo_json_f8c04b141c65e755f2ee73c34d113eb5_onEachFeature,
+            
+                style: geo_json_f8c04b141c65e755f2ee73c34d113eb5_styler,
+            ...{
+}
+        });
+
+        function geo_json_f8c04b141c65e755f2ee73c34d113eb5_add (data) {
+            geo_json_f8c04b141c65e755f2ee73c34d113eb5
+                .addData(data);
+        }
+            geo_json_f8c04b141c65e755f2ee73c34d113eb5_add({"features": [{"geometry": {"coordinates": [101.91218, 52.019704], "type": "Point"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_f8c04b141c65e755f2ee73c34d113eb5.bindTooltip(
+                `<div>
+                     Окинский район, долина реки Шумак
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_aad96f05375ce178367f5ca3e8f2797d = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_2f833f895bb5ffe7d45c189152296126 = $(`<div id="html_2f833f895bb5ffe7d45c189152296126" style="width: 100.0%; height: 100.0%;">Окинский район, долина реки Шумак</div>`)[0];
+                popup_aad96f05375ce178367f5ca3e8f2797d.setContent(html_2f833f895bb5ffe7d45c189152296126);
+            
+        
+
+        geo_json_f8c04b141c65e755f2ee73c34d113eb5.bindPopup(popup_aad96f05375ce178367f5ca3e8f2797d)
+        ;
+
+        
+    
+    
+            geo_json_f8c04b141c65e755f2ee73c34d113eb5.addTo(map_ecfd622b5c6415a95dfa00d81bc70045);
+        
+    
+        function geo_json_c73c87826dcedfbd4d677bea61a4382c_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_c73c87826dcedfbd4d677bea61a4382c_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_c73c87826dcedfbd4d677bea61a4382c = L.geoJson(null, {
+                onEachFeature: geo_json_c73c87826dcedfbd4d677bea61a4382c_onEachFeature,
+            
+                style: geo_json_c73c87826dcedfbd4d677bea61a4382c_styler,
+            ...{
+}
+        });
+
+        function geo_json_c73c87826dcedfbd4d677bea61a4382c_add (data) {
+            geo_json_c73c87826dcedfbd4d677bea61a4382c
+                .addData(data);
+        }
+            geo_json_c73c87826dcedfbd4d677bea61a4382c_add({"features": [{"geometry": {"coordinates": [109.5559, 53.66374], "type": "Point"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_c73c87826dcedfbd4d677bea61a4382c.bindTooltip(
+                `<div>
+                     Баргузинский район, перевал Баргалино-Кодары
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_1ec52414f42dade0d5f165f53cec6a86 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_42fd8aafad267a68a1edfad008eeead4 = $(`<div id="html_42fd8aafad267a68a1edfad008eeead4" style="width: 100.0%; height: 100.0%;">Баргузинский район, перевал Баргалино-Кодары</div>`)[0];
+                popup_1ec52414f42dade0d5f165f53cec6a86.setContent(html_42fd8aafad267a68a1edfad008eeead4);
+            
+        
+
+        geo_json_c73c87826dcedfbd4d677bea61a4382c.bindPopup(popup_1ec52414f42dade0d5f165f53cec6a86)
+        ;
+
+        
+    
+    
+            geo_json_c73c87826dcedfbd4d677bea61a4382c.addTo(map_ecfd622b5c6415a95dfa00d81bc70045);
+        
+    
+        function geo_json_6fc1a330735ae19496dec5508670c79d_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_6fc1a330735ae19496dec5508670c79d_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_6fc1a330735ae19496dec5508670c79d = L.geoJson(null, {
+                onEachFeature: geo_json_6fc1a330735ae19496dec5508670c79d_onEachFeature,
+            
+                style: geo_json_6fc1a330735ae19496dec5508670c79d_styler,
+            ...{
+}
+        });
+
+        function geo_json_6fc1a330735ae19496dec5508670c79d_add (data) {
+            geo_json_6fc1a330735ae19496dec5508670c79d
+                .addData(data);
+        }
+            geo_json_6fc1a330735ae19496dec5508670c79d_add({"features": [{"geometry": {"coordinates": [60.078239, 55.122668], "type": "Point"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_6fc1a330735ae19496dec5508670c79d.bindTooltip(
+                `<div>
+                     Кабанский район, побережье озера Котокель
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_9a1936b15499714b79c4b52688cdfdd9 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_0040a739aa82a30de6e3e5581d7c4c7d = $(`<div id="html_0040a739aa82a30de6e3e5581d7c4c7d" style="width: 100.0%; height: 100.0%;">Кабанский район, побережье озера Котокель</div>`)[0];
+                popup_9a1936b15499714b79c4b52688cdfdd9.setContent(html_0040a739aa82a30de6e3e5581d7c4c7d);
+            
+        
+
+        geo_json_6fc1a330735ae19496dec5508670c79d.bindPopup(popup_9a1936b15499714b79c4b52688cdfdd9)
+        ;
+
+        
+    
+    
+            geo_json_6fc1a330735ae19496dec5508670c79d.addTo(map_ecfd622b5c6415a95dfa00d81bc70045);
+        
+    
+        function geo_json_eee068457603dafde8714692ef9360b0_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_eee068457603dafde8714692ef9360b0_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_eee068457603dafde8714692ef9360b0 = L.geoJson(null, {
+                onEachFeature: geo_json_eee068457603dafde8714692ef9360b0_onEachFeature,
+            
+                style: geo_json_eee068457603dafde8714692ef9360b0_styler,
+            ...{
+}
+        });
+
+        function geo_json_eee068457603dafde8714692ef9360b0_add (data) {
+            geo_json_eee068457603dafde8714692ef9360b0
+                .addData(data);
+        }
+            geo_json_eee068457603dafde8714692ef9360b0_add({"features": [{"geometry": {"coordinates": [109.543081, 55.768517], "type": "Point"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_eee068457603dafde8714692ef9360b0.bindTooltip(
+                `<div>
+                     Северо-Байкальский район, местность Танхой
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_640d792f140df988278ba6b6efae98a6 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_cc812ba41925322fc411ef490d895319 = $(`<div id="html_cc812ba41925322fc411ef490d895319" style="width: 100.0%; height: 100.0%;">Северо-Байкальский район, местность Танхой</div>`)[0];
+                popup_640d792f140df988278ba6b6efae98a6.setContent(html_cc812ba41925322fc411ef490d895319);
+            
+        
+
+        geo_json_eee068457603dafde8714692ef9360b0.bindPopup(popup_640d792f140df988278ba6b6efae98a6)
+        ;
+
+        
+    
+    
+            geo_json_eee068457603dafde8714692ef9360b0.addTo(map_ecfd622b5c6415a95dfa00d81bc70045);
+        
+</script>
+</html>
