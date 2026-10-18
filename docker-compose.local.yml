@@ -1,0 +1,48 @@
+# =============================================================
+# Облегчённый локальный запуск для демонстрации админки и аннотатора.
+# Поднимает: db, redis, admin, annotator, nginx. Без backend/бота/LLM.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up -d db redis
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml run --rm db-init
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml --profile annotator up -d --build --no-deps admin annotator nginx
+#
+# Подробно — docs/LOCAL_RUN.md
+# =============================================================
+services:
+  # nginx только с админкой и статикой (полный конфиг требует backend и core-api)
+  nginx:
+    ports: !override
+      - "8080:80"
+    volumes: !override
+      - ./nginx/nginx.local.conf:/etc/nginx/nginx.conf:ro
+      - /dev/null:/etc/nginx/conf.d/default.conf
+      - ./maps:/var/www/maps
+      - ./salut_bot/images:/var/www/images
+
+  # Наполнение БД начальными данными (объекты, ресурсы, каталоги признаков).
+  # Лёгкий контейнер: импортёру нужен только psycopg2, собирать тяжёлый backend не нужно.
+  db-init:
+    image: python:3.10-slim
+    profiles: [init]
+    env_file:
+      - ./shared.env
+    environment:
+      - DB_HOST=db
+      # Куда будут указывать ссылки на фото (/images/...) из начальных данных
+      - IMPORT_IMAGES_BASE_URL=${IMPORT_IMAGES_BASE_URL:-https://testecobot.ru}
+      - PYTHONPATH=/app/knowledge_base_scripts/Relational
+      - PYTHONDONTWRITEBYTECODE=1
+    volumes:
+      - ./salut_bot/json_files:/app/json_files:ro
+      - ./salut_bot/knowledge_base_scripts:/app/knowledge_base_scripts:ro
+    working_dir: /tmp
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      bash -c "pip install -q --disable-pip-version-check psycopg2-binary==2.9.9 &&
+               python -c \"import os, psycopg2; c = psycopg2.connect(host='db', dbname=os.environ.get('DB_NAME','eco'), user=os.environ.get('DB_USER','postgres'), password=os.environ['DB_PASSWORD']); c.autocommit = True; [c.cursor().execute('CREATE EXTENSION IF NOT EXISTS ' + e) for e in ('postgis', 'vector', 'pg_trgm')]\" &&
+               sed \"s|{{PUBLIC_BASE_URL}}|$${IMPORT_IMAGES_BASE_URL}|g\" /app/json_files/resources.json > /tmp/resources.json &&
+               python -m db_importer.main --full --resources-file /tmp/resources.json --error-log /tmp/import_errors.log &&
+               echo '=== БД заполнена ==='"
+    networks: [ecobot_net]

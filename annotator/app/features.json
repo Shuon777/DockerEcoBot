@@ -1,0 +1,126 @@
+{
+  "_comment": "Справочник признаков аннотатора. Ключ — имя признака так, как оно хранится в resource.features и в каталоге resource_feature. values: значение -> англоязычный промпт для zero-shot моделей. applies_to: any | flora | fauna. executors: если задан, признак считают только эти модели.",
+
+  "Время года": {
+    "applies_to": "any",
+    "values": {
+      "Весна": "a photo taken in spring",
+      "Лето": "a photo taken in summer",
+      "Осень": "a photo taken in autumn",
+      "Зима": "a photo taken in winter"
+    }
+  },
+  "Среда обитания": {
+    "applies_to": "any",
+    "values": {
+      "Лес": "a forest",
+      "Поле": "a field",
+      "Луг": "a meadow",
+      "Болото": "a swamp",
+      "Горы": "mountains",
+      "Городская среда": "a city",
+      "Побережье": "a shore",
+      "Река": "a river",
+      "Озеро": "a lake",
+      "Сад": "a garden"
+    }
+  },
+  "Облачность": {
+    "applies_to": "any",
+    "values": {
+      "Ясно": "a clear blue sky",
+      "Переменная облачность": "a partly cloudy sky",
+      "Пасмурно": "an overcast grey sky"
+    }
+  },
+  "Осадки": {
+    "applies_to": "any",
+    "values": {
+      "Без осадков": "dry weather without rain or snow",
+      "Дождь": "rain",
+      "Снег": "falling snow",
+      "Туман": "fog"
+    }
+  },
+  "Тип поверхности": {
+    "applies_to": "any",
+    "values": {
+      "Трава": "grass",
+      "Песок": "sand",
+      "Снег": "snow on the ground",
+      "Почва": "soil",
+      "Камень": "rocks",
+      "Вода": "water",
+      "Кора": "tree bark",
+      "Лёд": "ice"
+    }
+  },
+  "Тип животного": {
+    "applies_to": "fauna",
+    "values": {
+      "Млекопитающее": "a mammal",
+      "Птица": "a bird",
+      "Рыба": "a fish",
+      "Земноводное": "an amphibian",
+      "Рептилия": "a reptile",
+      "Насекомое": "an insect",
+      "Паукообразное": "a spider"
+    }
+  },
+  "Поведение": {
+    "applies_to": "fauna",
+    "values": {
+      "Сидит": "an animal sitting",
+      "Стоит": "an animal standing",
+      "Летит": "an animal flying",
+      "Идёт": "an animal walking",
+      "Плавает": "an animal swimming",
+      "Отдыхает": "an animal resting",
+      "Ест": "an animal eating"
+    }
+  },
+  "Взаимодействие": {
+    "applies_to": "fauna",
+    "values": {
+      "Один": "a single animal alone",
+      "В группе": "a group of animals",
+      "С потомством": "an adult animal with its young",
+      "С человеком": "an animal with a person"
+    }
+  },
+  "Возраст": {
+    "applies_to": "fauna",
+    "values": {
+      "Детёныш": "a baby animal",
+      "Молодая особь": "a young animal",
+      "Взрослая особь": "an adult animal"
+    }
+  },
+  "Тип растения": {
+    "applies_to": "flora",
+    "values": {
+      "Дерево": "a tree",
+      "Кустарник": "a shrub",
+      "Травянистое растение": "a herbaceous plant",
+      "Цветущее растение": "a flowering plant",
+      "Папоротник": "a fern",
+      "Мох": "moss"
+    }
+  },
+  "Цветение": {
+    "applies_to": "flora",
+    "executors": ["phenovision", "gigachat"],
+    "values": {
+      "Да": "a plant with open flowers",
+      "Нет": "a plant without flowers"
+    }
+  },
+  "Наличие плодов": {
+    "applies_to": "flora",
+    "executors": ["phenovision", "gigachat"],
+    "values": {
+      "Да": "a plant with fruits, berries or cones",
+      "Нет": "a plant without fruits"
+    }
+  }
+}

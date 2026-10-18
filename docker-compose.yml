@@ -122,6 +122,7 @@ services:
     environment:
       - DB_HOST=db
       - REDIS_HOST=redis
+      - ANNOTATOR_URL=http://annotator:8010
     depends_on:
       db:
         condition: service_healthy
@@ -130,6 +131,21 @@ services:
       backend:
         condition: service_started
     networks: [ecobot_net]
+
+  # Не стартует с остальными сервисами: только docker compose --profile annotator up -d annotator
+  annotator:
+    build: ./annotator
+    profiles: [annotator]
+    restart: always
+    env_file:
+      - path: ./annotator/.env
+        required: false
+    volumes:
+      - ./annotator/models:/app/models
+    expose:
+      - "8010"
+    networks: [ecobot_net]
+    # GPU: запускать с -f docker-compose.gpu.yml
 
   nginx:
     image: nginx:alpine

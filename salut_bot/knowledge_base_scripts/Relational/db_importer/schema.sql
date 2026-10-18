@@ -50,6 +50,7 @@ COMMENT ON TABLE eco_assistant.object_name_synonym IS 'Справочник си
 CREATE TABLE eco_assistant.object_name_synonym_link (
     object_id INTEGER NOT NULL REFERENCES eco_assistant.object(id) ON DELETE CASCADE,
     synonym_id INTEGER NOT NULL REFERENCES eco_assistant.object_name_synonym(id) ON DELETE CASCADE,
+    priority INTEGER DEFAULT 0,  -- порядок показа синонимов в админке (1 = главный)
     PRIMARY KEY (object_id, synonym_id)
 );
 COMMENT ON TABLE eco_assistant.object_name_synonym_link IS 'Связь имен объектов с синонимами';
@@ -257,6 +258,7 @@ CREATE TABLE eco_assistant.object_property (
     object_type_id INTEGER NOT NULL REFERENCES eco_assistant.object_type(id) ON DELETE CASCADE,
     property_name TEXT NOT NULL,
     property_values TEXT[] NOT NULL DEFAULT '{}',
+    is_multiple BOOLEAN NOT NULL DEFAULT false,  -- используется админкой (множественный выбор)
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(object_type_id, property_name)
