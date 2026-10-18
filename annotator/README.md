@@ -69,7 +69,9 @@ cd .. && docker compose up -d --build annotator admin
 ```
 
 В `AdminPanel/.env` добавить `ANNOTATOR_TOKEN` = тот же токен.
-Для GPU раскомментировать блок `deploy` у сервиса в `docker-compose.yml`.
+Для GPU добавить к команде `docker-compose.gpu.yml`:
+`docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build annotator admin`
+(на сервере нужен nvidia-container-toolkit).
 
 Локально без Docker: `pip install -r requirements.txt && uvicorn app.main:app --port 8010`.
 
