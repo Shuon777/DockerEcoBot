@@ -96,8 +96,8 @@ bash scripts/setup_local.sh
 
 Собрать образ аннотатора и скачать веса в `annotator/models`:
 ```bash
-docker compose build annotator
-docker compose run --rm --no-deps -e HF_HUB_OFFLINE=0 annotator python scripts/download_models.py
+docker compose --profile annotator build annotator
+docker compose --profile annotator run --rm --no-deps -e HF_HUB_OFFLINE=0 annotator python scripts/download_models.py
 ```
 Сборка образа — 10–20 минут (PyTorch большой). Скачивание — зависит от интернета.
 
@@ -111,7 +111,7 @@ docker compose run --rm --no-deps -e HF_HUB_OFFLINE=0 annotator python scripts/d
 ## 4. База данных
 
 ```bash
-F="-f docker-compose.yml -f docker-compose.local.yml"
+F="-f docker-compose.yml -f docker-compose.local.yml --profile annotator"
 
 docker compose $F up -d db redis
 docker compose $F ps            # db и redis должны быть healthy (подождать ~10 с)
@@ -181,7 +181,7 @@ docker compose $F exec annotator python -c "import urllib.request; print(urllib.
 ## 7. Управление
 
 ```bash
-F="-f docker-compose.yml -f docker-compose.local.yml"
+F="-f docker-compose.yml -f docker-compose.local.yml --profile annotator"
 docker compose $F ps                   # что запущено
 docker compose $F logs -f admin        # логи админки
 docker compose $F restart annotator    # перезапуск

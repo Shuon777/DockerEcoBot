@@ -132,10 +132,14 @@ services:
         condition: service_started
     networks: [ecobot_net]
 
+  # Не стартует с остальными сервисами: только docker compose --profile annotator up -d annotator
   annotator:
     build: ./annotator
+    profiles: [annotator]
     restart: always
-    env_file: ./annotator/.env
+    env_file:
+      - path: ./annotator/.env
+        required: false
     volumes:
       - ./annotator/models:/app/models
     expose:

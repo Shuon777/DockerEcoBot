@@ -1,5 +1,5 @@
 # Отдаёт аннотатору видеокарту NVIDIA.
-# Использование: docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.gpu.yml up -d annotator
+# Использование: docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.gpu.yml --profile annotator up -d annotator
 # Windows: Docker Desktop (WSL2) + свежий драйвер NVIDIA. Linux: nvidia-container-toolkit.
 services:
   annotator:

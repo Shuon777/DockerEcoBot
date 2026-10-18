@@ -65,12 +65,12 @@ cd annotator
 cp .env.example .env                 # задать ANNOTATOR_API_TOKEN
 pip install huggingface_hub
 python scripts/download_models.py    # ~3 ГБ в ./models, нужен доступ к huggingface.co
-cd .. && docker compose up -d --build annotator admin
+cd .. && docker compose --profile annotator up -d --build annotator admin
 ```
 
 В `AdminPanel/.env` добавить `ANNOTATOR_TOKEN` = тот же токен.
 Для GPU добавить к команде `docker-compose.gpu.yml`:
-`docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d --build annotator admin`
+`docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile annotator up -d --build annotator admin`
 (на сервере нужен nvidia-container-toolkit).
 
 Локально без Docker: `pip install -r requirements.txt && uvicorn app.main:app --port 8010`.
