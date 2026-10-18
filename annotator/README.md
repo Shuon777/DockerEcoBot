@@ -58,20 +58,74 @@ Swagger: `http://<host>:8010/docs`.
 }
 ```
 
-## Запуск
+## Запуск на сервере
+
+Сервис вынесен в профиль `annotator` в `docker-compose.yml`: обычный `docker compose up -d`
+и `docker compose build` его не собирают и не запускают. Пока он выключен, кнопка
+«Аннотировать» в админке показывает «Сервис аннотации недоступен», остальное работает как обычно.
+
+### Обновление кода без включения аннотатора
 
 ```bash
-cd annotator
-cp .env.example .env                 # задать ANNOTATOR_API_TOKEN
-pip install huggingface_hub
-python scripts/download_models.py    # ~3 ГБ в ./models, нужен доступ к huggingface.co
-cd .. && docker compose --profile annotator up -d --build annotator admin
+git pull origin version2
+docker compose restart admin
+```
+Ничего больше не нужно: `annotator/.env`, токены и веса моделей не требуются.
+
+### Включение
+
+Все команды — из корня репозитория.
+
+1. Настройки и токен:
+   ```bash
+   cp annotator/.env.example annotator/.env
+   python3 -c "import secrets; print(secrets.token_hex(32))"
+   ```
+   Полученную строку вписать в `annotator/.env` как `ANNOTATOR_API_TOKEN=...`
+   и в `AdminPanel/.env` как `ANNOTATOR_TOKEN=...` (значения должны совпадать).
+
+2. Сборка образа (по умолчанию PyTorch для CPU):
+   ```bash
+   docker compose --profile annotator build annotator
+   ```
+   Сервер с видеокартой NVIDIA (нужны драйвер и nvidia-container-toolkit):
+   ```bash
+   docker compose --profile annotator build --build-arg TORCH_INDEX=https://download.pytorch.org/whl/cu124 annotator
+   ```
+
+3. Веса моделей (~4 ГБ в `annotator/models`, нужен доступ к huggingface.co):
+   ```bash
+   docker compose --profile annotator run --rm --no-deps -e HF_HUB_OFFLINE=0 annotator python scripts/download_models.py
+   ```
+
+4. Запуск аннотатора и перезапуск админки (чтобы она подхватила токен):
+   ```bash
+   docker compose --profile annotator up -d annotator
+   docker compose up -d admin
+   ```
+   С видеокартой первая команда:
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile annotator up -d annotator
+   ```
+
+5. Проверка: в логах должно появиться `Application startup complete` без `ERROR`,
+   затем в админке нажать «Аннотировать» на любом фото.
+   ```bash
+   docker compose --profile annotator logs -f annotator
+   ```
+
+Мало памяти (меньше ~5 ГБ свободной RAM): перед шагом 4 оставить в `annotator/.env`
+облегчённый набор и заполнить `GIGACHAT_CREDENTIALS`:
+```bash
+ANNOTATOR_EXECUTORS=clip,gigachat
+ENABLE_CAPTION=false
 ```
 
-В `AdminPanel/.env` добавить `ANNOTATOR_TOKEN` = тот же токен.
-Для GPU добавить к команде `docker-compose.gpu.yml`:
-`docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile annotator up -d --build annotator admin`
-(на сервере нужен nvidia-container-toolkit).
+### Выключение
+
+```bash
+docker compose --profile annotator stop annotator
+```
 
 Локально без Docker: `pip install -r requirements.txt && uvicorn app.main:app --port 8010`.
 
