@@ -4048,6 +4048,101 @@ async def resource_update_features(
 
 
 # ==========================================
+# CMS: АННОТАТОР ИЗОБРАЖЕНИЙ (прокси к сервису annotator)
+# ==========================================
+# Браузер ходит только в админку (сессия + права), админка — в сервис annotator
+# внутри docker-сети. Сам сервис наружу через nginx не публикуется.
+
+ANNOTATOR_URL = os.getenv("ANNOTATOR_URL", "http://annotator:8010").rstrip("/")
+ANNOTATOR_TOKEN = os.getenv("ANNOTATOR_TOKEN", "")
+_TASK_ID_RE = re.compile(r"^[0-9a-f-]{36}$")
+
+
+async def _annotator_call(method: str, path: str, **kwargs):
+    """Запрос к аннотатору. Возвращает (json, None) или (None, текст ошибки)."""
+    headers = {"X-API-Token": ANNOTATOR_TOKEN} if ANNOTATOR_TOKEN else {}
+    try:
+        async with httpx.AsyncClient(base_url=ANNOTATOR_URL, timeout=15.0) as client:
+            resp = await client.request(method, path, headers=headers, **kwargs)
+    except httpx.HTTPError as exc:
+        return None, f"Сервис аннотации недоступен: {exc.__class__.__name__}"
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json().get("detail")
+        except Exception:
+            detail = resp.text[:300]
+        return None, str(detail or f"HTTP {resp.status_code}")
+    return resp.json(), None
+
+
+@app.get("/annotator/config")
+async def annotator_config(request: Request, lifeform: str = Query(None)):
+    """Признаки и модели, доступные в аннотаторе, — для формы запуска."""
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    params = {"lifeform": lifeform} if lifeform else None
+    features, err = await _annotator_call("GET", "/features", params=params)
+    if err:
+        return {"ok": False, "error": err}
+    executors, err = await _annotator_call("GET", "/executors")
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True, "features": features, "executors": executors}
+
+
+@app.post("/annotator/start/{resource_id}")
+async def annotator_start(
+    request: Request,
+    resource_id: int,
+    body: dict = Body(default={}),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ставит фото ресурса в очередь аннотатора. Ответ сразу, с task_id."""
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    row = (await db.execute(
+        select(ImageValue.url, ImageValue.file_path)
+        .join(ResourceValue, ResourceValue.value_id == ImageValue.id)
+        .join(Modality, Modality.id == ResourceValue.modality_id)
+        .where(ResourceValue.resource_id == resource_id)
+        .where(Modality.modality_type == "Изображение")
+    )).first()
+    image_url = (row.url or row.file_path) if row else None
+    if not image_url:
+        return {"ok": False, "error": "У ресурса нет изображения"}
+
+    payload = {
+        "image_url": image_url,
+        "resource_id": resource_id,
+        "features": body.get("features") or None,
+        "executors": body.get("executors") or None,
+        "lifeform": body.get("lifeform") or None,
+    }
+    task, err = await _annotator_call("POST", "/annotate", json=payload)
+    if err:
+        return {"ok": False, "error": err}
+    return {"ok": True, "task": task}
+
+
+@app.get("/annotator/tasks/{task_id}")
+async def annotator_task(request: Request, task_id: str):
+    """Статус задачи; когда готово — сразу с результатом (браузеру один запрос на опрос)."""
+    if not request.session.get("user_id"):
+        return {"ok": False, "error": "unauthorized"}
+    if not _TASK_ID_RE.match(task_id):
+        return {"ok": False, "error": "некорректный task_id"}
+    task, err = await _annotator_call("GET", f"/tasks/{task_id}")
+    if err:
+        return {"ok": False, "error": err}
+    if task.get("status") == "completed":
+        result, err = await _annotator_call("GET", f"/tasks/{task_id}/result")
+        if err:
+            return {"ok": False, "error": err}
+        task["result"] = result
+    return {"ok": True, "task": task}
+
+
+# ==========================================
 # CMS: КАТАЛОГИ ТИПОВ СВЯЗЕЙ
 # ==========================================
 
@@ -4238,7 +4333,7 @@ async def _update_synonyms_impl(
     for priority, syn_norm in enumerate(desired_norm, start=1):
         existing_syn = (await db.execute(
             select(ObjectNameSynonym).where(ObjectNameSynonym.synonym == syn_norm)
-        )).scalar_one_or_none()
+        )).scalars().first()
 
         if not existing_syn:
             existing_syn = ObjectNameSynonym(synonym=syn_norm, language="ru")
