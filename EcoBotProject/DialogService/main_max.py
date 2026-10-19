@@ -20,8 +20,11 @@ from adapters.max.handlers.attachments import register_attachment_handlers
 setup_logging()
 logger = logging.getLogger("MaxBotApp")
 
+
 _SHARED_ENV_PATH = "/app/shared.env"
 
+logger.info(f"=== DEBUG: LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'DEFAULT: qwen')} ===")
+logger.info(f"=== DEBUG: LLM_BASE_URL = {os.getenv('LLM_BASE_URL', 'DEFAULT: http://host.docker.internal:11434/v1')} ===")
 
 async def _config_reload_listener() -> None:
     pubsub = ctx.redis_client.pubsub()

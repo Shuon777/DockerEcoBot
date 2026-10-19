@@ -333,6 +333,7 @@ async def callback_proxy(request: Request, data: dict = Body(...)):
             return {"error": f"Ошибка Core API: {str(e)}"}
 
 PLANT_API_URL = os.getenv("PLANT_API_URL", "http://194.156.118.21:8020/predict")
+STT_URL = os.getenv("STT_URL", "http://stt-service:8081").rstrip("/")
 
 @app.post("/chat/predict_plant")
 async def predict_plant(
@@ -379,6 +380,52 @@ def _load_config_schema() -> dict:
         print(f"[Settings] Ошибка загрузки схемы конфига: {e}")
         return {"tabs": []}
 
+@app.post("/chat/transcribe")
+async def chat_transcribe(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    if not request.session.get("user_id"):
+        return {"error": "не авторизован"}
+
+    content = await file.read()
+    if not content:
+        return {"error": "Пустой файл"}
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(170.0)) as client:
+        try:
+            r = await client.post(
+                f"{STT_URL}/transcribe",
+                files={
+                    "file": (
+                        file.filename or "voice.webm",
+                        content,
+                        file.content_type or "application/octet-stream",
+                    )
+                },
+            )
+        except Exception as e:
+            return {"error": f"STT-сервис недоступен: {e}"}
+
+    try:
+        data = r.json()
+    except ValueError:
+        return {"error": f"STT вернул не JSON (HTTP {r.status_code})"}
+
+    if r.status_code != 200:
+        err = data.get("error") or {}
+        return {
+            "error": err.get("message") or f"STT вернул HTTP {r.status_code}",
+            "code": err.get("code"),
+            "details": err.get("details"),
+        }
+
+    return {
+        "text": data.get("text", ""),
+        "language": data.get("language"),
+        "duration_seconds": data.get("duration_seconds"),
+        "model": data.get("model"),
+    }
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(request: Request):

@@ -715,44 +715,104 @@ sendMessage = async function(overrideText = null, isCallback = false) {
 document.addEventListener('DOMContentLoaded', () => {
     const voiceBtn = document.getElementById('voice-input-btn');
     const userInput = document.getElementById('user-input');
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!voiceBtn) return;
 
-    if (!SpeechRecognition || !window.isSecureContext) {
-        if (voiceBtn) voiceBtn.style.display = 'none';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        voiceBtn.style.display = 'none';
         return;
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ru-RU';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    let recorder = null;
+    let chunks = [];
+    let startedAt = 0;
+    let starting = false;
 
-    recognition.onstart = () => {
-        voiceBtn.classList.replace('btn-outline-secondary', 'btn-danger');
-        voiceBtn.innerHTML = '<i class="bi bi-mic-fill"></i>';
-    };
+    function setRecording(on) {
+        voiceBtn.classList.toggle('btn-danger', on);
+        voiceBtn.classList.toggle('btn-outline-secondary', !on);
+        voiceBtn.innerHTML = on ? '<i class="bi bi-mic-fill"></i>' : '<i class="bi bi-mic"></i>';
+        voiceBtn.title = on ? 'Идёт запись — нажмите, чтобы остановить' : 'Голосовой ввод';
+    }
 
-    recognition.onend = () => {
-        voiceBtn.classList.replace('btn-danger', 'btn-outline-secondary');
-        voiceBtn.innerHTML = '<i class="bi bi-mic"></i>';
-    };
+    function pickMime() {
+        const variants = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+        return variants.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    }
 
-    recognition.onresult = (event) => {
-        userInput.value = event.results[0][0].transcript;
-    };
+    async function startRecording() {
+        if (starting || (recorder && recorder.state === 'recording')) return;
+        starting = true;
+        let stream = null;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    recognition.onerror = () => {
-        voiceBtn.classList.replace('btn-danger', 'btn-outline-secondary');
-        voiceBtn.innerHTML = '<i class="bi bi-mic"></i>';
-    };
+            const track = stream.getAudioTracks()[0];
+            if (!track || track.muted) {           // микрофон отдал «тишину» — не начинаем
+                stream.getTracks().forEach(t => t.stop());
+                return;
+            }
+
+            const mimeType = pickMime();
+            recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            chunks = [];
+
+            recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+
+            recorder.onstop = async () => {
+                const durationMs = Date.now() - startedAt;
+                stream.getTracks().forEach(t => t.stop());
+                const type = recorder.mimeType || mimeType || 'audio/webm';
+                const blob = new Blob(chunks, { type });
+                chunks = [];
+                setRecording(false);
+                if (durationMs < 700 || blob.size < 3000) return;   // пустышка — молча выходим
+                await sendToStt(blob, type);
+            };
+
+            recorder.start(250);                  // отдавать данные порциями по ходу записи
+            startedAt = Date.now();
+            setRecording(true);
+        } catch {
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            recorder = null;
+            setRecording(false);
+        } finally {
+            starting = false;
+        }
+    }
+
+    async function sendToStt(blob, mimeType) {
+        const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm';
+        const loading = document.getElementById('loading-indicator');
+        loading.classList.remove('d-none');
+
+        try {
+            const fd = new FormData();
+            fd.append('file', blob, `voice.${ext}`);
+
+            const r = await fetch('/admin/chat/transcribe', { method: 'POST', body: fd });
+            if (!(r.headers.get('content-type') || '').includes('json')) return;
+
+            const data = await r.json();
+            if (data.error) return;
+
+            const text = (data.text || '').trim();
+            if (!text) return;
+
+            userInput.value = text;
+            await sendMessage();
+        } catch {
+            // молча
+        } finally {
+            loading.classList.add('d-none');
+        }
+    }
 
     voiceBtn.addEventListener('click', () => {
-        try {
-            recognition.start();
-        } catch (e) {
-            if (e.name === 'InvalidStateError') {
-                recognition.stop();
-            }
+        if (recorder && recorder.state === 'recording') {
+            recorder.stop();
+        } else if (!starting) {
+            startRecording();
         }
     });
 });

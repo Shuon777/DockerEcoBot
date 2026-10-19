@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.2/dist/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="https://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap-glyphicons.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.2.0/css/all.min.css"/>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Leaflet.awesome-markers/2.0.2/leaflet.awesome-markers.css"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/python-visualization/folium/folium/templates/leaflet.awesome.rotate.min.css"/>
+    
+            <meta name="viewport" content="width=device-width,
+                initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                #map_ce883903663fae1a3223bed5ef01566e {
+                    position: relative;
+                    width: 100.0%;
+                    height: 100.0%;
+                    left: 0.0%;
+                    top: 0.0%;
+                }
+                .leaflet-container { font-size: 1rem; }
+            </style>
+
+            <style>html, body {
+                width: 100%;
+                height: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            </style>
+
+            <style>#map {
+                position:absolute;
+                top:0;
+                bottom:0;
+                right:0;
+                left:0;
+                }
+            </style>
+
+            <script>
+                L_NO_TOUCH = false;
+                L_DISABLE_3D = false;
+            </script>
+
+        
+</head>
+<body>
+    
+    
+            <div class="folium-map" id="map_ce883903663fae1a3223bed5ef01566e" ></div>
+        
+</body>
+<script>
+    
+    
+            var map_ce883903663fae1a3223bed5ef01566e = L.map(
+                "map_ce883903663fae1a3223bed5ef01566e",
+                {
+                    center: [55.423443651030446, 85.13254255379294],
+                    crs: L.CRS.EPSG3857,
+                    ...{
+  "zoom": 9,
+  "zoomControl": true,
+  "preferCanvas": false,
+  "attributionControl": false,
+}
+
+                }
+            );
+
+            
+
+        
+    
+            var tile_layer_f999b1a6f3c210b73a146d161392aa1b = L.tileLayer(
+                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {
+  "minZoom": 0,
+  "maxZoom": 19,
+  "maxNativeZoom": 19,
+  "noWrap": false,
+  "attribution": "\u0026copy; \u003ca href=\"https://www.openstreetmap.org/copyright\"\u003eOpenStreetMap\u003c/a\u003e contributors",
+  "subdomains": "abc",
+  "detectRetina": false,
+  "tms": false,
+  "opacity": 1,
+}
+
+            );
+        
+    
+            tile_layer_f999b1a6f3c210b73a146d161392aa1b.addTo(map_ce883903663fae1a3223bed5ef01566e);
+        
+    
+        function geo_json_14067015e7c3030da5f8883b46a58e08_styler(feature) {
+            switch(feature.id) {
+                default:
+                    return {"color": "#0d47a1", "fillColor": "#1a73e8", "fillOpacity": 0.3, "weight": 2};
+            }
+        }
+
+        function geo_json_14067015e7c3030da5f8883b46a58e08_onEachFeature(feature, layer) {
+
+            layer.on({
+            });
+        };
+        var geo_json_14067015e7c3030da5f8883b46a58e08 = L.geoJson(null, {
+                onEachFeature: geo_json_14067015e7c3030da5f8883b46a58e08_onEachFeature,
+            
+                style: geo_json_14067015e7c3030da5f8883b46a58e08_styler,
+            ...{
+}
+        });
+
+        function geo_json_14067015e7c3030da5f8883b46a58e08_add (data) {
+            geo_json_14067015e7c3030da5f8883b46a58e08
+                .addData(data);
+        }
+            geo_json_14067015e7c3030da5f8883b46a58e08_add({"features": [{"geometry": {"coordinates": [[[85.1217611, 55.4240605], [85.1219345, 55.4238143], [85.1232357, 55.4234402], [85.1234612, 55.4236273], [85.1317016, 55.4221997], [85.1323608, 55.4216779], [85.1336793, 55.4215105], [85.1363163, 55.4218748], [85.1396645, 55.4232433], [85.1407574, 55.4232827], [85.1438974, 55.4241195], [85.1436025, 55.4245527], [85.1402196, 55.4240014], [85.1395257, 55.4246807], [85.1366632, 55.4243952], [85.1349978, 55.4243164], [85.1336273, 55.4240309], [85.131424, 55.4237553], [85.1288392, 55.4240211], [85.1279717, 55.4247299], [85.1274513, 55.4247595], [85.1272431, 55.4243066], [85.1260461, 55.4245429], [85.1262196, 55.4248481], [85.1257338, 55.424917], [85.1254389, 55.4247299], [85.1237561, 55.4251828], [85.1230622, 55.4249761], [85.1217611, 55.4240605]]], "type": "Polygon"}, "id": "0", "type": "Feature"}], "type": "FeatureCollection"});
+
+        
+    
+            geo_json_14067015e7c3030da5f8883b46a58e08.bindTooltip(
+                `<div>
+                     поселок Листвянка
+                 </div>`,
+                {
+  "sticky": true,
+}
+            );
+        
+    
+        var popup_e0f35e95b3dacd606d764d6035522729 = L.popup({
+  "maxWidth": 400,
+});
+
+        
+            
+                var html_be3e4a238f2b5fdc3ed4bd7c7f6f60f2 = $(`<div id="html_be3e4a238f2b5fdc3ed4bd7c7f6f60f2" style="width: 100.0%; height: 100.0%;">поселок Листвянка</div>`)[0];
+                popup_e0f35e95b3dacd606d764d6035522729.setContent(html_be3e4a238f2b5fdc3ed4bd7c7f6f60f2);
+            
+        
+
+        geo_json_14067015e7c3030da5f8883b46a58e08.bindPopup(popup_e0f35e95b3dacd606d764d6035522729)
+        ;
+
+        
+    
+    
+            geo_json_14067015e7c3030da5f8883b46a58e08.addTo(map_ce883903663fae1a3223bed5ef01566e);
+        
+</script>
+</html>
